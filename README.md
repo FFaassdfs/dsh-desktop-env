@@ -37,9 +37,12 @@ wails dev            # 热重载开发模式
 app.go             # 启动编排：端口检测 / 拉起 dsh / 等待就绪 / 窗口跳转 / 退出清理
 dsh_windows.go     # Windows 平台 spawn dsh（隐藏窗口 + 日志重定向）
 dsh_other.go       # 其他平台 spawn dsh
+windowstate.go     # 窗口状态持久化（记住大小/位置/最大化，重启还原）
 main.go            # Wails 入口（单实例锁、窗口参数）
 frontend/          # 启动画面页（Vite + 原生 JS）
 ```
+
+窗口大小/位置/最大化状态保存在 `%APPDATA%\dsh-desktop\window.json`，关闭前写入（`OnBeforeClose`）、启动时还原（`OnStartup`）。
 
 ## 已知问题
 
