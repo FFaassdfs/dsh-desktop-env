@@ -40,3 +40,7 @@ dsh_other.go       # 其他平台 spawn dsh
 main.go            # Wails 入口（单实例锁、窗口参数）
 frontend/          # 启动画面页（Vite + 原生 JS）
 ```
+
+## 已知问题
+
+- **exe 的「文件属性 → 详细信息」版本字段显示为空**：这是 wails v2.14.0 所用 `tc-hib/winres v0.3.1` 的上游 bug —— 它把版本资源的 StringTable 键名写成小写（`040904b0`），而 Windows 期望大写（`040904B0`），导致 `FileVersionInfo` 读不到字符串。字符串实际已嵌入 exe，二进制文件版本 `0.1.0.0` 也正常，属纯外观问题、不影响运行，等 wails 升级 winres 后自动修复。
