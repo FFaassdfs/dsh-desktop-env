@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，仅 .git + 中断的 tmp_pack，见 §12）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏（见 §12）；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -427,6 +427,68 @@ plugins/dsh-client-ui-plugin-project-explorer/
 
 ---
 
-## 12. 清理记录（日常维护）
+## 12. 路径D：环境同步仓库（两台电脑复刻 dsh-desktop 环境）
+
+### 12.1 目标与成果
+
+把「这台电脑的 harness + 壳 + 自定义插件」的可版本化部分收进一个**公开 GitHub 仓库**，家里电脑 `git clone` + 跑一条 `setup.ps1` 即得到一致环境（源码/配置层）；运行时数据（会话/凭据）刻意不同步，各机自配。
+
+- 仓库：`https://github.com/FFaassdfs/dsh-desktop-env`（public，2026-08-18 建）
+- 分支：`main`（原工作区历史 3 提交 + 本路径 1 提交 `dbde346`）
+
+### 12.2 同步矩阵（哪些进 git、哪些不同步）
+
+| 内容 | 处理 |
+|---|---|
+| 两个自定义插件源码（`plugins/`） | ✅ 入库 |
+| `HANDOVER.md` / `AGENTS.md` | ✅ 入库（PAT 明文已移出，见 §12.6.1） |
+| `.work` 测试/安装脚本 | ✅ 入库（原整目录忽略改为白名单式忽略） |
+| `scripts/setup-plugins.mjs`、`setup.ps1` | ✅ 新增 |
+| 桌面壳源码 | ✅ 已在 fork（`.work/deepseek-harness` 子仓库，独立 git，不随本仓库） |
+| `cordis.patch.yml`、dsh 版本 | 由 setup 脚本重建/锁定，不直接同步文件 |
+| 会话历史 / storages / 凭据（API key、PAT、.env） | ❌ 各机自配；PAT 明文在 `.work\secrets.local.md`（gitignore） |
+| `profiles\node_modules`、exe、全局 dsh | ❌ 可重建，setup.ps1 处理 |
+
+### 12.3 产出文件
+
+```
+setup.ps1                       # 总入口：环境检查 → dsh 版本锁定/安装 → 插件安装 →（可选）fork clone + wails build
+scripts/setup-plugins.mjs       # 幂等安装两个插件 + 合并 cordis.patch.yml + 静态验证（相对路径，任意机器可跑）
+.work/secrets.local.md          # 本机凭据（PAT 明文，gitignore 忽略，永不进 git）
+```
+
+### 12.4 使用（家里电脑）
+
+```powershell
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git
+cd dsh-desktop-env
+pwsh -File setup.ps1 -HarnessVersion 0.1.0-rc.7   # 完整复刻（含桌面壳构建，需 Go 1.26+ / Wails CLI / WebView2）
+pwsh -File setup.ps1 -SkipDesktopBuild            # 只装插件（快速，免 Go/Wails）
+pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
+# 之后手动：配 dsh API key / .env（各机独立，不同步）
+```
+
+### 12.5 已验证项
+
+- [x] `node scripts/setup-plugins.mjs --check-only`：只读验证全过（resolve / dsh.client / exports["./client"] / host main / patch YAML 两条目俱在）
+- [x] 真跑安装：删旧拷新 + patch 幂等跳过（patch 已含两条目时不重复追加）
+- [x] 顺带修复：本机 profile 里插件版本比仓库旧（explainer client.js 32058→36924 字节），真跑后 MD5 与仓库一致
+- [x] 推送后 `git clone --depth 1` 实机验证（模拟家里拉取）：plugins/、scripts/、setup.ps1、HANDOVER、.work 脚本俱在；`secrets.local.md` / `.review` / `deepseek-harness` 未泄露
+- [x] 远端 `main` HEAD = `dbde346`，本地 `## main...origin/main` 干净
+
+### 12.6 坑 / 注意点
+
+1. **PAT 明文已移出 HANDOVER**（2026-08-18）：§10.3 只引用 `.work\secrets.local.md`；该文件在 .gitignore，永不进 git。fork 的 Actions secret `SYNC_TOKEN` 不受影响。
+2. **`.gitignore` 从「整体忽略 `.work/`」改为白名单式**：忽略 `.work/deepseek-harness/`（子仓库）、`.work/*.log`、`.review/`、`secrets.local.md`；其余 `.work` 脚本入库。
+3. **setup.ps1 刻意全英文输出**：防 PS 5.1 把无 BOM UTF-8 按 ANSI(GBK) 解析中文乱码（坑 10.7.16）；Node 脚本不受此限。
+4. **`clientSource.length` ≠ 字节数**：JS 字符串 length 是 UTF-16 单元数，词典含中文时明显小于字节数（32058 单元 ≈ 36924 字节）——验证输出看着像「旧版本」其实是正常现象，以 MD5/字节数为准。
+5. **git push 进度输出走 stderr**：pwsh 在 `$ErrorActionPreference='Stop'` 下会把 git 的 stderr 进度当 NativeCommandError 中断并误报 exit 1——实际可能已成功；跑 git 用宽松模式，以 `git status -sb`/远端 HEAD 为准。
+6. **GitHub contents API 对带尾斜杠 URL**（`.../contents/`）返回空/异常：验证仓库内容用不带尾斜杠的 URL 或直接 `git clone`。
+7. **两台 dsh 版本要锁同一个**：本机全局 dsh 0.1.0-rc.6、fork 已 rc.7——setup.ps1 用 `-HarnessVersion` 锁版本，建议两台一起升 rc.7。
+8. **`.review/` 是 `dsh-vision-router` 插件评审临时物**（本地仍在评估）：gitignore 忽略，未入库未删除。
+
+---
+
+## 13. 清理记录（日常维护）
 
 - **2026-08-18 清理**：删除 `.work\hermes-agent`（约 46.6 MB）——一次失败 git 克隆的残留：remote 指向 `FFaassdfs/hermes-agent`，但只有 `.git` 目录、无工作区文件，`.git/objects/pack/` 里仅剩中断的 `tmp_pack_*` 临时文件，`git log` 报「branch appears to be broken」，全仓库无任何脚本引用。判断为垃圾后直接 `Remove-Item -Recurse -Force` 清除。若日后真要引入 hermes-agent，重新 `git clone` 即可（`.work` 下任何非 `deepseek-harness` 的目录都只是临时物，可随时删）。
