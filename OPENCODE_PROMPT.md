@@ -30,4 +30,5 @@
 
 - `dsh --version` = `0.1.0-rc.7`
 - 两个自定义插件已装入 `%USERPROFILE%\.dsh\profiles\node_modules`，且 `cordis.patch.yml` 含 `plugin-explainer`、`plugin-project-explorer` 两条目（可运行 `node D:\dsh-desktop\scripts\setup-plugins.mjs --check-only` 验证，末尾应输出 `CHECK ONLY — nothing written. Looks good.`）
+- 全局预设已安装：`Test-Path $env:USERPROFILE\.dsh\AGENTS.md` 为 True（部署时自动安装，含通用避坑经验）
 - （可选）`D:\dsh-desktop\build\bin\dsh-desktop.exe` 可启动

@@ -69,6 +69,7 @@ powershell -File deploy.ps1 -HarnessVersion 0.1.0-rc.7
 - 不需要桌面壳：加 `-SkipDesktopBuild`
 - 只想看会做什么（不动系统）：加 `-CheckOnly`
 - `deploy.ps1` 会再次自检依赖，缺失时打印安装命令并以非零码退出（回 §3）
+- 部署还会顺带安装**全局预设** `~/.dsh/AGENTS.md`（harness 全局指令，含通用避坑经验；**首次部署时安装，已有则保留不动**——要刷新先删掉该文件再重跑）
 
 **验证**：输出末尾出现 `done`；再跑 `node scripts/setup-plugins.mjs --check-only`，末尾输出
 `CHECK ONLY — nothing written. Looks good.`

@@ -6,7 +6,8 @@
 #   2. check (and optionally pin/install) the global dsh version
 #   3. install the two custom plugins into $DSH_HOME/profiles/node_modules
 #      and merge cordis.patch.yml (via scripts/setup-plugins.mjs)
-#   4. clone the desktop-shell fork and build dsh-desktop.exe (optional)
+#   4. install the global preset (~/.dsh/AGENTS.md) from global/AGENTS.md
+#   5. clone the desktop-shell fork and build dsh-desktop.exe (optional)
 #
 # Usage:
 #   pwsh -File setup.ps1                                # full setup
@@ -34,7 +35,7 @@ Write-Host "repo root : $repoRoot"
 Write-Host "checkOnly : $CheckOnly"
 
 # --- 1. Node.js / npm ----------------------------------------------------------
-Step "1/4 checking Node.js and npm"
+Step "1/5 checking Node.js and npm"
 $node = node --version 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $node) {
   throw "Node.js not found. Install Node.js 22.19+ or 24.x from https://nodejs.org"
@@ -44,7 +45,7 @@ $npm = npm --version 2>$null
 Ok("npm $npm")
 
 # --- 2. global dsh -------------------------------------------------------------
-Step "2/4 checking global dsh"
+Step "2/5 checking global dsh"
 $dsh = (& cmd /c "dsh --version 2>nul") 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $dsh) {
   if ($CheckOnly) {
@@ -69,17 +70,33 @@ if ($LASTEXITCODE -ne 0 -or -not $dsh) {
 }
 
 # --- 3. custom plugins ---------------------------------------------------------
-Step "3/4 installing custom plugins"
+Step "3/5 installing custom plugins"
 $pluginArgs = @(Join-Path $repoRoot "scripts\setup-plugins.mjs")
 if ($CheckOnly) { $pluginArgs += "--check-only" }
 node @pluginArgs
 if ($LASTEXITCODE -ne 0) { throw "plugin setup failed (see output above)" }
 
-# --- 4. desktop shell (fork clone + wails build) -------------------------------
+# --- 4. global preset (~/.dsh/AGENTS.md) ---------------------------------------
+# Install-only: never overwrite an existing local copy (the user may have
+# customized it). To refresh, delete ~/.dsh/AGENTS.md and re-run setup.
+Step "4/5 syncing global preset (~/.dsh/AGENTS.md)"
+$globalDst = Join-Path $env:USERPROFILE ".dsh\AGENTS.md"
+$globalSrc = Join-Path $repoRoot "global\AGENTS.md"
+if (Test-Path $globalDst) {
+  Warn "global preset already exists at $globalDst (kept as-is; delete it and re-run setup to refresh from repo)"
+} elseif ($CheckOnly) {
+  Warn "would install global preset -> $globalDst"
+} else {
+  New-Item -ItemType Directory -Force -Path (Split-Path $globalDst) | Out-Null
+  Copy-Item $globalSrc $globalDst -Force
+  Ok("global preset installed -> $globalDst")
+}
+
+# --- 5. desktop shell (fork clone + wails build) -------------------------------
 if ($SkipDesktopBuild) {
   Ok("desktop build skipped (-SkipDesktopBuild)")
 } else {
-  Step "4/4 desktop shell (fork clone + wails build)"
+  Step "5/5 desktop shell (fork clone + wails build)"
   $forkDir = Join-Path $repoRoot ".work\deepseek-harness"
   if (-not (Test-Path (Join-Path $forkDir ".git"))) {
     if ($CheckOnly) {

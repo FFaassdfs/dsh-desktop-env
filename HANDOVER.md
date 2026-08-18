@@ -457,6 +457,7 @@ deploy.ps1                      # opencode 引导入口：依赖自检（缺失�
 scripts/setup-plugins.mjs       # 幂等安装两个插件 + 合并 cordis.patch.yml + 静态验证（相对路径，任意机器可跑）
 DEPLOY.md                       # opencode/人工 分步部署清单（每步带验证 + 故障排查表，兼容无 pwsh 场景）
 OPENCODE_PROMPT.md              # 可直接复制发给家里 opencode 的自包含部署指令（clone → 读 DEPLOY.md → 执行 → 验收）
+global/AGENTS.md                # 全局预设权威副本（~/.dsh/AGENTS.md 的模板；setup.ps1 步骤 4/5 首次安装，不覆盖本地已有）
 .work/secrets.local.md          # 本机凭据（PAT 明文，gitignore 忽略，永不进 git）
 ```
 
@@ -500,6 +501,7 @@ pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
 12. **DEPLOY.md 面向 opencode/人工**：每条指令带验证命令 + 故障排查表；兼容无 pwsh 场景（`powershell -File deploy.ps1`，脚本 ASCII-only 防 5.1 乱码）。
 13. **✅ 沙箱推送免提权办法（2026-08-18 实测）**：本仓库 `git config http.sslBackend openssl`（仓库级）后，带 token URL 的 `git push` 在 workspace-write 下直接成功，**不再需要 danger-full-access**（schannel 凭据库被沙箱拒的问题被绕开）。实测输出 `740c819..46f89c3 main -> main`。副作用：push 时有一条 `sh.exe: couldn't create signal pipe` 噪音（credential helper 子进程，不影响结果）。新克隆的仓库记得重设该配置。
 14. **curl.exe 在 pwsh 里 `-d '{"json"}'` 报 `Problems parsing JSON`**（400）：Windows curl 对 pwsh 传入的带空格 JSON 参数解析不稳。改用 `Set-Content -Path tmp.json -Value $body -Encoding ascii` + `curl.exe --data-binary "@tmp.json"` 传文件即可（2026-08-18 建仓时实测）。
+15. **全局预设双副本机制（2026-08-18）**：全局 `~/.dsh/AGENTS.md` 的**权威副本在本仓库 `global/AGENTS.md`**（已入库，随部署同步）；各机 `~/.dsh/AGENTS.md` 是安装副本——setup.ps1 步骤 4/5 **install-only 不覆盖**（已有则提示保留）。**改全局预设 = 改 `global/AGENTS.md` 推送 + 目标机删 `~/.dsh/AGENTS.md` 重跑 setup（或手动拷）**。本机当前版本与 global 副本一致（2026-08-18 同步）。
 
 ---
 
