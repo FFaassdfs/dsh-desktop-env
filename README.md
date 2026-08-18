@@ -2,6 +2,18 @@
 
 DeepSeek Harness 的桌面应用壳（Wails v2 + WebView2），把 dsh 的 Web UI 包装成原生桌面窗口，使用方式类似 opencode 桌面版。
 
+## 部署到新机器（家里电脑）
+
+本仓库同时是**环境同步仓库**：含两个自定义插件、一键部署脚本与文档。在新机器（如家里电脑）用 opencode 或手动按 [`DEPLOY.md`](DEPLOY.md) 执行即可复刻本机环境（dsh 锁版本 + 插件 + 可选桌面壳）：
+
+```powershell
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh-desktop
+cd D:\dsh-desktop
+pwsh -File deploy.ps1 -HarnessVersion 0.1.0-rc.7   # 无 pwsh 用 powershell -File
+```
+
+> 桌面壳权威源码在 fork `FFaassdfs/deepseek-harness` 的 `desktop/`（本目录根下的 `app.go` 等为过时副本）。
+
 ## 原理
 
 - 启动时显示内嵌启动画面（loading spinner）

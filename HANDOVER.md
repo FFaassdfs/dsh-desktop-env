@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏（见 §12）；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：路径D v2——新增 opencode 一键部署（`DEPLOY.md` 分步指南 + `deploy.ps1` 引导脚本），修复数组 splatting / setup.ps1 语法坑（见 §12）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -453,7 +453,9 @@ plugins/dsh-client-ui-plugin-project-explorer/
 
 ```
 setup.ps1                       # 总入口：环境检查 → dsh 版本锁定/安装 → 插件安装 →（可选）fork clone + wails build
+deploy.ps1                      # opencode 引导入口：依赖自检（缺失打印安装命令）→ 哈希表 splatting 转交 setup.ps1
 scripts/setup-plugins.mjs       # 幂等安装两个插件 + 合并 cordis.patch.yml + 静态验证（相对路径，任意机器可跑）
+DEPLOY.md                       # opencode/人工 分步部署清单（每步带验证 + 故障排查表，兼容无 pwsh 场景）
 .work/secrets.local.md          # 本机凭据（PAT 明文，gitignore 忽略，永不进 git）
 ```
 
@@ -475,6 +477,7 @@ pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
 - [x] 顺带修复：本机 profile 里插件版本比仓库旧（explainer client.js 32058→36924 字节），真跑后 MD5 与仓库一致
 - [x] 推送后 `git clone --depth 1` 实机验证（模拟家里拉取）：plugins/、scripts/、setup.ps1、HANDOVER、.work 脚本俱在；`secrets.local.md` / `.review` / `deepseek-harness` 未泄露
 - [x] 远端 `main` HEAD = `dbde346`，本地 `## main...origin/main` 干净
+- [x] `deploy.ps1 -CheckOnly` 完整链路（v2）：依赖自检全过 → 哈希表 splatting 正确转交 setup.ps1 → 插件 check-only 全过 → `done`；参数传递修复后 `checkOnly: True`、`HarnessVersion` 正确接收
 
 ### 12.6 坑 / 注意点
 
@@ -486,6 +489,10 @@ pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
 6. **GitHub contents API 对带尾斜杠 URL**（`.../contents/`）返回空/异常：验证仓库内容用不带尾斜杠的 URL 或直接 `git clone`。
 7. **两台 dsh 版本要锁同一个**：本机全局 dsh 0.1.0-rc.6、fork 已 rc.7——setup.ps1 用 `-HarnessVersion` 锁版本，建议两台一起升 rc.7。
 8. **`.review/` 是 `dsh-vision-router` 插件评审临时物**（本地仍在评估）：gitignore 忽略，未入库未删除。
+9. **🔴 PowerShell 数组 splatting 传的是位置参数**：`& script.ps1 @array` **不会**解析 `-Name value` 对——会把 `-HarnessVersion` 当作第一个位置参数的值传（实测 setup.ps1 收到 `$HarnessVersion="-HarnessVersion"`，npm 报 `@deepseek-ai/dsh@-HarnessVersion`）。转交命名参数必须用**哈希表 splatting**（`@{HarnessVersion=$v; CheckOnly=$true}`）。
+10. **Go 1.21+ telemetry 写 `%APPDATA%\go\telemetry`**：沙箱内 `go version` 报 Access denied → 验证脚本前置 `$env:GOTELEMETRY="off"` 即可规避，不必提权；家里无沙箱不受影响。
+11. **deploy.ps1 -CheckOnly 会暴露 setup.ps1 语法错误**（曾有一处多余 `)` 报 `Missing closing '}'`）：改动 ps1 后跑**整条链路**（deploy → setup）验证，别只单测脚本开头。
+12. **DEPLOY.md 面向 opencode/人工**：每条指令带验证命令 + 故障排查表；兼容无 pwsh 场景（`powershell -File deploy.ps1`，脚本 ASCII-only 防 5.1 乱码）。
 
 ---
 

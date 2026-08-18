@@ -59,7 +59,7 @@ if ($LASTEXITCODE -ne 0 -or -not $dsh) {
   Ok("dsh $dsh")
   if ($HarnessVersion -and $dsh.Trim() -ne $HarnessVersion) {
     if ($SkipHarnessInstall -or $CheckOnly) {
-      Warn "dsh version is '$dsh', target is '$HarnessVersion' (install skipped)")
+      Warn "dsh version is '$dsh', target is '$HarnessVersion' (install skipped)"
     } else {
       npm install -g "@deepseek-ai/dsh@$HarnessVersion"
       if ($LASTEXITCODE -ne 0) { throw "npm install -g @deepseek-ai/dsh@$HarnessVersion failed" }
