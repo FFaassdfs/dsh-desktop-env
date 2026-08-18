@@ -5,3 +5,8 @@ frontend/package.json.md5
 .cache/
 .DS_Store
 Thumbs.db
+# 路径D：环境同步仓库（2026-08-18 起）
+.review/
+secrets.local.md
+.work/deepseek-harness/
+.work/*.log

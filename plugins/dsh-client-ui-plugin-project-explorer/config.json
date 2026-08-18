@@ -1,0 +1,6 @@
+{
+  "dndMime": "application/x-dsh-filetree",
+  "dragActiveClass": "dshPe_dragActive",
+  "panelWidth": 300,
+  "tabWidth": 26
+}
