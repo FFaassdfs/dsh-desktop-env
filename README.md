@@ -4,7 +4,10 @@ DeepSeek Harness 的桌面应用壳（Wails v2 + WebView2），把 dsh 的 Web U
 
 ## 部署到新机器（家里电脑）
 
-本仓库同时是**环境同步仓库**：含两个自定义插件、一键部署脚本与文档。在新机器（如家里电脑）用 opencode 或手动按 [`DEPLOY.md`](DEPLOY.md) 执行即可复刻本机环境（dsh 锁版本 + 插件 + 可选桌面壳）：
+本仓库同时是**环境同步仓库**：含两个自定义插件、一键部署脚本与文档。在新机器（如家里电脑）复刻本机环境（dsh 锁版本 + 插件 + 可选桌面壳）：
+
+- **用 opencode**：把 [`OPENCODE_PROMPT.md`](OPENCODE_PROMPT.md) 里的「部署指令」整段发给它即可（自包含：自动 clone、读 [`DEPLOY.md`](DEPLOY.md)、逐条执行并验收）
+- **手动**：按 [`DEPLOY.md`](DEPLOY.md) 逐条执行，核心就一条：
 
 ```powershell
 git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh-desktop

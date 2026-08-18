@@ -456,10 +456,15 @@ setup.ps1                       # 总入口：环境检查 → dsh 版本锁定/
 deploy.ps1                      # opencode 引导入口：依赖自检（缺失打印安装命令）→ 哈希表 splatting 转交 setup.ps1
 scripts/setup-plugins.mjs       # 幂等安装两个插件 + 合并 cordis.patch.yml + 静态验证（相对路径，任意机器可跑）
 DEPLOY.md                       # opencode/人工 分步部署清单（每步带验证 + 故障排查表，兼容无 pwsh 场景）
+OPENCODE_PROMPT.md              # 可直接复制发给家里 opencode 的自包含部署指令（clone → 读 DEPLOY.md → 执行 → 验收）
 .work/secrets.local.md          # 本机凭据（PAT 明文，gitignore 忽略，永不进 git）
 ```
 
 ### 12.4 使用（家里电脑）
+
+**推荐**：把 `OPENCODE_PROMPT.md` 的「部署指令」整段复制发给家里的 opencode，它自己 clone + 按 DEPLOY.md 执行 + 验收。
+
+**手动**：
 
 ```powershell
 git clone https://github.com/FFaassdfs/dsh-desktop-env.git
