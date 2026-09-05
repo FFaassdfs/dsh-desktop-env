@@ -11,8 +11,8 @@ import (
 
 // 与 main.go 中窗口 MinWidth/MinHeight 保持一致
 const (
-	minWindowWidth  = 900
-	minWindowHeight = 640
+	minWindowWidth  = 400
+	minWindowHeight = 260
 )
 
 // WindowState 记录窗口大小、位置与最大化状态，用于跨启动还原。

@@ -5,7 +5,7 @@ package main
 import "os/exec"
 
 func (a *App) startDsh() error {
-	cmd := exec.Command("dsh", "web")
+	cmd := exec.Command("dsh", "web", "--no-open")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -16,4 +16,8 @@ func (a *App) startDsh() error {
 	a.cmd = cmd
 	go a.scanMainOutput(stdout)
 	return nil
+}
+
+func (a *App) npmInstallGlobal() error {
+	return exec.Command("npm", "install", "-g", "@deepseek-ai/dsh").Run()
 }

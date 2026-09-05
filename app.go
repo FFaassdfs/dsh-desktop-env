@@ -3,10 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,9 +20,10 @@ import (
 )
 
 const (
-	dshURL       = "http://127.0.0.1:3080"
-	waitTimeout  = 30 * time.Second
-	pollInterval = 300 * time.Millisecond
+	dshURL         = "http://127.0.0.1:3080"
+	waitTimeout    = 30 * time.Second
+	pollInterval   = 300 * time.Millisecond
+	updateInterval = 24 * time.Hour
 )
 
 type App struct {
@@ -30,6 +35,7 @@ type App struct {
 	booting bool
 	booted  bool
 	webURL  string
+	update  string
 }
 
 func NewApp() *App {
@@ -38,12 +44,31 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.restoreWindowState(ctx)
+	go a.checkUpdatesLoop()
 }
 
 func (a *App) domReady(ctx context.Context) {
 	a.winCtx = ctx
 	a.startBootstrap(ctx)
+}
+
+// debugLog appends a diagnostic line to the dsh-desktop debug log so the
+// bootstrap path can be inspected without a visible console.
+func debugLog(format string, args ...interface{}) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return
+	}
+	path := filepath.Join(dir, "dsh-desktop", "debug.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, format+"\n", args...)
 }
 
 func (a *App) startBootstrap(ctx context.Context) {
@@ -64,28 +89,42 @@ func (a *App) bootstrap(ctx context.Context) {
 		a.mu.Unlock()
 	}()
 
+	a.emitStatus("正在启动 DeepSeek Harness…")
 	if !a.portOpen() {
+		debugLog("bootstrap: port 3080 closed, spawning dsh web")
 		if err := a.startDsh(); err != nil {
+			debugLog("bootstrap: startDsh failed: %v", err)
 			a.fail(ctx, "无法启动 DeepSeek Harness，请确认已安装：npm i -g @deepseek-ai/dsh\n\n"+err.Error())
 			return
 		}
 		a.owns = true
+	} else {
+		debugLog("bootstrap: port 3080 already open, adopting existing instance")
 	}
 	if !a.waitReady(waitTimeout) {
+		debugLog("bootstrap: waitReady timed out")
 		a.fail(ctx, "等待 DeepSeek Harness 启动超时（30 秒）\n\n请检查: "+dshURL)
 		return
 	}
 	if a.owns {
-		a.waitForURL(waitTimeout)
+		if a.waitForURL(waitTimeout) {
+			debugLog("bootstrap: authenticated URL captured")
+		} else {
+			debugLog("bootstrap: waitForURL timed out (no token URL captured)")
+		}
 	}
 	target := a.authenticatedURL()
 	if target == "" {
 		target = dshURL
+		debugLog("bootstrap: no token URL, falling back to bare URL")
 	}
 	a.mu.Lock()
 	a.booted = true
 	a.mu.Unlock()
-	runtime.WindowExecJS(ctx, "window.location.href = '"+target+"';")
+	debugLog("bootstrap: ready")
+	a.emitStatus("DeepSeek Harness 已启动")
+	a.emitURL(target)
+	runtime.BrowserOpenURL(ctx, target)
 }
 
 func (a *App) portOpen() bool {
@@ -142,7 +181,7 @@ func (a *App) waitForURL(timeout time.Duration) bool {
 
 // scanMainOutput watches dsh web's stdout for the printed authenticated URL
 // ("dsh web: http://127.0.0.1:3080/?token=...") and remembers it so the shell
-// WebView can satisfy the browser-trust fence too.
+// can hand that URL to the system browser.
 func (a *App) scanMainOutput(output io.Reader) {
 	scanner := bufio.NewScanner(output)
 	for scanner.Scan() {
@@ -150,9 +189,33 @@ func (a *App) scanMainOutput(output io.Reader) {
 		if idx := strings.Index(line, "dsh web:"); idx >= 0 {
 			rest := strings.TrimSpace(line[idx+len("dsh web:"):])
 			if fields := strings.Fields(rest); len(fields) > 0 && strings.HasPrefix(fields[0], "http") {
+				debugLog("scanMainOutput: captured authenticated URL")
 				a.setAuthenticatedURL(fields[0])
 			}
 		}
+	}
+}
+
+// ---- frontend events ----
+
+func (a *App) emitStatus(s string) {
+	if a.winCtx != nil {
+		runtime.EventsEmit(a.winCtx, "dsh-status", s)
+	}
+}
+
+func (a *App) emitURL(u string) {
+	if a.winCtx != nil {
+		runtime.EventsEmit(a.winCtx, "dsh-url", u)
+	}
+}
+
+func (a *App) emitUpdate(s string) {
+	a.mu.Lock()
+	a.update = s
+	a.mu.Unlock()
+	if a.winCtx != nil {
+		runtime.EventsEmit(a.winCtx, "dsh-update", s)
 	}
 }
 
@@ -160,9 +223,135 @@ func (a *App) fail(ctx context.Context, msg string) {
 	runtime.EventsEmit(ctx, "dsh-error", msg)
 }
 
+// ---- bound methods (called from the status panel) ----
+
+// Retry re-runs bootstrap after a startup failure.
 func (a *App) Retry() {
-	if a.winCtx != nil {
-		a.startBootstrap(a.winCtx)
+	a.startBootstrap(a.winCtx)
+}
+
+// Restart restarts the owned dsh web process (picks up a freshly installed
+// harness version) and re-bootstraps.
+func (a *App) Restart() {
+	a.mu.Lock()
+	wasBooted := a.booted
+	a.booting = false
+	a.booted = false
+	a.webURL = ""
+	cmd := a.cmd
+	owns := a.owns
+	a.cmd = nil
+	a.owns = false
+	a.mu.Unlock()
+	if wasBooted && owns && cmd != nil && cmd.Process != nil {
+		exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+	}
+	a.startBootstrap(a.winCtx)
+}
+
+// OpenBrowser opens the captured URL (or the bare URL) in the system browser.
+func (a *App) OpenBrowser() {
+	u := a.authenticatedURL()
+	if u == "" {
+		u = dshURL
+	}
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, u)
+	}
+}
+
+// Quit closes the application.
+func (a *App) Quit() {
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+}
+
+// GetUpdateStatus returns the last update-check status message.
+func (a *App) GetUpdateStatus() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.update
+}
+
+// ---- version / update ----
+
+func (a *App) installedVersion() string {
+	shim, err := exec.LookPath("dsh.cmd")
+	if err != nil {
+		shim, err = exec.LookPath("dsh")
+	}
+	if err != nil {
+		debugLog("installedVersion: dsh shim not found: %v", err)
+		return ""
+	}
+	pkg := filepath.Join(filepath.Dir(shim), "node_modules", "@deepseek-ai", "dsh", "package.json")
+	data, err := os.ReadFile(pkg)
+	if err != nil {
+		debugLog("installedVersion: cannot read %s: %v", pkg, err)
+		return ""
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		debugLog("installedVersion: cannot parse %s: %v", pkg, err)
+		return ""
+	}
+	return m.Version
+}
+
+func (a *App) latestVersion() string {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get("https://registry.npmjs.org/@deepseek-ai/dsh")
+	if err != nil {
+		debugLog("latestVersion: registry fetch failed: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	var m struct {
+		DistTags struct {
+			Latest string `json:"latest"`
+		} `json:"dist-tags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		debugLog("latestVersion: registry decode failed: %v", err)
+		return ""
+	}
+	return m.DistTags.Latest
+}
+
+func (a *App) checkUpdates() {
+	a.emitUpdate("正在检查更新…")
+	installed := a.installedVersion()
+	latest := a.latestVersion()
+	if latest == "" {
+		a.emitUpdate("检查更新失败（网络不可用）")
+		return
+	}
+	if installed == "" {
+		a.emitUpdate("已安装版本未知，最新版本 " + latest)
+		return
+	}
+	if installed == latest {
+		a.emitUpdate("已是最新版本 " + latest)
+		return
+	}
+	a.emitUpdate("发现新版本 " + latest + "（当前 " + installed + "），正在自动更新…")
+	if err := a.npmInstallGlobal(); err != nil {
+		debugLog("checkUpdates: npm install failed: %v", err)
+		a.emitUpdate("更新失败，请手动执行 npm i -g @deepseek-ai/dsh")
+		return
+	}
+	a.emitUpdate("已更新到 " + latest + "，请点击「重启服务」生效")
+}
+
+func (a *App) checkUpdatesLoop() {
+	a.checkUpdates()
+	ticker := time.NewTicker(updateInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		a.checkUpdates()
 	}
 }
 

@@ -7,12 +7,19 @@
 </head>
 <body>
 <div id="app">
-    <div class="splash">
-        <div class="spinner" id="spinner"></div>
-        <div class="title">DeepSeek Harness</div>
-        <div class="status" id="status">正在启动 DeepSeek Harness...</div>
-        <div class="hint" id="hint">首次启动可能需要几十秒</div>
-        <button class="retry hidden" id="retry">重试</button>
+    <div class="panel">
+        <div class="header">
+            <div class="title">DeepSeek Harness</div>
+        </div>
+        <div class="status" id="status"><span class="dot"></span><span id="statusText">正在启动…</span></div>
+        <div class="url" id="url">—</div>
+        <div class="actions">
+            <button id="open" class="primary" disabled>在浏览器打开</button>
+            <button id="restart">重启服务</button>
+            <button id="quit" class="ghost">退出</button>
+        </div>
+        <div class="update" id="update">检查更新…</div>
+        <div class="hint" id="hint"></div>
     </div>
 </div>
 <script src="./src/main.js" type="module"></script>
