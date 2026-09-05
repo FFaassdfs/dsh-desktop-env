@@ -295,6 +295,7 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 | 15 | `ed06b47` | 原生菜单（重新加载/打开日志/打开配置/退出 + 快捷键）+ 外链处理（系统浏览器打开） |
 | 16 | `a68e9d5` | GitHub Action 自动同步（每小时对齐官方） |
 | 17 | `23068a1` | 适配 dsh 0.1.1-rc.2 浏览器会话鉴权：startDsh 捕获 stdout 解析带 token 的鉴权 URL；waitReady 任何 HTTP 响应即视为就绪；壳 WebView 用鉴权 URL 导航（裸 URL 现返回 401，原逻辑超时/显示鉴权失败） |
+| 18 | `ecfaa09` | 壳重定位为「启动器 + 自更新 + 状态面板」：放弃内嵌界面（Wails WebView 在 dsh 浏览器认证 303+cookie 上不可靠），dsh web 加 `--no-open`，壳捕获带 token URL 后用 `runtime.BrowserOpenURL` 交给系统浏览器；`startDsh` 改 node 直启（解析 dsh.cmd shim 取 bin.js，规避 `cmd.exe`+`CREATE_NO_WINDOW` 破坏孙进程 stdout 继承）；窗口固定 440×400 `DisableResize`、去窗口状态还原；新增版本自更新（启动即查 + 每 24h，新版本自动 `npm i -g`） |
 
 ### 10.5 同步机制（时刻对齐官方）
 
