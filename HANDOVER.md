@@ -294,6 +294,7 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 | 14 | `e25b464` | `workdir` 配置（harness 进程工作目录，定位 .env/cordis） |
 | 15 | `ed06b47` | 原生菜单（重新加载/打开日志/打开配置/退出 + 快捷键）+ 外链处理（系统浏览器打开） |
 | 16 | `a68e9d5` | GitHub Action 自动同步（每小时对齐官方） |
+| 17 | `23068a1` | 适配 dsh 0.1.1-rc.2 浏览器会话鉴权：startDsh 捕获 stdout 解析带 token 的鉴权 URL；waitReady 任何 HTTP 响应即视为就绪；壳 WebView 用鉴权 URL 导航（裸 URL 现返回 401，原逻辑超时/显示鉴权失败） |
 
 ### 10.5 同步机制（时刻对齐官方）
 
