@@ -27,16 +27,26 @@ func (a *App) startDsh() error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: 0x08000000 | 0x00000008,
 	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		if logFile != nil {
+			logFile.Close()
+		}
+		return err
+	}
 	if logFile != nil {
-		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 	}
 	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			logFile.Close()
+		}
 		return err
 	}
 	if logFile != nil {
 		logFile.Close()
 	}
 	a.cmd = cmd
+	go a.scanMainOutput(stdout)
 	return nil
 }

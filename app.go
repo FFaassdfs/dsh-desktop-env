@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +29,7 @@ type App struct {
 	mu      sync.Mutex
 	booting bool
 	booted  bool
+	webURL  string
 }
 
 func NewApp() *App {
@@ -71,10 +75,17 @@ func (a *App) bootstrap(ctx context.Context) {
 		a.fail(ctx, "等待 DeepSeek Harness 启动超时（30 秒）\n\n请检查: "+dshURL)
 		return
 	}
+	if a.owns {
+		a.waitForURL(waitTimeout)
+	}
+	target := a.authenticatedURL()
+	if target == "" {
+		target = dshURL
+	}
 	a.mu.Lock()
 	a.booted = true
 	a.mu.Unlock()
-	runtime.WindowExecJS(ctx, "window.location.href = '"+dshURL+"';")
+	runtime.WindowExecJS(ctx, "window.location.href = '"+target+"';")
 }
 
 func (a *App) portOpen() bool {
@@ -86,6 +97,9 @@ func (a *App) portOpen() bool {
 	return true
 }
 
+// waitReady reports whether the dsh web server is reachable. Since current dsh
+// versions answer the bare root URL with 401 (browser-trust fence) until the
+// launch token redeems a session cookie, any HTTP response counts as "up".
 func (a *App) waitReady(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -93,13 +107,53 @@ func (a *App) waitReady(timeout time.Duration) bool {
 		resp, err := client.Get(dshURL)
 		if err == nil {
 			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return true
-			}
+			return true
 		}
 		time.Sleep(pollInterval)
 	}
 	return false
+}
+
+func (a *App) setAuthenticatedURL(url string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if url != "" {
+		a.webURL = url
+	}
+}
+
+func (a *App) authenticatedURL() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.webURL
+}
+
+// waitForURL waits until dsh web has printed its authenticated root URL.
+func (a *App) waitForURL(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if a.authenticatedURL() != "" {
+			return true
+		}
+		time.Sleep(pollInterval)
+	}
+	return a.authenticatedURL() != ""
+}
+
+// scanMainOutput watches dsh web's stdout for the printed authenticated URL
+// ("dsh web: http://127.0.0.1:3080/?token=...") and remembers it so the shell
+// WebView can satisfy the browser-trust fence too.
+func (a *App) scanMainOutput(output io.Reader) {
+	scanner := bufio.NewScanner(output)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if idx := strings.Index(line, "dsh web:"); idx >= 0 {
+			rest := strings.TrimSpace(line[idx+len("dsh web:"):])
+			if fields := strings.Fields(rest); len(fields) > 0 && strings.HasPrefix(fields[0], "http") {
+				a.setAuthenticatedURL(fields[0])
+			}
+		}
+	}
 }
 
 func (a *App) fail(ctx context.Context, msg string) {
