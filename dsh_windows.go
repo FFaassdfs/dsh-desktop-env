@@ -106,10 +106,7 @@ func (a *App) startDsh() error {
 	if logFile != nil {
 		logFile.Close()
 	}
-	a.cmd = cmd
-	if stdout != nil {
-		go a.scanMainOutput(stdout)
-	}
+	a.adoptSpawn(cmd, stdout)
 	return nil
 }
 

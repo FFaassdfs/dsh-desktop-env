@@ -27,15 +27,19 @@ const (
 )
 
 type App struct {
-	ctx     context.Context
-	winCtx  context.Context
-	cmd     *exec.Cmd
-	owns    bool
-	mu      sync.Mutex
-	booting bool
-	booted  bool
-	webURL  string
-	update  string
+	ctx        context.Context
+	winCtx     context.Context
+	cmd        *exec.Cmd
+	owns       bool
+	mu         sync.Mutex
+	booting    bool
+	booted     bool
+	webURL     string
+	update     string
+	exited     bool
+	exitErr    error
+	restarts   int
+	monitorOn  bool
 }
 
 func NewApp() *App {
@@ -102,8 +106,13 @@ func (a *App) bootstrap(ctx context.Context) {
 		debugLog("bootstrap: port 3080 already open, adopting existing instance")
 	}
 	if !a.waitReady(waitTimeout) {
-		debugLog("bootstrap: waitReady timed out")
-		a.fail(ctx, "等待 DeepSeek Harness 启动超时（30 秒）\n\n请检查: "+dshURL)
+		if exited, _ := a.childExited(); exited {
+			debugLog("bootstrap: dsh web exited before ready")
+			a.fail(ctx, "DeepSeek Harness 启动失败，进程已退出：\n\n"+a.tailDshLog())
+		} else {
+			debugLog("bootstrap: waitReady timed out")
+			a.fail(ctx, "等待 DeepSeek Harness 启动超时（30 秒）\n\n请检查: "+dshURL)
+		}
 		return
 	}
 	if a.owns {
@@ -120,11 +129,22 @@ func (a *App) bootstrap(ctx context.Context) {
 	}
 	a.mu.Lock()
 	a.booted = true
+	a.restarts = 0
 	a.mu.Unlock()
 	debugLog("bootstrap: ready")
 	a.emitStatus("DeepSeek Harness 已启动")
 	a.emitURL(target)
 	runtime.BrowserOpenURL(ctx, target)
+
+	a.mu.Lock()
+	startMonitor := a.owns && !a.monitorOn
+	if startMonitor {
+		a.monitorOn = true
+	}
+	a.mu.Unlock()
+	if startMonitor {
+		go a.healthMonitor()
+	}
 }
 
 func (a *App) portOpen() bool {
@@ -143,6 +163,11 @@ func (a *App) waitReady(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 2 * time.Second}
 	for time.Now().Before(deadline) {
+		if a.owns {
+			if exited, _ := a.childExited(); exited {
+				return false
+			}
+		}
 		resp, err := client.Get(dshURL)
 		if err == nil {
 			resp.Body.Close()
@@ -193,6 +218,94 @@ func (a *App) scanMainOutput(output io.Reader) {
 				a.setAuthenticatedURL(fields[0])
 			}
 		}
+	}
+}
+
+// childExited reports whether the currently-owned dsh web process has exited,
+// together with its exit error (nil for a clean exit).
+func (a *App) childExited() (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.exited, a.exitErr
+}
+
+// tailDshLog returns the last few lines of dsh web's stderr log so a startup
+// failure can surface the real cause (e.g. EACCES on a reserved port).
+func (a *App) tailDshLog() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	p := filepath.Join(dir, "dsh-desktop", "dsh.log")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	const n = 20
+	if len(lines) == 0 {
+		return ""
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// adoptSpawn records the started process and starts its output/exit watchers.
+// The exit watcher only marks the process exited if it is still the current one,
+// so a replaced (restarted) process never clobbers the new one's state.
+func (a *App) adoptSpawn(cmd *exec.Cmd, stdout io.Reader) {
+	a.mu.Lock()
+	a.exited = false
+	a.exitErr = nil
+	a.cmd = cmd
+	a.mu.Unlock()
+	if stdout != nil {
+		go a.scanMainOutput(stdout)
+	}
+	go func() {
+		err := cmd.Wait()
+		a.mu.Lock()
+		if a.cmd == cmd {
+			a.exited = true
+			a.exitErr = err
+		}
+		a.mu.Unlock()
+	}()
+}
+
+// healthMonitor watches the owned dsh web process and restarts it (up to 3
+// times) if it exits unexpectedly. This recovers from transient crashes without
+// user intervention, but stops after repeated failures so a persistently
+// broken port (e.g. reserved by Hyper-V/WSL) does not restart in a tight loop.
+func (a *App) healthMonitor() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		a.mu.Lock()
+		owns := a.owns
+		booted := a.booted
+		restarts := a.restarts
+		a.mu.Unlock()
+		if !owns || !booted {
+			continue
+		}
+		exited, _ := a.childExited()
+		if !exited {
+			continue
+		}
+		a.mu.Lock()
+		a.restarts++
+		restarts = a.restarts
+		a.mu.Unlock()
+		if restarts > 3 {
+			a.emitStatus("服务反复启动失败，已停止自动重启")
+			a.fail(a.winCtx, "服务进程反复退出，请检查端口 3080 是否被占用或系统保留（如 Hyper-V/WSL/winnat）。\n\n"+a.tailDshLog())
+			return
+		}
+		a.emitStatus("服务掉线，正在自动重启…")
+		a.Restart()
 	}
 }
 

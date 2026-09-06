@@ -13,8 +13,7 @@ func (a *App) startDsh() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	a.cmd = cmd
-	go a.scanMainOutput(stdout)
+	a.adoptSpawn(cmd, stdout)
 	return nil
 }
 
