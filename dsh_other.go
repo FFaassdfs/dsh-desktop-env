@@ -5,7 +5,7 @@ package main
 import "os/exec"
 
 func (a *App) startDsh() error {
-	cmd := exec.Command("dsh", "web", "--no-open")
+	cmd := exec.Command("dsh", "web", "--no-open", "--port", dshPort)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err

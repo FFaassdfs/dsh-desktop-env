@@ -57,7 +57,7 @@ func resolveDshWeb() (string, []string, bool) {
 			return "", nil, false
 		}
 	}
-	return node, []string{entry, "web", "--no-open"}, true
+	return node, []string{entry, "web", "--no-open", "--port", dshPort}, true
 }
 
 func (a *App) startDsh() error {
@@ -86,7 +86,7 @@ func (a *App) startDsh() error {
 		}
 	} else {
 		debugLog("startDsh: node entry unresolvable, falling back to cmd /C (no token capture)")
-		cmd = exec.Command("cmd", "/C", "dsh", "web", "--no-open")
+		cmd = exec.Command("cmd", "/C", "dsh", "web", "--no-open", "--port", dshPort)
 		if logFile != nil {
 			cmd.Stdout = logFile
 		}

@@ -20,7 +20,12 @@ import (
 )
 
 const (
-	dshURL         = "http://127.0.0.1:3080"
+	// dshPort 选择固定高位端口，避开 Windows 动态端口范围（本机 1024~15000）
+	// 以及 Hyper-V/WSL/winnat 会动态保留的排除端口段。
+	dshPort        = "43080"
+	dshHost        = "127.0.0.1"
+	dshAddr        = dshHost + ":" + dshPort
+	dshURL         = "http://" + dshAddr
 	waitTimeout    = 30 * time.Second
 	pollInterval   = 300 * time.Millisecond
 	updateInterval = 24 * time.Hour
@@ -95,7 +100,7 @@ func (a *App) bootstrap(ctx context.Context) {
 
 	a.emitStatus("正在启动 DeepSeek Harness…")
 	if !a.portOpen() {
-		debugLog("bootstrap: port 3080 closed, spawning dsh web")
+		debugLog("bootstrap: port %s closed, spawning dsh web", dshPort)
 		if err := a.startDsh(); err != nil {
 			debugLog("bootstrap: startDsh failed: %v", err)
 			a.fail(ctx, "无法启动 DeepSeek Harness，请确认已安装：npm i -g @deepseek-ai/dsh\n\n"+err.Error())
@@ -103,7 +108,7 @@ func (a *App) bootstrap(ctx context.Context) {
 		}
 		a.owns = true
 	} else {
-		debugLog("bootstrap: port 3080 already open, adopting existing instance")
+		debugLog("bootstrap: port %s already open, adopting existing instance", dshPort)
 	}
 	if !a.waitReady(waitTimeout) {
 		if exited, _ := a.childExited(); exited {
@@ -148,7 +153,7 @@ func (a *App) bootstrap(ctx context.Context) {
 }
 
 func (a *App) portOpen() bool {
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:3080", 800*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", dshAddr, 800*time.Millisecond)
 	if err != nil {
 		return false
 	}
@@ -205,7 +210,7 @@ func (a *App) waitForURL(timeout time.Duration) bool {
 }
 
 // scanMainOutput watches dsh web's stdout for the printed authenticated URL
-// ("dsh web: http://127.0.0.1:3080/?token=...") and remembers it so the shell
+// ("dsh web: http://127.0.0.1:<port>/?token=...") and remembers it so the shell
 // can hand that URL to the system browser.
 func (a *App) scanMainOutput(output io.Reader) {
 	scanner := bufio.NewScanner(output)
@@ -301,7 +306,7 @@ func (a *App) healthMonitor() {
 		a.mu.Unlock()
 		if restarts > 3 {
 			a.emitStatus("服务反复启动失败，已停止自动重启")
-			a.fail(a.winCtx, "服务进程反复退出，请检查端口 3080 是否被占用或系统保留（如 Hyper-V/WSL/winnat）。\n\n"+a.tailDshLog())
+			a.fail(a.winCtx, "服务进程反复退出，请检查端口 "+dshPort+" 是否被占用或系统保留（如 Hyper-V/WSL/winnat）。\n\n"+a.tailDshLog())
 			return
 		}
 		a.emitStatus("服务掉线，正在自动重启…")
