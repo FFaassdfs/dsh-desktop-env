@@ -17,7 +17,7 @@
 ## 环境常见坑（本机通用；项目专属坑见该项目的 HANDOVER）
 
 - **沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`**（schannel 凭据库被拒）→ 首选：`git config http.sslBackend openssl`（仓库级）后带 token URL 直接 push，**免提权**（2026-08-18 实测；新 clone 的仓库要重设该配置）；次选：`danger-full-access` 重试。
-- **探测本地服务别用 `Get-NetTCPConnection`/`netstat`**（沙箱假阴性「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:3080/`（返回 200 即正常）。
+- **探测本地服务别用 `Get-NetTCPConnection`/`netstat`**（沙箱假阴性「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`（返回 200 即正常）。
 - **不要提交凭据/API Key/.env 到任何 git 仓库**；文档（如 HANDOVER）里的明文凭据入库前先移到 gitignore 文件并改引用。
 - **Go 1.21+ 的 telemetry 写 `%APPDATA%\go\telemetry`**：沙箱内 `go version`/`go build` 等报 Access denied → 命令前设 `$env:GOTELEMETRY="off"`（免提权规避）。
 - **Go/Wails 项目**：改后端用 `wails build -s`（跳过前端，免 vite `spawn EPERM` 提权）；沙箱里把 `GOCACHE`/`GOTMPDIR` 重定向到工作区 `.cache/`。

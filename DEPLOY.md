@@ -78,7 +78,7 @@ powershell -File deploy.ps1 -HarnessVersion 0.1.0-rc.7
 
 二选一：
 
-- **方式A**：`dsh web` 启动后浏览器打开 `http://127.0.0.1:3080` → 设置 → 凭据，填入 API key
+- **方式A**：`dsh web` 启动后浏览器打开 `http://127.0.0.1:43080` → 设置 → 凭据，填入 API key
 - **方式B**：在 harness 工作目录放 `.env`，内容 `DEEPSEEK_API_KEY=sk-...`
 
 ## 6. 启动并验收
@@ -91,7 +91,7 @@ dsh web
 ```
 
 **验收清单**：
-- [ ] 浏览器能打开 Web UI（127.0.0.1:3080）
+- [ ] 浏览器能打开 Web UI（127.0.0.1:43080）
 - [ ] 「设置 → 插件」里出现第三个 tab「插件说明」（能看每个插件的中文解释 + 开关）
 - [ ] 页面最右侧出现「📁 项目文件」细条（点击展开文件树，可拖文件到对话框）
 - [ ] `dsh --version` 与部署时指定的版本一致
@@ -105,8 +105,8 @@ dsh web
 | `npm` 装 dsh 超时/失败 | 重试；或 `npm config set registry https://registry.npmmirror.com` 后重试（国内网络） |
 | `wails version` 找不到 | wails.exe 在 `%USERPROFILE%\go\bin`：`$env:Path += ";$env:USERPROFILE\go\bin"` 或加用户 PATH |
 | `setup.ps1` 报 Node 版本过低 | 装 Node 24 LTS，重开终端再跑 |
-| 3080 端口被占用 | 可能已有 dsh 实例在跑，直接访问即可；要干净的实例先 `taskkill /F /T /PID <pid>` |
-| 「插件说明」tab 没出现 | dsh 必须**完全退出再重开**（关窗口 + 确认 3080 无进程），浏览器 Ctrl+F5 强刷 |
+| 43080 端口被占用 | 可能已有 dsh 实例在跑，直接访问即可；要干净的实例先 `taskkill /F /T /PID <pid>` |
+| 「插件说明」tab 没出现 | dsh 必须**完全退出再重开**（关窗口 + 确认 43080 无进程），浏览器 Ctrl+F5 强刷 |
 | 「项目文件」面板没出现 | 同上，完全重启；或刷新浏览器页面一次（该插件 host 半区热加载、client 需刷新） |
 | 桌面壳构建失败（vite 子进程报错等） | 先用 `-SkipDesktopBuild` 部署插件；桌面壳稍后单独 `wails build` |
 | `deploy.ps1` 报缺依赖但已装 | 重开终端让 PATH 生效；确认装的是 64 位版本 |

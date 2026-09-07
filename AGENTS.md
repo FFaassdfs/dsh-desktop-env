@@ -20,7 +20,7 @@
 ## 高频坑（详情见 HANDOVER.md §10.7，共 18 条）
 
 - 沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`（schannel 凭据库被拒）→ 用 `danger-full-access` 重试
-- 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:3080/`（返回 200 即正常）
+- 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`（返回 200 即正常）
 - 改 Go 后端后 `wails build -s`（跳过前端 vite，免 EPERM 提权）；产物要**拷贝到启动路径** `build\bin\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
 - 推送 `.github/workflows/*` 文件：`GITHUB_TOKEN` 推不了 → 用带 `workflow` scope 的 PAT（已存为 secret `SYNC_TOKEN`）
 - 沙箱里 Go 构建：把 `GOCACHE`/`GOTMPDIR` 重定向到 `.cache/`，否则写 `%APPDATA%\go-build` 被拒

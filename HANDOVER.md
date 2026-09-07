@@ -297,6 +297,7 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 | 17 | `23068a1` | 适配 dsh 0.1.1-rc.2 浏览器会话鉴权：startDsh 捕获 stdout 解析带 token 的鉴权 URL；waitReady 任何 HTTP 响应即视为就绪；壳 WebView 用鉴权 URL 导航（裸 URL 现返回 401，原逻辑超时/显示鉴权失败） |
 | 18 | `ecfaa09` | 壳重定位为「启动器 + 自更新 + 状态面板」：放弃内嵌界面（Wails WebView 在 dsh 浏览器认证 303+cookie 上不可靠），dsh web 加 `--no-open`，壳捕获带 token URL 后用 `runtime.BrowserOpenURL` 交给系统浏览器；`startDsh` 改 node 直启（解析 dsh.cmd shim 取 bin.js，规避 `cmd.exe`+`CREATE_NO_WINDOW` 破坏孙进程 stdout 继承）；窗口固定 440×400 `DisableResize`、去窗口状态还原；新增版本自更新（启动即查 + 每 24h，新版本自动 `npm i -g`） |
 | 19 | `4acf3eb` | 启动失败可诊断 + 崩溃自愈：`waitReady` fail-fast 检测子进程退出；启动失败把 `dsh.log` 尾部真实错误上抛（针对 3080 被 Hyper-V/WSL/winnat 动态保留导致 EACCES 的故障）；健康监测每 5s 探测、进程意外退出自动重启（最多连续 3 次）；`cmd.Wait()` 跟踪退出且只在「仍是当前进程」时标记 |
+| 20 | `32f5e06` | 端口 3080 → 43080：避开 Hyper-V/WSL/winnat 动态保留段（3080 落在动态端口范围 1024~15000 内，winnat 为 WSL2/Hyper-V NAT 保留整段端口导致 bind EACCES、netstat 查不到占用者）；`dsh web` 透传 `--port 43080` |
 
 ### 10.5 同步机制（时刻对齐官方）
 
@@ -511,3 +512,51 @@ pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
 ## 13. 清理记录（日常维护）
 
 - **2026-08-18 清理**：删除 `.work\hermes-agent`（约 46.6 MB）——一次失败 git 克隆的残留：remote 指向 `FFaassdfs/hermes-agent`，但只有 `.git` 目录、无工作区文件，`.git/objects/pack/` 里仅剩中断的 `tmp_pack_*` 临时文件，`git log` 报「branch appears to be broken」，全仓库无任何脚本引用。判断为垃圾后直接 `Remove-Item -Recurse -Force` 清除。若日后真要引入 hermes-agent，重新 `git clone` 即可（`.work` 下任何非 `deepseek-harness` 的目录都只是临时物，可随时删）。
+
+---
+
+## 14. 壳重定位与跨机应用说明（2026-09-06）
+
+> 本节省略号：本次把桌面壳从「内嵌 Web 界面的窗口」改成了「启动器 + 自更新 + 状态面板」，并换了端口。**在另一台电脑上要正确应用这些变动，看这一节就够了。**
+
+### 14.1 背景：为什么改
+
+dsh 0.1.1-rc.2 起引入**浏览器会话认证（browser-trust fence）**：`dsh web` 的根路径必须带进程启动 token 的 URL（`http://127.0.0.1:<port>/?token=...`）才能换取会话 cookie，裸 URL 一律返回 401「dsh web authentication required」。
+
+- Wails 内嵌 WebView 在「303 重定向 + 种 cookie」这个流程上**不可靠**（壳里始终显示 401，而系统浏览器同引擎却正常）。
+- 结论：**放弃内嵌界面，界面交给系统浏览器**（浏览器天然完成认证）。
+
+### 14.2 本次改动全过程（按提交）
+
+| 提交 | 内容 |
+|---|---|
+| `23068a1` | 第一次尝试：壳捕获 token URL 并让内嵌 WebView 导航过去（**最终废弃**，内嵌 WebView 认证不可靠） |
+| `ecfaa09` | **壳重定位**：改为启动器 + 自更新 + 状态面板；`dsh web` 加 `--no-open`，壳用 `runtime.BrowserOpenURL` 把带 token URL 交给系统浏览器 |
+| `9e05ddc`/`4acf3eb` | 文档 + 启动失败诊断 + 崩溃自愈（健康监测/自动重启） |
+| `32f5e06` | **端口 3080 → 43080**（避开 Hyper-V/WSL/winnat 动态保留段） |
+
+### 14.3 当前架构（一句话）
+
+壳窗口 = 固定 440×400 小面板（不可最大化），显示「状态 / URL / 更新状态」+ 三个按钮（在浏览器打开 / 重启服务 / 退出）；真正的 dsh 界面由**系统浏览器**打开（URL 为 `http://127.0.0.1:43080/?token=...`）。
+
+### 14.4 跨机应用步骤
+
+```powershell
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh-desktop
+cd D:\dsh-desktop
+# 1) 安装全局 harness（锁版本）
+npm i -g @deepseek-ai/dsh
+# 2) 构建桌面壳（首次/前端或绑定有改动时用完整 build，仅改 Go 用 -s）
+cd frontend; npm install; cd ..
+wails build        # 产物 build\bin\dsh-desktop.exe
+```
+
+### 14.5 注意点 / 坑（务必读）
+
+1. **端口固定 43080，不是 3080**。原因：本机动态端口范围是 1024~15000，3080 落在其中；WSL2/Hyper-V 的 `winnat` 服务会从动态范围里**动态保留整段端口**（`netsh interface ipv4 show excludedportrange protocol=tcp` 可见），3080 某次被划入保留段 → `dsh web` bind 报 `EACCES: permission denied`，且 `netstat` 查不到占用者（因为是系统保留、非进程占用）。改端口在 `app.go` 的 `dshPort` 常量，需同步两处 `--port` 传参（`dsh_windows.go`/`dsh_other.go`）。
+2. **`dsh web` 必须 node 直启**，不能 `cmd /C` + `CREATE_NO_WINDOW`：后者会破坏 node 孙进程的 stdout 继承（`dsh.log` 一直是 0 字节、读不到 token URL）。实现：解析 npm 的 `dsh.cmd` shim 拿到 `bin.js`，再 `node <bin.js> web --no-open --port 43080`。
+3. **浏览器认证**：`dsh web` 打印/打开的 URL 带 `?token=...`，裸 URL 返回 401。壳捕获该 URL 后交给系统浏览器即可正常显示。
+4. **改前端或绑定后必须 `wails build`（完整）**，不要 `-s`：`-s` 不重新生成 wailsjs 绑定、不打包前端。仅改 Go 时才用 `wails build -s`。
+5. **git 推送（本机沙箱）**：HTTPS 报 `SEC_E_NO_CREDENTIALS` → 用 `git config http.sslBackend openssl`（仓库级）+ 带 token URL 直接 push（见 global/AGENTS.md）。新 clone 的仓库要重设该配置。
+6. **改动后 exe 需重启壳才生效**（旧进程不会热更新）；关旧壳会连坐杀掉它自拉的 dsh web。
+
