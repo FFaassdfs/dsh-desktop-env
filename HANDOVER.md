@@ -16,7 +16,7 @@
 | 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm；2026-09-10 安装）——文档里旧记的 `0.1.2-rc.1` 已是过时快照，见 §21 |
 | 进行中 | 路径E「模型能力」插件 **host 半区已验证活跃**（§21.3）；4 插件均已纳入 `scripts/setup-plugins.mjs`。待办：client 半区目视确认 + 重装重启以生效注入边修正 |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | ①**替换新 exe 并重启壳**（§23.3，需用户操作：壳持有 exe 锁；可用 `.work\swap-desktop-exe.ps1` 作一次性计划任务）②**P0-4 重新生成 PAT 更新 `SYNC_TOKEN`**（每日同步已失败）③壳加固 ①端口保留段避让（§23.4）④HANDOVER 瘦身 |
+| 下一步（建议） | ①**替换新 exe 并重启壳**（§23.3，需用户操作：壳持有 exe 锁；可用 `.work\swap-desktop-exe.ps1` 作一次性计划任务）②**P0-4 重新生成 PAT 更新 `SYNC_TOKEN`**（每日同步已失败，需用户提供 PAT）+ fork 降级为纯镜像 ③HANDOVER 瘦身。**端口保留段避让已按用户决定暂缓**（§23.4，遇到 EACCES/保留段问题再启用） |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -1092,8 +1092,11 @@ wails build -s          # 产物 build\bin\dsh-desktop.exe（11,333,632 字节�
 
 ### 23.4 未做 / 后续
 
-- **① 端口保留段自动避让**：待单独实施（端口浮动 → 复用判定策略、`project-facts` F1 与 README/AGENTS 同步改写、`netsh interface ipv4 show excludedportrange protocol=tcp` 实测；本机当前显示**无排除段**，属"躲开了但不会躲"状态）。
-- 顺带可做：`tailDshLog` 之外，前端状态面板目前只区分「运行/失败」，可加「自动重启第 n 次 / 已重置」的展示（事件已在发，面板未渲染细节）。
+- **① 端口保留段自动避让 —— 用户决定暂缓（2026-09-14）**：不做端口浮动，**保留固定 43080**；"躲开了但不会躲"的状态被接受，**等真遇到问题再处理**。
+  - 触发信号（真出问题时照这个判）：① 壳报「启动超时（30 秒）」或「服务进程反复启动失败」；② `%APPDATA%\dsh-desktop\dsh.log` 里出现 **`EACCES` / `permission denied`** 且 `netstat` 查不到占用进程；③ `netsh interface ipv4 show excludedportrange protocol=tcp` 里 43080 落在某个保留段内（winnat/Hyper-V/WSL 动态保留）。
+  - 届时的做法：端口改为运行时变量（`app.go` 的 `dshPort` → App 字段，两处 `--port` 传参照用）+ 定义「已存在实例」的复用判定（不能只看单一端口）+ 同步改写 `project-facts` F1 与 README/AGENTS 的端口表述。
+  - 现状记录：2026-09-14 查 `netsh` **无任何排除段**，43080 可用。
+- 顺带可做：前端状态面板目前只区分「运行/失败」，可加「自动重启第 n 次 / 已重置」的展示（事件已在发，面板未渲染细节）。
 
 
 

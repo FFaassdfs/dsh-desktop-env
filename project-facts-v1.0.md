@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.1**（2026-09-14 更新）
+> **文档版本：v1.2**（2026-09-14 更新）
 > 变更记录：
+> - v1.2 — F1 标注「端口浮动避让已暂缓（用户决定）」，指向 `HANDOVER.md` §23.4 的触发条件。
 > - v1.1 — 新增 F12（壳日志上限/轮转，随 §23 壳加固落地）；F7 补充「替换 exe 需先关壳」的文件锁事实。
 > - v1.0 — 建立事实源索引，收口端口 / 核心版本 / 同步频率 / 路径 / 插件清单 等被多处复制的数值；勘误「官方同步每小时」（实为每天 08:00，见 F4）。
 
@@ -19,7 +20,7 @@
 
 | # | 事实 | 权威源（改这里） | 当前快照 | 常见引用者 |
 |---|---|---|---|---|
-| F1 | **dsh web 端口 = 43080** | `app.go` 的 `dshPort` 常量（两个平台文件的 `--port` 传参照用） | `43080` | `AGENTS.md`、`README.md`、`HANDOVER.md` §14 |
+| F1 | **dsh web 端口 = 43080（固定）** | `app.go` 的 `dshPort` 常量（两个平台文件的 `--port` 传参照用） | `43080`。**端口浮动避让已由用户决定暂缓**（2026-09-14），保留固定端口；触发条件与改法见 `HANDOVER.md` §23.4 | `AGENTS.md`、`README.md`、`HANDOVER.md` §14 |
 | F2 | **核心版本** | 实测 `dsh --version`（全局 npm `@deepseek-ai/dsh`） | **`0.1.5-rc.1`**（2026-09-14 实测；三处一致：`dsh --version` / `npm ls -g` / `GET /plugin-core-version/version`） | `AGENTS.md`、`HANDOVER.md`、`README.md`、`DEPLOY.md` |
 | F3 | **服务探测语义** | 实测（`curl`） | 裸 URL `401` = **正常**（浏览器认证围栏，0.1.2-rc.1 起）；`000` = 未运行；`200` 只在带 token/cookie 时出现 | `AGENTS.md`、`HANDOVER.md` §10.7-18 |
 | F4 | **官方同步频率 = 每天 08:00（北京时间）** | fork `FFaassdfs/deepseek-harness` 的 `.github/workflows/sync-upstream.yml` 里 `cron: '0 0 * * *'`（UTC 00:00） | `0 0 * * *`（实测 workflow 源码）。**勘误**：`HANDOVER.md` §10.5 旧记「每小时 `0 * * * *`」有误，已就地更正 | `AGENTS.md`「凭据与同步」、`HANDOVER.md` §10.5 |
