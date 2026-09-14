@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃（详见 §21）；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃（修正已装入 `$DSH_HOME` farm，待刷新/重启生效，详见 §21）；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -945,9 +945,10 @@ D:\dsh\app\current\dsh-desktop.exe             # 启动壳（launcher@43080，�
 - `webServer.register(route)` 仍在（`dsh-host-webserver`）；
 - `ctx.llm.resolveModelInfo` 仍返回 `inputModalities`，而 `buildModelCatalog` / `ModelSelect` **依旧不透传** → **§15 路径E 插件仍是长期方案**（前提未变）。
 
-**待做（需择时/需人眼）：**
-1. **client 半区目视确认**：浏览器里看 4 个界面（设置→插件第三个 tab、设置→模型能力、右侧文件树、版本徽标）。
-2. **激活 inject 修正**：`node scripts/setup-plugins.mjs`（写 `$DSH_HOME`，需提权）+ **完整重启 dsh web**——重启会断开当前 GUI 会话，须与用户约定时机。
+**待做（需人眼确认）：**
+1. **client 半区目视确认**：浏览器里看 4 个界面（设置→插件第三个 tab、设置→「模型能力」、右侧文件树、左下版本徽标）。
+   - 先**刷新页面**试：`dsh-client-modules` 的 registry 是增量扫描（§11.5 见过 host 半区热加载），可能无需重启；不行再完整重启 dsh web（会断开当前 GUI 会话，须与用户约定时机）。
+2. ✅ **注入边修正已装入 farm**（2026-09-14，见 §21.6）——farm 与仓库逐字一致，`--check-only` 不再有 WARN；**剩下的只是让运行中实例重新读取**（刷新/重启）。
 
 ### 21.4 本次改动文件
 
@@ -963,9 +964,34 @@ plugins/*/package.json  ×4                    # 删除废弃注入边 @deepseek
 
 ### 21.5 文档版本漂移（待收口，勿再引用旧值）
 
-- `0.1.2-rc.1` 仍出现在：`AGENTS.md` 状态行、§16.2/§16.3、`README.md`、`plugins/dsh-client-ui-plugin-core-version/README.md`、`desktop-shell-redesign-v1.0.md`（均为**快照值**，实测以 0.1.5-rc.1 为准）。
+- `0.1.2-rc.1` 仍出现在：§16.2/§16.3、`README.md`、`plugins/dsh-client-ui-plugin-core-version/README.md`、`desktop-shell-redesign-v1.0.md`（均为**快照值**，实测以 0.1.5-rc.1 为准）。`AGENTS.md` 状态行已更正。
 - `DEPLOY.md` / `deploy.ps1` / `OPENCODE_PROMPT.md` 仍锁 `-HarnessVersion 0.1.0-rc.7`（跨机锁版已失效）。
 - **§18.2 注与 §18.4-4 已过时**：本机 `~/.dsh/settings.yaml` 现为 `agent-default-model: vekenllm/auto` + `reasoningEffort: high`，且 auto 条目**已含** `input: [text, image]` 与 `reasoningEfforts`（即 v1.8 片段已落地，不再是 v1.7）。
+
+### 21.6 执行记录（可复现）
+
+```powershell
+# 1) 本地测试依赖（react 在 0.1.5 已不在 dsh 内；沙箱里 npm 缓存要重定向）
+$env:npm_config_cache = "D:\dsh\dsh-desktop-env\.cache\npm"
+cd .work\test-deps; npm install react@19 react-dom@19; cd ..\..
+
+# 2) 7 个测试套件
+foreach ($t in @('smoke-test','host-toggle-test','filetree-host.test','filetree-smoke.test','core-version-smoke.test','model-capabilities-host.test','model-capabilities-smoke.test')) { node ".work\$t.mjs" }
+# -> 7/7 通过
+
+# 3) 装入 $DSH_HOME（幂等；写工作区外，沙箱需 danger-full-access）
+node scripts\setup-plugins.mjs
+# -> 4 插件 copied；3b inject=3/4/3/0；3e patch ids 4 个；farm 与仓库逐字一致
+node scripts\setup-plugins.mjs --check-only
+# -> 无 WARN（死链已消除）
+
+# 4) 活体探测（运行中的 43080，host 半区无需 token）
+curl.exe -s -X POST -H "Content-Type: application/json" --data-binary "@body.json" http://127.0.0.1:43080/plugin-model-capabilities/list   # 200
+curl.exe -s http://127.0.0.1:43080/plugin-core-version/version                                                                       # 200 {"version":"0.1.5-rc.1"}
+curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/                                                                          # 401 = 正常（认证围栏）
+```
+
+提交：`2c31481`（已推送 `origin/main`）。推送坑：本机走 SSH 443，**沙箱里 push 需要 `danger-full-access`**（否则 `sh.exe: couldn't create signal pipe` → `Could not read from remote repository`，看起来像鉴权失败，实为沙箱禁管道）。
 
 
 
