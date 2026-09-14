@@ -1,0 +1,36 @@
+{
+  "name": "dsh-client-ui-plugin-model-capabilities",
+  "description": "Settings > 模型能力 section for the dsh Web GUI: lists every provider/model with its declared input modalities (text/image), context window, and reasoning efforts — read from the live Host LLM registry (ctx.llm) via a read-only host route.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

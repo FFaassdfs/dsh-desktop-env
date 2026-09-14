@@ -1,0 +1,33 @@
+{
+  "name": "dsh-client-ui-plugin-core-version",
+  "description": "Top-of-GUI badge showing the running core dsh version (read by a tiny host route from the installed @deepseek-ai/dsh package)",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

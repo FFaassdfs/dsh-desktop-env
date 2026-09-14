@@ -1,0 +1,4 @@
+{
+  "route": "/plugin-model-capabilities/list",
+  "maxModelsPerGroup": 1000
+}

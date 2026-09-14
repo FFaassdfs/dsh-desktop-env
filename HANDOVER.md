@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -559,4 +559,268 @@ wails build        # 产物 build\bin\dsh-desktop.exe
 4. **改前端或绑定后必须 `wails build`（完整）**，不要 `-s`：`-s` 不重新生成 wailsjs 绑定、不打包前端。仅改 Go 时才用 `wails build -s`。
 5. **git 推送（本机沙箱）**：HTTPS 报 `SEC_E_NO_CREDENTIALS` → 用 `git config http.sslBackend openssl`（仓库级）+ 带 token URL 直接 push（见 global/AGENTS.md）。新 clone 的仓库要重设该配置。
 6. **改动后 exe 需重启壳才生效**（旧进程不会热更新）；关旧壳会连坐杀掉它自拉的 dsh web。
+
+---
+
+## 15. 路径E：模型能力展示（Settings > 模型能力 分区插件）
+
+### 15.1 背景：为什么看不到多模态能力
+
+在 dsh Web GUI 选模型时看不到模型的跨模态能力，根因是一条**数据链断裂**，不是数据不存在：
+
+1. **Host 端有**：`ctx.llm.resolveModelInfo(provider, model)` 返回 `LlmResolvedModelInfo.inputModalities`（取值 `text`/`image`），这正是图片准入的判据——`read_image` 工具、`dsh-api-session-controller/lib/index.js`（约 751 行 `model.inputModalities.includes("image")`）都用它。**能力真实存在且被使用。**
+2. **构建目录时被丢弃**：官方 `dsh-api-session-controller/lib/types/catalog.js` 的 `buildModelCatalog()` 在 `resolveModelInfo` 后只拷贝 `{ id, name, ...description, ...reasoning }`，**没带 `inputModalities`**；`ModelCatalogModel` 类型（`lib/types/types.d.ts`）因此只有 `id/name/description?/reasoning?`。
+3. **UI 只渲染 name**：`dsh-client-ui-model-selection/lib/client.js` 的 `ModelSelect` 只画 `model.name`（+reasoning effort）；`/model` 命令弹窗加画 `description`，同样无模态。
+
+结论：官方把 `inputModalities` 丢在了目录构建这一步，UI 没字段可渲染。
+
+### 15.2 方案与取舍
+
+- 用户选定：**自定义插件 + 设置页新分区「模型能力」**（不动官方包，harness 升级不丢），符合路径A/C 既有插件模式。
+- 被否路线：打通官方选择器（改 `buildModelCatalog` + `ModelSelect` 渲染）——改了全局安装的官方包，`npm i -g` 升级即覆盖，且违反「官方源码只读」约定。
+- 因官方 `ModelSelect` 渲染没有 slot 钩子，无法在不改官方代码的情况下把能力徽标画进现有「选模型」下拉；故做成独立的设置分区。
+
+### 15.3 产物流
+
+```
+plugins/dsh-client-ui-plugin-model-capabilities/
+├── package.json           # dsh.client 清单（platform web + inject 依赖）
+├── config.json            # route / maxModelsPerGroup（build 时注入）
+├── src/bundle.template.js # client bundle 模板（占位 /*__CONFIG_JSON__*/）
+├── lib/index.js           # host 侧：POST /plugin-model-capabilities/list（只读，用 ctx.llm）
+├── lib/client.js          # 构建产物（15719 字节）
+├── build.mjs              # node build.mjs 注入 config.json 生成 client.js
+└── README.md
+.work/
+├── model-capabilities-host.test.mjs   # 宿主单测（假 ctx.llm + 假 req/res）
+└── model-capabilities-smoke.test.mjs  # bundle 契约测试
+```
+
+### 15.4 已验证项
+
+- [x] `node build.mjs` 生成 lib/client.js（15719 字节）；`node --check` host/client 语法过
+- [x] **宿主单测全过**：happy path（2 提供商、模态/上下文/推理等级/单模型解析失败的 `error` 行）/ 提供商级失败进 `failures` / 缺 `ctx.llm` 抛错 / `handleList` HTTP 信封（fake req/res）
+- [x] **bundle 契约测试全过**：ModuleLoader 注册 / exports（NS=`modelCapabilities`、inject=`["slots","locale"]`、`ModelCapabilitiesSection`）/ apply 注册 locale + `settings.section`（id=`model-capabilities`, order=12）/ `React.isValidElement` / zh 21 个键 / config 注入
+- [x] **实机宿主路由已通**（运行中的 43080 实例热加载了 host 半区）：
+  `POST /plugin-model-capabilities/list` 返回 `ok:true`，`groups` 含 `deepseek-official`（DeepSeek）、`vekenllm`、`ctai`（电信算力），逐模型给出 `inputModalities`/`contextWindow`/`reasoning`（如 `deepseek-v4-flash-vision-exp` → `["text","image"]`、`ctai/glm-5.3-flash` → `["text","image"]`、`vekenllm/auto` → `["text","image"]`）
+- [x] `setup-plugins.mjs` 安装：`plugin-model-capabilities` 已拷入 `profiles/node_modules`，patch 已追加，loader 发现条件 1–4 全过，patch YAML OK
+
+### 15.5 使用 / 验收
+
+```powershell
+# host 半区已热加载（路由 200）；client 分区需浏览器层面生效：
+#  1. 刷新 dsh Web 页面（必要时用桌面壳菜单 → 重新加载 / Ctrl+R）
+#  2. 设置 → 左侧导航应出现「模型能力」分区（order 12，位于「模型」「插件」之间）
+#  3. 点进后应看到：每个提供商一张卡片 → 每个模型一行：
+#     - 模型名 + 能力中文标签（如「文本 + 图像（可识图）」「仅文本」「能力未声明」）
+#     - 上下文窗口、推理等级、描述
+#  4. 顶部搜索框可按 提供商名/模型名/描述 过滤
+# 若刷新后分区未出现（个别情况需完全重启，参见路径A §3.5），完全退出并重开 dsh web 再验。
+# 若能力标签为空（旧 bug：ModalityBadges 把 children 误作 key 参数），用强刷 Ctrl+Shift+R 或重启 dsh web 让新 bundle 生效。
+```
+
+### 15.6 坑 / 注意点
+
+1. **能力数据与官方目录一致性的差异是有意的**：官方选择器看不到模态是因为官方丢了字段；本插件通过宿主路由**重新读** `ctx.llm` 而不是改官方目录。因此它展示的是「当前 Host LLM 注册表」快照，不是官方选择器的目录。
+2. **`inputModalities` 缺省语义**：字段缺失 = 未知（显示「未声明」）；显式 `["text"]`=仅文本；含 `image`=可识图。与 `read_image` 准入判据一致（`model.inputModalities.includes("image")`）。
+3. **host 路由是公开的（不在浏览器认证围栏内）**：验证用 `curl -X POST --data-binary '@文件'` 直接打 `/plugin-model-capabilities/list` 即可（无需 token），但**根路径 `/` 与 `/api/pluginInventory/list` 是 401**（browser-trust）。所以「是否已在 boot manifest」无法用 curl 验证——静态 `/plugins/*/client.js` 对 unauthenticated 请求也 404（已装好的 explainer/project-explorer 同样 404，属认证围栏行为，不代表插件未加载）。**client 生效以浏览器实视为准。**
+4. **`ctx.llm` 注入**：host `inject = ["webServer", "llm"]`。若某 profile 没挂 `dsh-llm`，`ctx.llm` 为 undefined → 路由返回 `500`（`buildCapabilities` 显式抛 `ctx.llm is unavailable`）。web profile 默认已挂。
+5. **单模型 `resolveModelInfo` 失败不拖垮整个提供商**：该模型以 `{id,name,error}` 列出，客户端内联显示原因；提供商级 `listModels` 失败才进 `failures`。
+6. **每提供商最多读 1000 个模型**（`config.json` 的 `maxModelsPerGroup`，host 端硬顶），避免超大目录卡 UI。改它要 `build.mjs` + 重装 + 重启。
+7. **`settings.section` 不需要 `inject`/`children`**：本分区直接 `fetch` 宿主路由（不依赖 `remote` RPC），未声明子 slot。
+8. **无 react-dom 的测试环境**：本机 harness `node_modules` 里没有 `react-dom`，SSR（`renderToStaticMarkup`）跑不了；bundle 测试改用 `React.isValidElement` + locale/config 断言，不为 SSR 快照。
+9. **🔴 能力徽标曾为空（实机踩过）**：第一版 `ModalityBadges` 用 `_jsxs` 时把 children 数组**误传给了第三个参数（React 的 `key`）**，导致徽标内容渲染为空。修复：每个模态返回单个 `_jsx("span",{children:标签})`，且**统一改为纯中文文字**（`CapabilityText`：「文本 + 图像（可识图）」「仅文本」「图像（可识图）」「能力未声明」），去掉了 emoji 和 `color-mix()`（旧 WebView 可能不支持）。冒烟测试用「直接调用 `CapabilityText` 断言 `el.props.children`」覆盖四种模态，避开了无 react-dom 的限制。
+
+### 15.7 与官方仓库的核对（2026-09-06，master=c389f96）
+
+1. **版本**：本地 `@deepseek-ai/dsh@0.1.2-rc.1` = npm `latest`（registry 确认），无更新版本可升；官方 master 上相关文件与本地安装产物逻辑逐字一致。
+2. **根因在官方 master 上依然成立**（不是本地版本旧）：
+   - `packages/api/session-controller/src/catalog.ts` — `buildModelCatalog` 仍只透传 `{id, name, description?, reasoning}`，`resolveModelInfo` 返回的 `inputModalities` 在手边仍被丢弃；
+   - `.../session-controller/src/types.ts` — `ModelCatalogModel` 仍只有 `id/name/description?/reasoning?`；
+   - `packages/client/ui-model-selection/src/client/ModelSelect.tsx` — 模型行仍只渲染 `{model.name}` + 选中勾。
+3. **是刻意设计不是疏忽**：架构笔记 `.agents/notes/archived/architecture/2026-07-15-llm-model-catalog-and-acp-selection.md`（implemented，2026-09-04 归档）明确「Catalog membership is advisory…never rejects an otherwise valid request」，目录中立面刻意只定义 `LlmModelInfo {provider,id,name,description?}`，选择器交互由各 consumer 自有；能力（模态）走请求期准入（image admission）而非目录宣告。`inputModalities` 是 2026-08-12 笔记后加进 `LlmModelInfo` 供请求期用的，`buildModelCatalog` 投影从未跟着透传——链路就断在这一层。
+4. **官方无相关 issue/PR**：repo 内搜 `modalities OR multimodal OR capability` = 0 条。升级 harness 不会自带能力展示 → 本插件是长期方案，不是临时补丁；且「consumer 自有选择器交互」正是官方认可的模式。
+5. **若想推动官方支持**：改法很小（catalog.ts 透传 `inputModalities` + `ModelCatalogModel` 加字段 + `ModelSelect` 渲染徽标），可提 issue/PR 上游。
+
+### 15.8 harness 多模态支持面核实（2026-09-06，回答"音频/视频/PDF 行不行"）
+
+结论：**模型原生多模态输入只有 text + image（光栅图）**；音频/视频/PDF 官方多处明写 "deferred work"。四层证据：
+
+1. **模态词表**：`dsh-llm` `ModelModalityMap = { text, image }`（merge-extensible，但全仓库无适配器扩展；deepseek 适配器校验「只能 text/image」，pi-ai 透传其目录）；image admission 只认 `includes("image")`，其他模态值无消费方。
+2. **内容块词表**：`ContentBlockMap = text / reasoning / image / tool-call / tool-result`，无 audio/video/file 块；注释「New core blocks must land with adapter, UI, and compaction support」= 加新模态需适配器+UI+压缩三端同步。浏览器上行 `PromptContentPart`（rc.1）= `text | image`。
+3. **工具/附件面**：附件只收 PNG/JPEG/WebP/GIF（`dsh-attachment` README：「non-image files, audio, and video are not supported yet」「would need separate lifecycle and provider contracts…undecided」）；`read` 仅 UTF-8（`dsh-tool-fs` README：「PDF, audio, and video remain deferred」）；web fetch 无 pdf 分支（`dsh-web` README：「text-extractable PDF support is named deferred work」）；`@file`/文件树拖拽只插路径文本（`dsh-file-reference`：「never reads or attaches file contents」）。
+4. **master 动向**：新增 `fileUploads` 服务 + `file` 上行回执 + `dsh-client-file-upload`（rc.1 尚无），但其 README 明说「**Model Experience: None… contributes no model input**」，字节存储仍走 image-only 的 `ctx.attachments` —— 是浏览器→宿主字节传输地基，不是音视频/PDF 模型输入。
+
+实务：PDF 走 `pdf_pipeline.py`（渲染成光栅图→识图 OCR）正是对这个官方缺口的正确外挂；音频/视频需 agent 经 bash/pwsh 调 ffmpeg/whisper 等转文本/抽帧后再进上下文。
+
+---
+
+## 16. 路径H：vekenllm 双模型配置说明文档（2026-08-19）
+
+> ⚠️ 本节曾于 2026-09-08 被并行会话的 HANDOVER 重写覆盖丢失，2026-08-19 会话按产出文档与实测数据补回（详见 §19 覆盖事故记录）。
+
+### 16.1 背景与产出
+
+用户要求为 vekenllm 供应商建立配置文档，迭代路径：auto 单模型 → 升级为 `deepseek-v4-flash + auto` 双模型 → 简化（去掉「探索其他模型」环节）→ 修正 DSH 模态写法 → 参数改为「以 API 实测为准」。
+
+产出文件（仓库根目录，版本化命名，**当前仅保留最新版**）：
+
+```
+vekenllm-auto-setup-v1.8.md                # vekenllm 双模型配置说明（flash + auto，三客户端，当前最新；v1.8 按全量实测修正）
+vekenllm-deepseek-v4-flash-setup-v3.5.md   # flash 单模型版（含 WorkBuddy 完整支持；v3.5 同步实测修正）
+```
+
+### 16.2 当前模型实测（2026-08-19）
+
+| 模型 ID | max_input | max_output |
+|---|---|---|
+| `deepseek-v4-flash` | 1,000,000 | **393,216** |
+| `auto` | 1,000,000 | **393,216** |
+
+- 主地址 `http://192.168.100.63:4000` ✅ 连通，**当前仅返回上述 2 个模型**
+- 备用地址 `http://192.168.15.137:4000` ⚠️ 401 未授权（需该环境专用 key）
+- 权限：当前 API Key 团队可访问模型 = `['deepseek-v4-flash', 'auto']`（403 错误信息实测）；`deepseek-v4-pro` 与全部 `ctai-*` **已不可访问**
+
+### 16.3 关键结论（文档已落地，v1.8 按全量实测修正）
+
+1. **输出长度以 API 实测为准**：实测两模型 `max_output_tokens` 均为 **393216**（=384×1024）。flash 早期参考值 384000（=384×1000）有误；auto 早期按口头 128k 记的 131072 亦与实测不符。文档 §5 给出**实测命令** + 「推荐值 + 配置前必须实测」约定。
+2. **🔴 `auto` 支持思考（v1.8 实测修正，推翻旧记录）**：实测不传参数时**默认返回 `reasoning_content`**；`reasoning_effort=low/high` 生效；`thinking:{type:disabled}` 或 `reasoning_effort=none` 可关闭。客户端配置：opencode `reasoning: true` + variants；DSH `reasoningEfforts: {off, low, high}`；WorkBuddy `supportsReasoning: true` + `supportedEfforts`。
+3. **🔴 关闭思考有效**：`thinking:{type:"disabled"}` 与 `reasoning_effort:"none"` **均能真正关闭**思考链（原「无法完全关闭」说法已过时）。
+4. **🔴 代理接受 `medium`/`max`**：「仅 none/low/high」是**使用约定**而非代理硬限制（flash 传 medium/max 均 200 + 思考链）——解释了客户端暴露更多档位（如 opencode 显示 max）的现象。
+5. **🔴 `deepseek-v4-flash` 实测能识图**：`image_url` 输入（1×1 红色图）→ 正确答「红色」，原「仅文本」声明与实测不符。
+6. **DSH 模态枚举仅 `text`/`image`**（源码实测）：`video`/`audio` 写入报 `settings-rejected` → 用**条目级 `input: [text, image]`**。模态优先级：条目级 `input` → provider 级 `base.input` → 路由级 `defaultInput`。
+7. **文档不含「探索其他模型」环节**（用户要求简化）：只保留「测连通性 + 配置两个已知模型」。
+8. **🔴 vekenllm ≠ ctai**：两个完全独立的供应商，baseURL（`192.168.100.63:4000` vs `ai.ctaigw.cn/v1`）、API Key、provider 键名（`vekenllm` vs `ctai`）互不通用；文档置顶有专门声明（`ctai-*` 前缀模型仍走 vekenllm 地址+key，不代表切到 ctai）。
+
+### 16.4 注意点
+
+1. **与 §17 litellm 中转的「auto」不是一回事**：本节 auto 是 vekenllm 代理直接暴露的模型（`192.168.100.63:4000`）；§17 的 auto 是本地 litellm 中转（`127.0.0.1:4000`）的对外模型名。
+2. **两份文档并存**：`vekenllm-deepseek-v4-flash-setup-v3.5.md`（flash 单模型，含 WorkBuddy；v3.5 同步实测修正）+ `vekenllm-auto-setup-v1.8.md`（双模型合并视图，含参数实测约定）。
+3. **默认模型未切**：`agent-default-model = vekenllm/deepseek-v4-flash`；auto 需在 Web GUI Models 页手动选择。
+4. **auto 元数据可能变化**：auto 是代理内部路由模型，`/v1/models` 返回的上限可能随上游配置变化 → **每次配置前重新实测**，不沿用文档数字。
+
+---
+
+## 17. 路径G：litellm 中转算力 + auto 模型视觉自动路由（2026-08-19）
+
+> 同上：本节内容曾被 2026-09-08 的 HANDOVER 重写覆盖，现补回要点。
+
+### 17.1 目标与结论
+
+用户需求：用 [litellm](https://github.com/BerriAI/litellm) 实现「中转算力」——对外暴露一个模型 `auto`，背后一个单模态文本模型（默认）+ 一个多模态模型（理解图片/视频/PDF），请求含视觉内容时自动切多模态。
+
+**结论：可行**。方案 = litellm proxy + 自定义 `async_pre_call_hook`（官方受支持扩展点）在请求进入时检查 messages，含多模态 content block → 改写 `model` 为 vision 组，否则 text 组。**litellm 自带的 AutoRouter 语义路由不适合**（只提取文本做 embedding 分类，不检测图像）。
+
+### 17.2 产出文件
+
+```
+litellm-auto-router-setup-v1.0.md              # 正式方案文档：架构/config.yaml 完整示例/hook 代码/部署/验证/DSH 接入/坑
+.work/litellm-auto-router/vision_router.py     # 可复制 hook 源码（CustomLogger 子类 + proxy_handler_instance）
+.work/litellm/                                 # litellm 官方仓库只读克隆（调研依据；不入 git）
+```
+
+### 17.3 关键源码证据（已逐项验证）
+
+| 结论 | 证据 |
+|---|---|
+| pre-call hook 可改 model | `litellm/proxy/hooks/sensitive_data_routing.py`：官方生产代码 `data["model"] = routed_model; return data` |
+| hook 先于路由执行 | `litellm/proxy/common_request_processing.py`：`pre_call_hook` 在 `route_request` 之前 |
+| 自定义 callback 注册 | `litellm_settings.callbacks: <模块>.<实例>`，`importlib.import_module` 加载 |
+| 多模态块类型 | `types/llms/openai.py`：text/image_url/audio/document/video/**file** |
+| 语义路由不适合本需求 | `router_strategy/auto_router/auto_router.py` 只提取 text 块 |
+| model group | `model_list` 同 `model_name` 多条 = 负载均衡组 |
+
+### 17.4 方案要点
+
+- config.yaml：`model_list` 定义 `auto`（兜底=文本模型）/ `text-model` / `vision-model` 三组；上游用 `openai/<id>` + `api_base` 可指向**任何** OpenAI 兼容端点（官方/vekenllm/ctai）。
+- hook 规则：`image_url`/`file`/`input_image`/`input_audio`/`audio_url`/`video`/`document` 任一命中 → vision；纯文本 → text。
+- 部署：Docker（`ghcr.io/berriai/litellm:main-stable`）或 `pip install 'litellm[proxy]'`。
+- DSH 接入：照 §16 写法，baseURL=`http://127.0.0.1:4000/v1`、模型 `auto`。
+
+### 17.5 坑 / 注意点
+
+1. **hook 漏判类型会把图发给文本模型**（上游 400）：`MULTIMODAL_BLOCK_TYPES` 覆盖 7 种常见块类型；遇到新类型需对照扩展。
+2. **`auto` 条目必须保留为兜底**：即使 hook 加载失败，`auto` 直接落到文本模型，行为安全可预期。
+3. **PDF/视频支持取决于上游多模态模型**（litellm 只透传转换）。
+4. **沙箱内 git clone litellm 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`**：用 `git -c http.sslBackend=openssl clone …` 免提权。
+5. **未实际部署**：本次只完成调研 + 方案文档 + hook 源码，未在本机起 litellm 实例（需用户提供上游模型与 key）。
+
+---
+
+## 18. 路径I：DSH 落地 vekenllm auto 模型配置（2026-08-19）
+
+> 同上：本节内容曾被覆盖，现补回要点。
+
+### 18.1 做了什么
+
+在 DSH `~/.dsh/settings.yaml` 的 `llm-pi-ai.providers.vekenllm` 路由下新增 `auto` 条目（沿用现有 `VEKENLLM_API_KEY`，**未切默认模型**），并实测通过。
+
+### 18.2 最终 settings.yaml 片段
+
+```yaml
+      models:
+        - id: deepseek-v4-flash
+          name: DeepSeek V4 Flash
+          contextWindow: 1000000
+          maxTokens: 393216          # 勘误：原 384000 → 384×1024
+          input: [text, image]       # v1.8 实测：flash 也能识图
+          reasoningEfforts:
+            off:
+            low: low
+            high: high
+        - id: auto
+          name: Auto
+          contextWindow: 1000000
+          maxTokens: 393216          # v1.7：API 实测（原口头 128k 作废）
+          input: [text, image]       # 条目级（DSH 枚举仅 text/image）
+          reasoningEfforts:          # v1.8 实测：auto 支持思考（默认开启）
+            off:
+            low: low
+            high: high
+```
+
+> ⚠️ 本机 `~/.dsh/settings.yaml` 当前实际写入的是 v1.7 版本（auto 无 `reasoningEfforts`）；如需让 auto 支持思考档位切换，按上面 v1.8 片段补 `input`/`reasoningEfforts` 即可（写入前先刷新重读文件）。
+
+### 18.3 已验证
+
+- `/v1/models` 返回 `deepseek-v4-flash, auto`；备用地址超时/401（弃）
+- js-yaml 校验通过；`input:[text,image]` 在 DSH MODALITIES 内
+- auto/flash 最小 `/v1/chat/completions` 均 HTTP 200
+- 热重载后服务健康（HTTP 200），未触发 `settings-rejected` → Web GUI Models 页可见 `vekenllm / Auto`
+- **v1.8 补充实测**：两模型思考档位/工具调用/图像识别/流式输出全部验证通过（详见 §16.3）
+
+### 18.4 坑 / 重要发现
+
+1. **🔴 DSH 模态枚举只有 `text` 和 `image`**（`dsh-llm-pi-ai/lib/index.js` 的 `MODALITIES = {text, image}`）。`defaultInput: [text, image, video, audio]` 里的 video/audio 是**非法枚举**，`assertServiceable` 会在写入时抛 `settings-rejected`，该写法**写不进去**。模态只能写 `[text, image]`。
+2. **模态优先级链路**：`entry.input`（条目级）→ `base.input`（provider 级）→ `request.defaultInput`（路由级）。条目级声明 `input` 会在**不改路由级 defaultInput** 的前提下覆盖该模型模态——推荐写法。
+3. **flash maxTokens 勘误**：384000 → 393216（=384×1024，API 实测）。
+4. **默认模型未切**：仍 `agent-default-model = vekenllm/deepseek-v4-flash`；auto 仅在 Models 页可选。
+5. 需提权写入 `~/.dsh/settings.yaml`（工作区外），用 `danger-full-access` 完成。
+6. **🔴 v1.8 实测修正（与本节早期记录冲突，以 §16.3 为准）**：auto **支持思考**（早期误记为不支持）；`thinking:{type:disabled}`/`reasoning_effort:none` **能真正关闭思考**（早期误记为无法关闭）；代理**接受 medium/max**；**flash 也能识图**。
+
+---
+
+## 19. 🔴 并行会话覆盖事故与防覆盖约定（2026-08-19 踩坑，全局适用）
+
+### 19.1 事故描述
+
+2026-08-19 会话在更新 HANDOVER 记录 vekenllm 文档时，发现 **HANDOVER.md 已被并行会话（时间戳 2026-09-08）整体重写**，导致本会话先前写入的 §16（litellm 中转）、§17（vekenllm 双模型文档）、§18（DSH auto 落地）等章节**全部丢失**（文件从 ~745 行回退为另一时间线的版本）。
+
+**根因**：多个会话并行编辑同一文件时，各自基于**已过期的内存/缓存副本**写入，后写者覆盖先写者的内容。
+
+### 19.2 防覆盖约定（🔴 强制，全局所有会话必须遵守）
+
+> **任何 agent 在写入/更新任何文件（尤其 HANDOVER.md、AGENTS.md、README 等共享文档）之前，必须先「刷新重读」该文件的最新内容，再执行编辑。**
+
+具体要求：
+1. **写入前重读**：不要依赖会话早期读到的内容作为编辑依据；每次写入前用最新读取（read 工具/重新读取）确认当前文件状态与目标锚点（old_string）仍然存在。
+2. **改前核对行数与锚点**：若发现文件行数/结构与记忆不符（例如章节消失、内容变化），**立即停止写入并重新读取全文**，不要强行按旧锚点编辑。
+3. **优先小步编辑**：用精确锚点做增量编辑，避免整文件 write 覆盖（write 会整体替换，最易造成覆盖事故）。
+4. **发现冲突先报告**：若确认内容被其他会话覆盖丢失，**先向用户报告并确认**恢复方式，不要静默重建或放弃。
+5. **关键产出双备份**：重要产出（配置文档、方案文档）除仓库文件外，在 HANDOVER 中留下「文件名 + 版本 + 要点」索引，便于被覆盖后重建。
+
+### 19.3 已落地
+
+- 本节即为本约定在项目层的记录；**全局约定已写入 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md`（权威副本 + 安装副本）**，对所有项目所有会话生效。
+
 

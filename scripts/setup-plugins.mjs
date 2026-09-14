@@ -1,10 +1,11 @@
-// setup-plugins.mjs — idempotent installer for the two custom dsh plugins.
+// setup-plugins.mjs — idempotent installer for the custom dsh plugins.
 //
 // Relative-path based (repoRoot = parent of this file's directory), so it
 // works on any machine right after `git clone` — no hardcoded paths.
 //
-//   dsh-client-ui-plugin-explainer         -> patch id plugin-explainer
-//   dsh-client-ui-plugin-project-explorer  -> patch id plugin-project-explorer
+//   dsh-client-ui-plugin-explainer              -> patch id plugin-explainer
+//   dsh-client-ui-plugin-project-explorer       -> patch id plugin-project-explorer
+//   dsh-client-ui-plugin-model-capabilities     -> patch id plugin-model-capabilities
 //
 // For each plugin:
 //   1. copies package.json + lib/ into $DSH_HOME/profiles/node_modules
@@ -43,6 +44,12 @@ const PLUGINS = [
     patchId: "plugin-project-explorer",
     comment: "# dsh-client-ui-plugin-project-explorer: right-side project file tree (HANDOVER path C).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-project-explorer"),
+  },
+  {
+    name: "dsh-client-ui-plugin-model-capabilities",
+    patchId: "plugin-model-capabilities",
+    comment: "# dsh-client-ui-plugin-model-capabilities: Settings > \"模型能力\" per-model capabilities (HANDOVER path E).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-model-capabilities"),
   },
 ];
 
