@@ -39,6 +39,6 @@
 
 ## 凭据与同步
 
-- GitHub PAT、同步机制、构建命令：见 `HANDOVER.md` §10.3 / §10.5 / §10.6
-- PAT 明文在 HANDOVER.md 里，**不要提交到任何 git 仓库**
+- 凭据文件：`.work\secrets.local.md`（**被 .gitignore 忽略，永不提交**）；推送/同步细节见 `HANDOVER.md` §10.3 / §10.5 / §20.7
+- **推送用 SSH（2026-09-14 起）**：旧 PAT 已失效；remote 为 `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`（22 端口不通，走 443）
 - 官方同步：**每天 08:00（北京时间 = UTC 00:00，cron `0 0 * * *`）**自动跑（fork 的 `sync-upstream.yml`，见 `HANDOVER.md` §10.5）；手动检查用 `pwsh -File .work\sync-upstream.ps1`（需先自行 clone fork）
