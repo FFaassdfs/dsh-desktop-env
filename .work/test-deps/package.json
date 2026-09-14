@@ -1,0 +1,1 @@
+{"name":"dsh-desktop-env-test-deps","private":true,"description":"Local react/react-dom used only by the client-bundle smoke tests (node_modules gitignored).","dependencies":{"react":"^19.3.0","react-dom":"^19.3.0"}}

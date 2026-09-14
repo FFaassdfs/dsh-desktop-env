@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃（详见 §21）；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -13,10 +13,10 @@
 | 应用区（exe） | `D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\`） |
 | 旧工作区 | `D:\opencode\001\dsh-desktop` **已冻结**（见其 `FROZEN.md`），勿再写入 |
 | 当前壳 | **launcher @ 43080**（状态面板 + node 直启 + 带 token URL 交系统浏览器） |
-| 核心版本 | `@deepseek-ai/dsh 0.1.2-rc.1`（全局 npm，= npm `latest`） |
-| 进行中 | 路径E「模型能力」插件（**WIP，自另一会话迁移，未验证**）；版本徽标插件 `dsh-client-ui-plugin-core-version`（已装可用） |
+| 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm；2026-09-10 安装）——文档里旧记的 `0.1.2-rc.1` 已是过时快照，见 §21 |
+| 进行中 | 路径E「模型能力」插件 **host 半区已验证活跃**（§21.3）；4 插件均已纳入 `scripts/setup-plugins.mjs`。待办：client 半区目视确认 + 重装重启以生效注入边修正 |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | ①验证两个插件并纳入 `scripts/setup-plugins.mjs` ②HANDOVER 瘦身 + 单一事实源（端口/版本/同步频率）③壳 P0：端口保留段避让、崩溃退避 + 日志上限 |
+| 下一步（建议） | ①择时重装插件 + 完整重启 dsh web（激活 §21 的 inject 修正，注意会断开当前 GUI 会话）②文档版本收口（0.1.5-rc.1 / 默认模型 auto，见 §21.4）③HANDOVER 瘦身 + 单一事实源（端口/版本/同步频率）④壳 P0：端口保留段避让、崩溃退避 + 日志上限 |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -894,5 +894,78 @@ D:\dsh\app\current\dsh-desktop.exe             # 启动壳（launcher@43080，�
   ```
 - 迁移提交 `f51e7c3`、`8f5391e` 已推送成功（`origin/main = 8f5391e`）。
 - ⚠️ **连带影响**：fork 的 `sync-upstream.yml` 用 secret `SYNC_TOKEN`（= 同一枚旧 PAT）→ **该 secret 很可能也已失效**，每日自动同步会失败；需重新生成 PAT 并更新 fork 的 Actions secret（或改用其他凭据方式）。
+
+---
+
+## 21. dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）
+
+> 本节由「迁移后新会话」记录：入场盘点时发现**核心已悄悄从 0.1.2-rc.1 升到 0.1.5-rc.1**（2026-09-10 安装），文档全线未记录，且升级打断了插件测试环境。以下为实测结论与已做修正。
+
+### 21.1 事实核对（实测优先）
+
+| 断言 | 实测值 | 说明 |
+|---|---|---|
+| 核心版本 | **0.1.5-rc.1** | `dsh --version`、`npm ls -g`、`/plugin-core-version/version` 三处一致 |
+| 壳 | launcher @ **43080** 在跑（PID 7244，来自 `D:\dsh\app\current\dsh-desktop.exe`） | 交接里「仍从旧路径启动」已不成立 |
+| 裸 URL 探测 | **401** = 正常（认证围栏） | 见 `AGENTS.md` 高频坑 |
+| git | `HEAD=5e7c643`，工作树干净，无 ahead | 迁移提交已推送 |
+
+### 21.2 升级带来的三处断裂（前两处已修）
+
+**① 客户端冒烟测试断 react（已修）**
+0.1.2 时 react 装在其自身 `node_modules` 下；0.1.5 起把它并入 **web 前端产物**，该路径消失 → 4 个 bundle 冒烟测试全部 `ERR_MODULE_NOT_FOUND`（假回归）。
+修法：新增 **`.work/lib/react-source.mjs`**，按候选目录依次解析 react / react-dom / jsx-runtime：
+`.work/test-deps/node_modules` → 仓库 `node_modules` → `$DSH_HOME/profiles/node_modules` → 全局 npm 下 `@deepseek-ai/dsh/node_modules`；**都取不到时打印 SKIP 并 exit 0**（换机器不会假报失败）。
+本地测试依赖目录 `.work/test-deps/`（`npm install` → react/react-dom **19.3.0**；`node_modules` 走 .gitignore，只入库 `package.json` + `package-lock.json`）。
+> 顺带坑：npm 在此沙箱里默认缓存目录写不进去（EPERM）→ 用 `$env:npm_config_cache=<工作区>/.cache/npm` 即可正常安装。
+
+**② 插件注入边死链 `@deepseek-ai/dsh-client-runtime`（已修）**
+0.1.5 里该模块名**被 0 个官方包引用**（已废弃），而**我们 4 个插件全都声明了它** → 已从 4 份 `package.json` 的 `dsh.client.inject` 删除（core-version 变成 `[]`，它只往 `document.body` 挂固定徽标、不依赖任何官方模块）。
+对照官方同类插件（0.1.5）：`settings-plugins` / `settings-models` 注入 `{api-remotes, client-ui-settings, client-locale}` —— 与我们修正后的列表一致。
+`scripts/setup-plugins.mjs` 新增 **3b' 检查**：声明的注入边若无法从 profile 解析 → WARN 并提示删除（该检查在**未重装的旧副本**上如实报警，证明有效）。
+
+**③ profile junction 农场断链（脏数据，暂不动）**
+`$DSH_HOME/profiles/node_modules` 是 **607 个 junction**（指向 dsh 安装内部包目录），其中 **126 个目标已随 0.1.5 消失**：`react`、`react-dom`、`@deepseek-ai/dsh-client-runtime`、`dsh-client-ui-slots`、`dsh-client-ui-primitives`、`immer`、`clsx`、`@lexical/*` 等。
+- **不影响已装插件**：loader 只解析**插件自身** package.json（`dsh-client-modules` 的 `locatePkgJson`/`resolveMeta`）；浏览器端 `require("react")`、`require("@deepseek-ai/dsh-client-ui-primitives")` 由**前端产物注册的模块表**满足（primitives 被 39 个官方包引用，仍是活名字）。
+- 属遗留脏数据，需要时可清理/重建农场，暂无必要动共享全局态。
+
+### 21.3 4 插件在 0.1.5 下的验证结果
+
+**host 半区（运行中 43080 实例实测，无需 token）——全部 200：**
+
+| 插件 | 探测 | 结果 |
+|---|---|---|
+| model-capabilities | `POST /plugin-model-capabilities/list` | **200**：返回 `deepseek-official`/`vekenllm`/`ctai` 分组 + 逐模型 `inputModalities`/`contextWindow`/`reasoning` |
+| project-explorer | `POST /plugin-project-explorer/root` | **200**：`root=D:\dsh\app\current`（无会话上下文 → `resolvedVia: fallback`） |
+| core-version | `GET /plugin-core-version/version` | **200**：`{"ok":true,"version":"0.1.5-rc.1"}` |
+| explainer | `POST /plugin-explainer/toggle`（故意坏体） | **400** bad-request（路由已注册、校验生效、未写文件）；对照未知路由 = **404** |
+
+**官方 API 复核（0.1.5 源码，逐项确认仍在）：**
+- 槽位 `settings.plugins.tab`（10 处）、`settings.section`（14 处）、`shell.overlay`（2 处）均在；
+- `webServer.register(route)` 仍在（`dsh-host-webserver`）；
+- `ctx.llm.resolveModelInfo` 仍返回 `inputModalities`，而 `buildModelCatalog` / `ModelSelect` **依旧不透传** → **§15 路径E 插件仍是长期方案**（前提未变）。
+
+**待做（需择时/需人眼）：**
+1. **client 半区目视确认**：浏览器里看 4 个界面（设置→插件第三个 tab、设置→模型能力、右侧文件树、版本徽标）。
+2. **激活 inject 修正**：`node scripts/setup-plugins.mjs`（写 `$DSH_HOME`，需提权）+ **完整重启 dsh web**——重启会断开当前 GUI 会话，须与用户约定时机。
+
+### 21.4 本次改动文件
+
+```
+scripts/setup-plugins.mjs                     # +core-version（第 4 个插件）+ 3b' 注入边死链检查
+plugins/*/package.json  ×4                    # 删除废弃注入边 @deepseek-ai/dsh-client-runtime
+.work/lib/react-source.mjs                    # 新增：react/react-dom 候选解析器（跨 dsh 版本）
+.work/test-deps/{package.json,package-lock}   # 新增：冒烟测试的本地 react 19.3.0（node_modules 忽略）
+.work/{smoke-test,filetree-smoke,core-version-smoke,model-capabilities-smoke}.mjs  # 改用 react-source
+```
+
+验证：`node scripts/setup-plugins.mjs --check-only` 全过（4 插件 + patch 4 个 id）；7 个测试套件 **7/7 通过**。
+
+### 21.5 文档版本漂移（待收口，勿再引用旧值）
+
+- `0.1.2-rc.1` 仍出现在：`AGENTS.md` 状态行、§16.2/§16.3、`README.md`、`plugins/dsh-client-ui-plugin-core-version/README.md`、`desktop-shell-redesign-v1.0.md`（均为**快照值**，实测以 0.1.5-rc.1 为准）。
+- `DEPLOY.md` / `deploy.ps1` / `OPENCODE_PROMPT.md` 仍锁 `-HarnessVersion 0.1.0-rc.7`（跨机锁版已失效）。
+- **§18.2 注与 §18.4-4 已过时**：本机 `~/.dsh/settings.yaml` 现为 `agent-default-model: vekenllm/auto` + `reasoningEffort: high`，且 auto 条目**已含** `input: [text, image]` 与 `reasoningEfforts`（即 v1.8 片段已落地，不再是 v1.7）。
+
 
 

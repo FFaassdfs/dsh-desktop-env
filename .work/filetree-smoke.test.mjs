@@ -6,11 +6,17 @@
 // the built bundle embeds config.json.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { findReactSource, loadReact, skipNotice } from "./lib/react-source.mjs";
 
 const bundlePath = new URL("../plugins/dsh-client-ui-plugin-project-explorer/lib/client.js", import.meta.url);
 const source = readFileSync(bundlePath, "utf8");
 
-const dshModules = "C:/Users/veken/nodejs/node-v24.16.0-win-x64/node_modules/@deepseek-ai/dsh/node_modules";
+// react no longer lives inside the dsh install (dsh >= 0.1.5) — see .work/lib/react-source.mjs
+const reactSource = findReactSource();
+if (!reactSource) {
+  skipNotice("project-explorer smoke-test");
+  process.exit(0);
+}
 
 // ---- 1. capture the ModuleLoader definition ----
 let captured = null;
@@ -29,9 +35,9 @@ async function awaitImport(path) {
   return mod.default ?? mod; // CJS interop: prefer the exports object
 }
 const preloaded = {
-  "react": await awaitImport(`${dshModules}/react/index.js`),
-  "react/jsx-runtime": await awaitImport(`${dshModules}/react/jsx-runtime.js`),
-  "react-dom/client": await awaitImport(`${dshModules}/react-dom/client.js`)
+  "react": await awaitImport(reactSource.react),
+  "react/jsx-runtime": await awaitImport(reactSource.jsxRuntime),
+  "react-dom/client": await awaitImport(reactSource.reactDomClient)
 };
 const requireShim = (spec) => {
   if (spec in preloaded) return preloaded[spec];
@@ -89,8 +95,7 @@ if (!localeDicts.projectExplorer || !localeDicts.projectExplorer.zh) {
 console.log("apply OK (locale registered, DOM skipped in Node)");
 
 // ---- 6. SSR render the panel (loading state — effects do not run) ----
-const React = await import(pathToFileURL(`${dshModules}/react/index.js`).href);
-const { renderToStaticMarkup } = await import(pathToFileURL(`${dshModules}/react-dom/server.js`).href);
+const { React, renderToStaticMarkup } = await loadReact(reactSource);
 const t = ctx.locale.bind("projectExplorer");
 const html = renderToStaticMarkup(React.createElement(exportsObj.ProjectExplorerPanel, { ctx, t }));
 if (!html.includes("正在解析项目目录")) throw new Error("SSR loading state missing: " + html.slice(0, 200));

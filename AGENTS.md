@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-14）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**；核心 = `@deepseek-ai/dsh 0.1.2-rc.1`（全局 npm）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；进行中：路径E「模型能力」插件（WIP，自另一会话迁移，未验证）。
+> **当前状态（2026-09-14）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**；核心 = **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm，2026-09-10 安装；旧记的 `0.1.2-rc.1` 已过时，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 半区在 0.1.5 实例实测活跃（§21.3），client 半区待目视确认。
 
 ## 开工必做
 

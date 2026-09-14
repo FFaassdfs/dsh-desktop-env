@@ -5,11 +5,17 @@
 // (loading state), ModalityBadges rendering, and that config.json is embedded.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { findReactSource, loadReact, skipNotice } from "./lib/react-source.mjs";
 
 const bundlePath = new URL("../plugins/dsh-client-ui-plugin-model-capabilities/lib/client.js", import.meta.url);
 const source = readFileSync(bundlePath, "utf8");
 
-const dshModules = "C:/Users/veken/nodejs/node-v24.16.0-win-x64/node_modules/@deepseek-ai/dsh/node_modules";
+// react no longer lives inside the dsh install (dsh >= 0.1.5) — see .work/lib/react-source.mjs
+const reactSource = findReactSource();
+if (!reactSource) {
+  skipNotice("model-capabilities smoke-test");
+  process.exit(0);
+}
 
 // ---- 1. capture the ModuleLoader definition ----
 let captured = null;
@@ -28,8 +34,8 @@ async function awaitImport(path) {
   return mod.default ?? mod; // CJS interop
 }
 const preloaded = {
-  "react": await awaitImport(`${dshModules}/react/index.js`),
-  "react/jsx-runtime": await awaitImport(`${dshModules}/react/jsx-runtime.js`)
+  "react": await awaitImport(reactSource.react),
+  "react/jsx-runtime": await awaitImport(reactSource.jsxRuntime)
 };
 const requireShim = (spec) => {
   if (spec in preloaded) return preloaded[spec];
@@ -81,9 +87,8 @@ if (!reg || !reg.options || reg.options.id !== "model-capabilities" || reg.optio
 if (reg.options.label() !== "模型能力") throw new Error("section label wrong: " + reg.options.label());
 console.log("apply OK (locale registered, settings.section registered id=model-capabilities order=12)");
 
-// ---- 5. component is a valid React element factory (react-dom is not
-// installed in the harness node_modules, so no SSR snapshot here) ----
-const React = await import(pathToFileURL(`${dshModules}/react/index.js`).href);
+// ---- 5. component is a valid React element factory ----
+const { React } = await loadReact(reactSource);
 const t = ctx.locale.bind("modelCapabilities");
 const element = React.createElement(exportsObj.ModelCapabilitiesSection, { t });
 if (!React.isValidElement(element)) throw new Error("ModelCapabilitiesSection did not produce a valid React element");

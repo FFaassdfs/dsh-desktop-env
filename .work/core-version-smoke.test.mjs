@@ -2,13 +2,20 @@
 // stubbed browser-like environment (no DOM) and checks the exports contract.
 //   node .work/core-version-smoke.test.mjs
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findReactSource, skipNotice } from "./lib/react-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bundlePath = join(here, "..", "plugins", "dsh-client-ui-plugin-core-version", "lib", "client.js");
 const source = readFileSync(bundlePath, "utf8");
+
+// react no longer lives inside the dsh install (dsh >= 0.1.5) — see .work/lib/react-source.mjs
+const reactSource = findReactSource();
+if (!reactSource) {
+	skipNotice("core-version smoke-test");
+	process.exit(0);
+}
 
 // Stub browser globals the bundle touches at load time (document undefined so
 // the CSS-guard branch is skipped, like SSR).
@@ -19,10 +26,8 @@ globalThis.fetch = undefined;
 let loaded = null;
 window.__ModuleLoader__ = {
 	load(entry) {
-		// require(): resolve react from the dsh profile install (browser baseline).
-		const profileBase = join(process.env.USERPROFILE, ".dsh", "profiles", "node_modules", "noop.js");
-		const req = createRequire(profileBase);
-		loaded = entry.factory(req);
+		// require(): resolve react from the first base that actually has it.
+		loaded = entry.factory(reactSource.require);
 	}
 };
 const run = new Function("window", source);

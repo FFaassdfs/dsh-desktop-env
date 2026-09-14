@@ -4,11 +4,17 @@
 // slot registration) and that the component SSR-renders without crashing.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { findReactSource, loadReact, skipNotice } from "./lib/react-source.mjs";
 
 const bundlePath = new URL("../plugins/dsh-client-ui-plugin-explainer/lib/client.js", import.meta.url);
 const source = readFileSync(bundlePath, "utf8");
 
-const dshModules = "C:/Users/veken/nodejs/node-v24.16.0-win-x64/node_modules/@deepseek-ai/dsh/node_modules";
+// react no longer lives inside the dsh install (dsh >= 0.1.5) — see .work/lib/react-source.mjs
+const reactSource = findReactSource();
+if (!reactSource) {
+  skipNotice("explainer smoke-test");
+  process.exit(0);
+}
 
 // ---- 1. capture the ModuleLoader definition ----
 let captured = null;
@@ -24,8 +30,8 @@ if (!captured || typeof captured.factory !== "function") throw new Error("bundle
 
 // ---- 2. run the factory with a require shim (synchronous) ----
 const preloaded = {
-  "react": await awaitImport(`${dshModules}/react/index.js`),
-  "react/jsx-runtime": await awaitImport(`${dshModules}/react/jsx-runtime.js`),
+  "react": await awaitImport(reactSource.react),
+  "react/jsx-runtime": await awaitImport(reactSource.jsxRuntime),
   "@deepseek-ai/dsh-client-ui-primitives": {
     // primitives is itself a ModuleLoader bundle; stub the two icons we use.
     IconSearchOutline16: () => null,
@@ -96,8 +102,7 @@ if (snapshot.entries.length !== 3) throw new Error("list() wiring broken");
 console.log("list() wiring OK (3 entries)");
 
 // ---- 5. SSR render the component (loading state) ----
-const React = await import(pathToFileURL(`${dshModules}/react/index.js`).href);
-const { renderToStaticMarkup } = await import(pathToFileURL(`${dshModules}/react-dom/server.js`).href);
+const { React, renderToStaticMarkup } = await loadReact(reactSource);
 const t = ctx.locale.bind("settings.pluginExplainer");
 const html = renderToStaticMarkup(React.createElement(reg.component, { list: injectedProps.list, t }));
 if (!html.includes("正在读取插件")) throw new Error("SSR loading state missing: " + html.slice(0, 200));

@@ -6,6 +6,7 @@
 //   dsh-client-ui-plugin-explainer              -> patch id plugin-explainer
 //   dsh-client-ui-plugin-project-explorer       -> patch id plugin-project-explorer
 //   dsh-client-ui-plugin-model-capabilities     -> patch id plugin-model-capabilities
+//   dsh-client-ui-plugin-core-version           -> patch id plugin-core-version
 //
 // For each plugin:
 //   1. copies package.json + lib/ into $DSH_HOME/profiles/node_modules
@@ -50,6 +51,12 @@ const PLUGINS = [
     patchId: "plugin-model-capabilities",
     comment: "# dsh-client-ui-plugin-model-capabilities: Settings > \"模型能力\" per-model capabilities (HANDOVER path E).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-model-capabilities"),
+  },
+  {
+    name: "dsh-client-ui-plugin-core-version",
+    patchId: "plugin-core-version",
+    comment: "# dsh-client-ui-plugin-core-version: top-of-GUI core version badge (HANDOVER §21).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-core-version"),
   },
 ];
 
@@ -117,6 +124,18 @@ async function verify(plugin) {
     fail(plugin.name + ": dsh.client declaration missing/wrong");
   }
   console.log(`3b. dsh.client OK (platform=web, inject=${pkg.dsh.client.inject.length})`);
+
+  // condition 2b: every declared inject edge must be resolvable from the profile.
+  // A dangling edge is how the plugins silently stopped working on a core upgrade
+  // (`@deepseek-ai/dsh-client-runtime` vanished in dsh 0.1.5 — HANDOVER §21).
+  for (const edge of pkg.dsh.client.inject) {
+    try {
+      requireFromProfile.resolve(edge + "/package.json");
+    } catch {
+      console.log(`3b'. WARN inject edge not resolvable: ${edge}`);
+      console.log("     (obsolete core module name? drop it from dsh.client.inject and rebuild)");
+    }
+  }
 
   // condition 3: exports["./client"] points at a real ModuleLoader bundle
   const clientExport = pkg.exports && pkg.exports["./client"];
