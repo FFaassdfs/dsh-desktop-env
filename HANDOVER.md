@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃（修正已装入 `$DSH_HOME` farm，待刷新/重启生效，详见 §21）；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -16,7 +16,7 @@
 | 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm；2026-09-10 安装）——文档里旧记的 `0.1.2-rc.1` 已是过时快照，见 §21 |
 | 进行中 | 路径E「模型能力」插件 **host 半区已验证活跃**（§21.3）；4 插件均已纳入 `scripts/setup-plugins.mjs`。待办：client 半区目视确认 + 重装重启以生效注入边修正 |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | ①择时重装插件 + 完整重启 dsh web（激活 §21 的 inject 修正，注意会断开当前 GUI 会话）②文档版本收口（0.1.5-rc.1 / 默认模型 auto，见 §21.4）③HANDOVER 瘦身 + 单一事实源（端口/版本/同步频率）④壳 P0：端口保留段避让、崩溃退避 + 日志上限 |
+| 下一步（建议） | ①**P0-3 壳加固**（端口保留段避让、崩溃退避、`dsh.log` 上限）②**P0-4 fork 处置 + 重新生成 PAT 更新 `SYNC_TOKEN`**（每日同步已失败，需用户操作）③HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`，可据此删重复段落） |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -264,7 +264,7 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 
 1. 把 dsh-desktop 从「基础壳」完善成功能完整的桌面客户端（16 个提交，见 §10.4）。
 2. 把桌面代码迁入你自己的 fork `FFaassdfs/deepseek-harness` 的 `desktop/` 目录（独立 Go+Vite 子项目，不参与 pnpm workspace，与官方 `packages/`/`apps/` 永不冲突）。
-3. 建立「时刻对齐官方」机制：GitHub Action 每小时自动把官方 master 合并进 fork（见 §10.5）。
+3. 建立「时刻对齐官方」机制：GitHub Action **每天 08:00（cron `0 0 * * *`）**自动把官方 master 合并进 fork（见 §10.5；旧记「每小时」为笔误）。
 
 ### 10.2 仓库拓扑（关键路径，务必分清）
 
@@ -306,7 +306,7 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 | 13 | `45074b3` | 并发正确性：owns/cmd 访问加锁（数据竞争修复） |
 | 14 | `e25b464` | `workdir` 配置（harness 进程工作目录，定位 .env/cordis） |
 | 15 | `ed06b47` | 原生菜单（重新加载/打开日志/打开配置/退出 + 快捷键）+ 外链处理（系统浏览器打开） |
-| 16 | `a68e9d5` | GitHub Action 自动同步（每小时对齐官方） |
+| 16 | `a68e9d5` | GitHub Action 自动同步（每天 08:00 对齐官方；提交当时的描述写「每小时」，实际 cron 为 `0 0 * * *`，见 §10.5 勘误） |
 | 17 | `23068a1` | 适配 dsh 0.1.1-rc.2 浏览器会话鉴权：startDsh 捕获 stdout 解析带 token 的鉴权 URL；waitReady 任何 HTTP 响应即视为就绪；壳 WebView 用鉴权 URL 导航（裸 URL 现返回 401，原逻辑超时/显示鉴权失败） |
 | 18 | `ecfaa09` | 壳重定位为「启动器 + 自更新 + 状态面板」：放弃内嵌界面（Wails WebView 在 dsh 浏览器认证 303+cookie 上不可靠），dsh web 加 `--no-open`，壳捕获带 token URL 后用 `runtime.BrowserOpenURL` 交给系统浏览器；`startDsh` 改 node 直启（解析 dsh.cmd shim 取 bin.js，规避 `cmd.exe`+`CREATE_NO_WINDOW` 破坏孙进程 stdout 继承）；窗口固定 440×400 `DisableResize`、去窗口状态还原；新增版本自更新（启动即查 + 每 24h，新版本自动 `npm i -g`） |
 | 19 | `4acf3eb` | 启动失败可诊断 + 崩溃自愈：`waitReady` fail-fast 检测子进程退出；启动失败把 `dsh.log` 尾部真实错误上抛（针对 3080 被 Hyper-V/WSL/winnat 动态保留导致 EACCES 的故障）；健康监测每 5s 探测、进程意外退出自动重启（最多连续 3 次）；`cmd.Wait()` 跟踪退出且只在「仍是当前进程」时标记 |
@@ -314,7 +314,9 @@ Copy-Item plugins\dsh-client-ui-plugin-explainer\lib $dst\lib -Recurse -Force
 
 ### 10.5 同步机制（时刻对齐官方）
 
-- **自动**：`.github/workflows/sync-upstream.yml`（已推送 fork）。每小时 cron（`0 * * * *`），fetch upstream master → 有新增则 `git merge upstream/master --no-edit` → `push`。支持 `workflow_dispatch` 手动触发。无冲突全自动；冲突则失败（Actions 页可见）。
+- **自动**：`.github/workflows/sync-upstream.yml`（已推送 fork）。**每天 08:00（北京时间）= cron `0 0 * * *`（UTC 00:00）**，fetch upstream master → 有新增则 `git merge upstream/master --no-edit` → `push`。支持 `workflow_dispatch` 手动触发。无冲突全自动；冲突则失败（Actions 页可见）。
+  - 🔴 **勘误（2026-09-14）**：本条旧记「每小时 cron（`0 * * * *`）」**有误**；读 fork 的 workflow 源码确认是 `0 0 * * *`（每天一次）。事实源见 `project-facts-v1.0.md` F4。
+  - ⚠️ **当前状态**：2026-09-14 起该定时任务**失败中**（Actions run 47 `failure`；09-12/09-13 的 run 45/46 仍 `success`）——`SYNC_TOKEN` 随旧 PAT 失效，见 §20.7 / §22。
   - 已实测跑通（run 31992432642 → success）。Actions 已启用（`actions/permissions` enabled=true）。
 - **手动**：`pwsh -File D:\opencode\001\dsh-desktop\.work\sync-upstream.ps1`（检查模式：报告官方新提交 + 本地待推送提交）或加 `-Apply`（merge+push）。
 - 官方已在 2026-08-17 晚前进（合并了大量新提交，含官方新 workflow 文件）；此后由工作流自动跟踪。
@@ -457,7 +459,7 @@ plugins/dsh-client-ui-plugin-project-explorer/
 
 | 内容 | 处理 |
 |---|---|
-| 两个自定义插件源码（`plugins/`） | ✅ 入库 |
+| 4 个自定义插件源码（`plugins/`） | ✅ 入库 |
 | `HANDOVER.md` / `AGENTS.md` | ✅ 入库（PAT 明文已移出，见 §12.6.1） |
 | `.work` 测试/安装脚本 | ✅ 入库（原整目录忽略改为白名单式忽略） |
 | `scripts/setup-plugins.mjs`、`setup.ps1` | ✅ 新增 |
@@ -487,7 +489,7 @@ global/AGENTS.md                # 全局预设权威副本（~/.dsh/AGENTS.md �
 ```powershell
 git clone https://github.com/FFaassdfs/dsh-desktop-env.git
 cd dsh-desktop-env
-pwsh -File setup.ps1 -HarnessVersion 0.1.0-rc.7   # 完整复刻（含桌面壳构建，需 Go 1.26+ / Wails CLI / WebView2）
+pwsh -File setup.ps1 -HarnessVersion 0.1.5-rc.1   # 完整复刻（含桌面壳构建，需 Go 1.26+ / Wails CLI / WebView2）
 pwsh -File setup.ps1 -SkipDesktopBuild            # 只装插件（快速，免 Go/Wails）
 pwsh -File setup.ps1 -CheckOnly                   # 干跑，不改任何东西
 # 之后手动：配 dsh API key / .env（各机独立，不同步）
@@ -555,8 +557,8 @@ dsh 0.1.1-rc.2 起引入**浏览器会话认证（browser-trust fence）**：`ds
 ### 14.4 跨机应用步骤
 
 ```powershell
-git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh-desktop
-cd D:\dsh-desktop
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh\dsh-desktop-env
+cd D:\dsh\dsh-desktop-env
 # 1) 安装全局 harness（锁版本）
 npm i -g @deepseek-ai/dsh
 # 2) 构建桌面壳（首次/前端或绑定有改动时用完整 build，仅改 Go 用 -s）
@@ -647,6 +649,7 @@ plugins/dsh-client-ui-plugin-model-capabilities/
 ### 15.7 与官方仓库的核对（2026-09-06，master=c389f96）
 
 1. **版本**：本地 `@deepseek-ai/dsh@0.1.2-rc.1` = npm `latest`（registry 确认），无更新版本可升；官方 master 上相关文件与本地安装产物逻辑逐字一致。
+   - 🔁 **2026-09-14 复核于 0.1.5-rc.1**：结论不变 —— `buildModelCatalog` 仍不透传 `inputModalities`、`ModelSelect` 仍只渲染名字（见 §21.3）。本条的「0.1.2-rc.1」是当时快照。
 2. **根因在官方 master 上依然成立**（不是本地版本旧）：
    - `packages/api/session-controller/src/catalog.ts` — `buildModelCatalog` 仍只透传 `{id, name, description?, reasoning}`，`resolveModelInfo` 返回的 `inputModalities` 在手边仍被丢弃；
    - `.../session-controller/src/types.ts` — `ModelCatalogModel` 仍只有 `id/name/description?/reasoning?`；
@@ -945,10 +948,9 @@ D:\dsh\app\current\dsh-desktop.exe             # 启动壳（launcher@43080，�
 - `webServer.register(route)` 仍在（`dsh-host-webserver`）；
 - `ctx.llm.resolveModelInfo` 仍返回 `inputModalities`，而 `buildModelCatalog` / `ModelSelect` **依旧不透传** → **§15 路径E 插件仍是长期方案**（前提未变）。
 
-**待做（需人眼确认）：**
-1. **client 半区目视确认**：浏览器里看 4 个界面（设置→插件第三个 tab、设置→「模型能力」、右侧文件树、左下版本徽标）。
-   - 先**刷新页面**试：`dsh-client-modules` 的 registry 是增量扫描（§11.5 见过 host 半区热加载），可能无需重启；不行再完整重启 dsh web（会断开当前 GUI 会话，须与用户约定时机）。
-2. ✅ **注入边修正已装入 farm**（2026-09-14，见 §21.6）——farm 与仓库逐字一致，`--check-only` 不再有 WARN；**剩下的只是让运行中实例重新读取**（刷新/重启）。
+**待做（已完成）：**
+1. ✅ **client 半区目视确认通过**（2026-09-14，用户复核）：4 个界面全部可见 —— 设置→插件第三个「插件说明」tab、设置→「模型能力」、右侧「项目文件」文件树、左下角 `dsh v0.1.5-rc.1` 徽标。**无需重启 dsh web**（刷新页面即生效；也说明本次注入边修正没有破坏加载）。
+2. ✅ **注入边修正已装入 farm**（2026-09-14，见 §21.6）——farm 与仓库逐字一致，`--check-only` 不再有 WARN。
 
 ### 21.4 本次改动文件
 
@@ -962,11 +964,15 @@ plugins/*/package.json  ×4                    # 删除废弃注入边 @deepseek
 
 验证：`node scripts/setup-plugins.mjs --check-only` 全过（4 插件 + patch 4 个 id）；7 个测试套件 **7/7 通过**。
 
-### 21.5 文档版本漂移（待收口，勿再引用旧值）
+### 21.5 文档版本漂移（**已于 §22 收口**）
 
-- `0.1.2-rc.1` 仍出现在：§16.2/§16.3、`README.md`、`plugins/dsh-client-ui-plugin-core-version/README.md`、`desktop-shell-redesign-v1.0.md`（均为**快照值**，实测以 0.1.5-rc.1 为准）。`AGENTS.md` 状态行已更正。
-- `DEPLOY.md` / `deploy.ps1` / `OPENCODE_PROMPT.md` 仍锁 `-HarnessVersion 0.1.0-rc.7`（跨机锁版已失效）。
+> 建立单一事实源 `project-facts-v1.0.md` 后，下列漂移已就地修正；历史快照文档保留原貌。详见 §22。
+
+- ~~`0.1.2-rc.1` 仍出现在……~~ **已修**：`AGENTS.md`、`README.md`、`plugins/dsh-client-ui-plugin-core-version/README.md`（含位置描述「顶部右侧」→ 实际**左下角** `left:12px;bottom:56px`）均已更正；仍保留 0.1.2-rc.1 的是**带日期的历史快照**（§15.7/§16、`desktop-shell-redesign-v1.0.md`），已在 §15.7 加「2026-09-14 复核」注。
+- ~~`DEPLOY.md` / `deploy.ps1` / `OPENCODE_PROMPT.md` 仍锁 `-HarnessVersion 0.1.0-rc.7`~~ **已修**：三处 + `setup.ps1` 注释统一为 **`0.1.5-rc.1`**，权威源 = `deploy.ps1` 的默认值（`project-facts-v1.0.md` F10）。
 - **§18.2 注与 §18.4-4 已过时**：本机 `~/.dsh/settings.yaml` 现为 `agent-default-model: vekenllm/auto` + `reasoningEffort: high`，且 auto 条目**已含** `input: [text, image]` 与 `reasoningEfforts`（即 v1.8 片段已落地，不再是 v1.7）。
+- **§10.5 同步频率勘误**：旧记「每小时 `0 * * * *`」→ 实为 **`0 0 * * *`（每天 08:00）**，已就地更正（事实源 = fork 的 workflow，`project-facts-v1.0.md` F4）。
+- 另修：`README.md`/`DEPLOY.md`/`HANDOVER.md` 的 clone 路径 `D:\dsh-desktop` → **`D:\dsh\dsh-desktop-env`**；`README.md` 的 `HANDOVER.md` §12 引用 → §14；"两个自定义插件" → 4 个。
 
 ### 21.6 执行记录（可复现）
 
@@ -992,6 +998,52 @@ curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/                    
 ```
 
 提交：`2c31481`（已推送 `origin/main`）。推送坑：本机走 SSH 443，**沙箱里 push 需要 `danger-full-access`**（否则 `sh.exe: couldn't create signal pipe` → `Could not read from remote repository`，看起来像鉴权失败，实为沙箱禁管道）。
+
+---
+
+## 22. 路径J：单一事实源（P0-2）与文档版本收口（2026-09-14）
+
+### 22.1 做了什么
+
+建立 **`project-facts-v1.0.md`** 作为「会被多处引用的数值」的唯一索引，并把漂移的文档改回引用：
+
+- **权威源原则**：代码/配置是权威源，文档只引用不复制——
+  - 端口 → `app.go` 的 `dshPort` 常量（F1）
+  - 核心版本 → 实测 `dsh --version`（F2）
+  - 同步频率 → fork 的 `.github/workflows/sync-upstream.yml` 的 cron（F4）
+  - 跨机锁版 → `deploy.ps1` 的 `-HarnessVersion` 默认值（F10）
+  - 插件清单 → `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组（F9）
+
+### 22.2 本次勘误（都是「文档互相矛盾 / 过时」）
+
+| 事实 | 旧文档 | 实测 |
+|---|---|---|
+| 官方同步频率 | §10.5「每小时 `0 * * * *`」 vs `AGENTS.md`「每天 08:00」 | **每天 08:00 = `0 0 * * *`**（读 fork workflow 源码） |
+| 同步是否正常 | 假设正常 | ⚠️ **失败中**：Actions run 47（09-14）`failure`；run 45/46（09-12/13）`success` → `SYNC_TOKEN` 随旧 PAT 失效（P0-4） |
+| 核心版本 | 0.1.2-rc.1（多处） | **0.1.5-rc.1** |
+| 跨机锁版 | `0.1.0-rc.7`（deploy / DEPLOY / OPENCODE） | **`0.1.5-rc.1`** |
+| 版本徽标位置 | core-version README 与源码注释写「顶部右侧」 | 实际 CSS `left:12px;bottom:56px` = **左下角**（已改 README + 模板注释并 `build.mjs` 重建） |
+| clone 目标目录 | `D:\dsh-desktop` | **`D:\dsh\dsh-desktop-env`** |
+
+### 22.3 改动文件
+
+```
+project-facts-v1.0.md          # 新增：事实源索引（F1–F11 + 快照文档清单）
+AGENTS.md                      # 状态行/探测语义/凭据与同步（事实源指针 + 频率勘误 + 同步失败告警）
+HANDOVER.md                    # §10.5 频率勘误、§15.7 复核注、§21.3 关闭待办、§21.5 收口说明、本节
+README.md                      # v1.1：版本/端口/插件数(2→4)/§14 引用/clone 与构建路径 + 事实源指针
+DEPLOY.md                      # clone 路径 + 锁版 0.1.5-rc.1 + 构建产物说明
+deploy.ps1                     # 默认 -HarnessVersion 0.1.5-rc.1（F10 权威源）
+setup.ps1                      # 用法注释同步
+OPENCODE_PROMPT.md             # v1.1：路径 / 锁版 / 插件数(2→4，4 个 patch 条目) / 验收清单
+plugins/dsh-client-ui-plugin-core-version/{README.md,src/bundle.template.js,lib/client.js,lib/index.js}
+                               # 版本快照 0.1.5-rc.1 + 位置描述改左下角（重建 bundle 并复测冒烟）
+```
+
+### 22.4 当时的剩余 P0
+
+- **P0-3 壳加固**：端口保留段自动避让（winnat）、崩溃自愈退避、`dsh.log` 大小上限。
+- **P0-4 fork 处置 + `SYNC_TOKEN`**：fork 只留官方镜像职责；`SYNC_TOKEN` 需用户**重新生成 PAT（repo + workflow scope）**并更新 fork 的 Actions secret，否则每天 08:00 的同步会继续失败（见 §22.2）。
 
 
 

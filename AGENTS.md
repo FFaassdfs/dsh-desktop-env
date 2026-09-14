@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-14）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**；核心 = **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm，2026-09-10 安装；旧记的 `0.1.2-rc.1` 已过时，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 半区在 0.1.5 实例实测活跃（§21.3），client 半区待目视确认。
+> **当前状态（2026-09-14）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**；核心 = **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm，2026-09-10 安装；旧记的 `0.1.2-rc.1` 已过时，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 半区在 0.1.5 实例实测活跃、**client 半区 4 个界面 2026-09-14 目视确认全部可见**（§21.3）。
 
 ## 开工必做
 
@@ -33,7 +33,7 @@
 
 - 沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`（schannel 凭据库被拒）→ 用 `danger-full-access` 重试
 - 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`
-  - 🔴 **返回 `401` = 正常**（0.1.2-rc.1+ 浏览器认证门，裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
+  - 🔴 **返回 `401` = 正常**（0.1.2-rc.1 起的浏览器认证门，本机 0.1.5-rc.1；裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
 - 改 Go 后端后 `wails build -s`（跳过前端 vite，免提权）；**改前端/绑定或首次构建必须完整 `wails build`**；产物要拷到**应用区** `D:\dsh\app\current\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
 - 推送 `.github/workflows/*` 文件：`GITHUB_TOKEN` 推不了 → 需带 `workflow` scope 的凭据（fork 的 `SYNC_TOKEN` **可能已随旧 PAT 失效**，见 `HANDOVER.md` §20.7）
 - 沙箱里 Go 构建：把 `GOCACHE`/`GOTMPDIR` 重定向到 `.cache/`，否则写 `%APPDATA%\go-build` 被拒
@@ -42,5 +42,6 @@
 ## 凭据与同步
 
 - 凭据文件：`.work\secrets.local.md`（**被 .gitignore 忽略，永不提交**）；推送/同步细节见 `HANDOVER.md` §10.3 / §10.5 / §20.7
+- **数值以单一事实源为准**：端口 / 核心版本 / 探测语义 / 同步频率 / 路径 / 插件清单见 **`project-facts-v1.0.md`**（各文档只引用，不复制）
 - **推送用 SSH（2026-09-14 起）**：旧 PAT 已失效；remote 为 `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`（22 端口不通，走 443）
-- 官方同步：**每天 08:00（北京时间 = UTC 00:00，cron `0 0 * * *`）**自动跑（fork 的 `sync-upstream.yml`，见 `HANDOVER.md` §10.5）；手动检查用 `pwsh -File .work\sync-upstream.ps1`（需先自行 clone fork）
+- 官方同步：**每天 08:00（北京时间 = UTC 00:00，cron `0 0 * * *`）**自动跑（fork 的 `sync-upstream.yml`，事实源见 `project-facts-v1.0.md` F4；**`HANDOVER.md` §10.5 旧记「每小时」有误，已更正**）；⚠️ 2026-09-14 起该同步**失败中**（`SYNC_TOKEN` 随旧 PAT 失效，见 §20.7）；手动检查用 `pwsh -File .work\sync-upstream.ps1`（需先自行 clone fork）

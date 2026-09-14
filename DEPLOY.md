@@ -1,7 +1,7 @@
 # DEPLOY.md — 用 opencode 在家部署 dsh-desktop 环境
 
 > 目标机器：家里的 Windows 电脑。执行者：opencode（或人工逐条执行）。
-> 完成后得到与本开发机一致的：dsh harness（锁版本）+ 两个自定义插件 +（可选）dsh-desktop 桌面壳。
+> 完成后得到与本开发机一致的：dsh harness（锁版本）+ 4 个自定义插件 +（可选）dsh-desktop 桌面壳。
 > 所有命令在 PowerShell 中执行（pwsh 7 或 Windows PowerShell 5.1 均可）。
 
 ## 0. 开场（执行者必读）
@@ -12,11 +12,11 @@
 ## 1. 获取代码
 
 ```powershell
-git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh-desktop
-cd D:\dsh-desktop
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh\dsh-desktop-env
+cd D:\dsh\dsh-desktop-env
 ```
 
-**验证**：`Test-Path D:\dsh-desktop\setup.ps1` 返回 `True`。
+**验证**：`Test-Path D:\dsh\dsh-desktop-env\setup.ps1` 返回 `True`。
 
 ## 2. 检查工具链（缺失才装，见 §3）
 
@@ -59,11 +59,11 @@ $env:Path += ";$env:USERPROFILE\go\bin"   # 当前会话；长期加用户 PATH
 ## 4. 一键部署
 
 ```powershell
-cd D:\dsh-desktop
+cd D:\dsh\dsh-desktop-env
 # 推荐（PowerShell 7）：
-pwsh -File deploy.ps1 -HarnessVersion 0.1.0-rc.7
+pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1
 # 或系统自带（Windows PowerShell 5.1）：
-powershell -File deploy.ps1 -HarnessVersion 0.1.0-rc.7
+powershell -File deploy.ps1 -HarnessVersion 0.1.5-rc.1
 ```
 
 - 不需要桌面壳：加 `-SkipDesktopBuild`
@@ -84,8 +84,8 @@ powershell -File deploy.ps1 -HarnessVersion 0.1.0-rc.7
 ## 6. 启动并验收
 
 ```powershell
-# 桌面壳方式
-D:\dsh-desktop\build\bin\dsh-desktop.exe
+# 桌面壳方式（构建产物；正式运行请拷到应用区 D:\dsh\app\current\）
+D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe
 # 或纯 Web 方式
 dsh web
 ```
@@ -116,9 +116,9 @@ dsh web
 本机（开发机）推送更新后，家里：
 
 ```powershell
-cd D:\dsh-desktop
+cd D:\dsh\dsh-desktop-env
 git pull
-pwsh -File deploy.ps1 -HarnessVersion 0.1.0-rc.7   # 或 powershell -File deploy.ps1 ...
+pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1   # 或 powershell -File deploy.ps1 ...
 ```
 
-> 版本号两台机器保持一致（当前锁定 `0.1.0-rc.7`；升级时两台的 `-HarnessVersion` 一起改）。
+> 版本号两台机器保持一致（当前锁定 `0.1.5-rc.1`；升级时两台的 `-HarnessVersion` 一起改）。权威源见 `project-facts-v1.0.md` F10。

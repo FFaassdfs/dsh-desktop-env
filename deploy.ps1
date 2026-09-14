@@ -6,14 +6,14 @@
 #
 # Usage:
 #   pwsh -File deploy.ps1                                  # check + full deploy
-#   pwsh -File deploy.ps1 -HarnessVersion 0.1.0-rc.7       # pin dsh version
+#   pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1       # pin dsh version
 #   pwsh -File deploy.ps1 -SkipDesktopBuild                # plugins only
 #   pwsh -File deploy.ps1 -CheckOnly                       # dry run, no writes
 #
 # NOTE: ASCII-only output on purpose (Windows PowerShell 5.1 misreads
 # BOM-less UTF-8 and garbles CJK in scripts).
 param(
-  [string]$HarnessVersion = "0.1.0-rc.7",
+  [string]$HarnessVersion = "0.1.5-rc.1",
   [switch]$SkipDesktopBuild,
   [switch]$CheckOnly
 )

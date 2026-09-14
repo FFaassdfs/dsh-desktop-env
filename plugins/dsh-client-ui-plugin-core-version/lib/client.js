@@ -2,10 +2,10 @@
 // Built from this template by build.mjs (currently a verbatim copy step).
 //
 // What it does:
-//  - Mounts a tiny read-only badge in a fixed top-right corner of the Web GUI
-//    showing the running core dsh version. Same proven technique as the
-//    project-explorer panel (own fixed container via createRoot, no dependency
-//    on official slot semantics).
+//  - Mounts a tiny read-only badge in a fixed bottom-left corner of the Web GUI
+//    (left:12px; bottom:56px, above the settings entry) showing the running core
+//    dsh version. Same proven technique as the project-explorer panel (own fixed
+//    container via createRoot, no dependency on official slot semantics).
 //  - The badge fetches the version from the host route
 //    /plugin-core-version/version once, with gentle retries; renders nothing
 //    when it cannot be fetched.

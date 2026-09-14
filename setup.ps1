@@ -11,7 +11,7 @@
 #
 # Usage:
 #   pwsh -File setup.ps1                                # full setup
-#   pwsh -File setup.ps1 -HarnessVersion 0.1.0-rc.7     # pin dsh version
+#   pwsh -File setup.ps1 -HarnessVersion 0.1.5-rc.1     # pin dsh version
 #   pwsh -File setup.ps1 -SkipDesktopBuild              # plugins only
 #   pwsh -File setup.ps1 -CheckOnly                     # dry run, writes nothing
 #
