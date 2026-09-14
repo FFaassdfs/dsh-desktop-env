@@ -69,6 +69,10 @@ func (a *App) startDsh() error {
 	if mkErr := os.MkdirAll(filepath.Dir(logPath), 0o755); mkErr != nil {
 		logPath = os.DevNull
 	}
+	if logPath != os.DevNull {
+		// Keep the captured log bounded across launches (shell append-only).
+		_ = rotateIfTooBig(logPath, maxDshLogBytes)
+	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		logFile = nil

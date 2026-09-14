@@ -29,22 +29,39 @@ const (
 	waitTimeout    = 30 * time.Second
 	pollInterval   = 300 * time.Millisecond
 	updateInterval = 24 * time.Hour
+
+	// 日志上限：超过就轮转成 "<name>.1"，避免壳长期运行时日志无限增长。
+	maxDshLogBytes   = 5 << 20 // dsh.log：5 MiB
+	maxDebugLogBytes = 1 << 20 // debug.log：1 MiB
+	// 报错时从文件尾最多读这么多字节（不再整文件读入内存）。
+	tailReadBytes = 64 << 10 // 64 KiB
+	tailLines     = 20
+
+	// 崩溃自愈：连续自动重启的间隔按 3 倍退避（15s → 45s → 120s 封顶），
+	// 连续 maxRestarts 次仍起不来就停下交给用户；一旦稳定运行
+	// stableResetPeriod 就把计数清零，避免偶发崩溃累计耗尽预算。
+	monitorInterval    = 5 * time.Second
+	maxRestarts        = 3
+	restartBackoffBase = 15 * time.Second
+	restartBackoffMax  = 2 * time.Minute
+	stableResetPeriod  = 5 * time.Minute
 )
 
 type App struct {
-	ctx        context.Context
-	winCtx     context.Context
-	cmd        *exec.Cmd
-	owns       bool
-	mu         sync.Mutex
-	booting    bool
-	booted     bool
-	webURL     string
-	update     string
-	exited     bool
-	exitErr    error
-	restarts   int
-	monitorOn  bool
+	ctx       context.Context
+	winCtx    context.Context
+	cmd       *exec.Cmd
+	owns      bool
+	mu        sync.Mutex
+	booting   bool
+	booted    bool
+	bootedAt  time.Time
+	webURL    string
+	update    string
+	exited    bool
+	exitErr   error
+	restarts  int
+	monitorOn bool
 }
 
 func NewApp() *App {
@@ -62,7 +79,8 @@ func (a *App) domReady(ctx context.Context) {
 }
 
 // debugLog appends a diagnostic line to the dsh-desktop debug log so the
-// bootstrap path can be inspected without a visible console.
+// bootstrap path can be inspected without a visible console. The file is
+// rotated once it passes maxDebugLogBytes.
 func debugLog(format string, args ...interface{}) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -72,6 +90,7 @@ func debugLog(format string, args ...interface{}) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
+	_ = rotateIfTooBig(path, maxDebugLogBytes)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return
@@ -134,7 +153,7 @@ func (a *App) bootstrap(ctx context.Context) {
 	}
 	a.mu.Lock()
 	a.booted = true
-	a.restarts = 0
+	a.bootedAt = time.Now()
 	a.mu.Unlock()
 	debugLog("bootstrap: ready")
 	a.emitStatus("DeepSeek Harness 已启动")
@@ -235,26 +254,19 @@ func (a *App) childExited() (bool, error) {
 }
 
 // tailDshLog returns the last few lines of dsh web's stderr log so a startup
-// failure can surface the real cause (e.g. EACCES on a reserved port).
+// failure can surface the real cause (e.g. EACCES on a reserved port). It reads
+// only the tail of the file, so a huge log cannot stall the error path.
 func (a *App) tailDshLog() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return ""
 	}
 	p := filepath.Join(dir, "dsh-desktop", "dsh.log")
-	data, err := os.ReadFile(p)
+	text, err := tailFile(p, tailReadBytes)
 	if err != nil {
 		return ""
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	const n = 20
-	if len(lines) == 0 {
-		return ""
-	}
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return strings.Join(lines, "\n")
+	return lastLines(text, tailLines)
 }
 
 // adoptSpawn records the started process and starts its output/exit watchers.
@@ -280,37 +292,81 @@ func (a *App) adoptSpawn(cmd *exec.Cmd, stdout io.Reader) {
 	}()
 }
 
-// healthMonitor watches the owned dsh web process and restarts it (up to 3
-// times) if it exits unexpectedly. This recovers from transient crashes without
-// user intervention, but stops after repeated failures so a persistently
-// broken port (e.g. reserved by Hyper-V/WSL) does not restart in a tight loop.
+// restartBackoff returns the wait before the n-th consecutive auto-restart
+// (n >= 1): 15s, 45s, then capped at 2m. Backoff keeps a persistently broken
+// port (e.g. reserved by Hyper-V/WSL/winnat) from restarting in a tight loop.
+func restartBackoff(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	d := restartBackoffBase
+	for i := 1; i < n; i++ {
+		if d >= restartBackoffMax {
+			return restartBackoffMax
+		}
+		d *= 3
+	}
+	if d > restartBackoffMax {
+		return restartBackoffMax
+	}
+	return d
+}
+
+// healthMonitor watches the owned dsh web process. When it exits unexpectedly it
+// restarts it with exponential backoff, up to maxRestarts consecutive attempts;
+// that budget is cleared again after the service has stayed up for
+// stableResetPeriod. Previously a failed auto-restart left the shell dormant
+// (booted stayed false, so the monitor skipped forever) and a merely slow crash
+// loop could burn the budget without backoff.
 func (a *App) healthMonitor() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(monitorInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		a.mu.Lock()
 		owns := a.owns
 		booted := a.booted
+		booting := a.booting
 		restarts := a.restarts
+		bootedAt := a.bootedAt
 		a.mu.Unlock()
-		if !owns || !booted {
+		if !owns || booting {
 			continue
 		}
 		exited, _ := a.childExited()
 		if !exited {
+			// 进程还在：稳定运行足够久就把连续重启计数清零。
+			if booted && restarts > 0 && !bootedAt.IsZero() && time.Since(bootedAt) >= stableResetPeriod {
+				a.mu.Lock()
+				a.restarts = 0
+				a.mu.Unlock()
+				debugLog("healthMonitor: stable for %s, restart budget reset", stableResetPeriod)
+				a.emitStatus("服务已稳定运行，重启计数已重置")
+			}
 			continue
 		}
+		// 子进程已退出：掉线，或上一次自动重启的 bootstrap 没能就绪。
 		a.mu.Lock()
 		a.restarts++
 		restarts = a.restarts
 		a.mu.Unlock()
-		if restarts > 3 {
+		if restarts > maxRestarts {
 			a.emitStatus("服务反复启动失败，已停止自动重启")
-			a.fail(a.winCtx, "服务进程反复退出，请检查端口 "+dshPort+" 是否被占用或系统保留（如 Hyper-V/WSL/winnat）。\n\n"+a.tailDshLog())
+			a.fail(a.winCtx, fmt.Sprintf("服务进程连续 %d 次自动重启仍失败，已停止自动重启。\n请检查端口 %s 是否被占用或系统保留（如 Hyper-V/WSL/winnat），然后点「重启服务」。\n\n%s", maxRestarts, dshPort, a.tailDshLog()))
 			return
 		}
-		a.emitStatus("服务掉线，正在自动重启…")
-		a.Restart()
+		delay := restartBackoff(restarts)
+		debugLog("healthMonitor: child exited, restart %d/%d in %s", restarts, maxRestarts, delay)
+		a.emitStatus(fmt.Sprintf("服务掉线，%s 后自动重启（第 %d/%d 次）", delay, restarts, maxRestarts))
+		time.Sleep(delay)
+		// 退避期间用户可能已经手动重启，那就不要再插手。
+		a.mu.Lock()
+		stillOwned := a.owns
+		nowBooting := a.booting
+		a.mu.Unlock()
+		if !stillOwned || nowBooting {
+			continue
+		}
+		a.restartOwned()
 	}
 }
 
@@ -343,25 +399,40 @@ func (a *App) fail(ctx context.Context, msg string) {
 
 // ---- bound methods (called from the status panel) ----
 
-// Retry re-runs bootstrap after a startup failure.
+// Retry re-runs bootstrap after a startup failure. User-initiated, so the
+// consecutive-restart budget is cleared first.
 func (a *App) Retry() {
+	a.mu.Lock()
+	a.restarts = 0
+	a.mu.Unlock()
 	a.startBootstrap(a.winCtx)
 }
 
 // Restart restarts the owned dsh web process (picks up a freshly installed
-// harness version) and re-bootstraps.
+// harness version) and re-bootstraps. User-initiated, so the restart budget is
+// cleared first.
 func (a *App) Restart() {
 	a.mu.Lock()
-	wasBooted := a.booted
+	a.restarts = 0
+	a.mu.Unlock()
+	a.restartOwned()
+}
+
+// restartOwned kills the owned process (if any) and re-bootstraps. Kept separate
+// from Restart so the health monitor can restart without clearing the budget it
+// is accounting for.
+func (a *App) restartOwned() {
+	a.mu.Lock()
 	a.booting = false
 	a.booted = false
+	a.bootedAt = time.Time{}
 	a.webURL = ""
 	cmd := a.cmd
 	owns := a.owns
 	a.cmd = nil
 	a.owns = false
 	a.mu.Unlock()
-	if wasBooted && owns && cmd != nil && cmd.Process != nil {
+	if owns && cmd != nil && cmd.Process != nil {
 		exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
 	}
 	a.startBootstrap(a.winCtx)

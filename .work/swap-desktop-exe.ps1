@@ -1,77 +1,121 @@
-# Swap the freshly built shell exe (fork desktop\build\bin) into the canonical
-# launch path (D:\opencode\001\dsh-desktop\build\bin) and relaunch. Runs as a
-# one-shot Scheduled Task so it survives the harness dying when the shell
-# closes. Logs to .work/rebuild-desktop.log.
+# swap-desktop-exe.ps1 - replace the running shell exe with a freshly built one
+# and relaunch it.
+#
+# WHY a separate script: the launcher owns the `dsh web` process that serves the
+# current GUI session, so closing/replacing it from inside a harness session kills
+# the session that would be doing the swap. Run this as a one-shot Scheduled Task
+# (its process is owned by Task Scheduler and survives the session dying), or from
+# a terminal that is not a child of the shell.
+#
+# Usage:
+#   pwsh -File .work\swap-desktop-exe.ps1                        # swap + relaunch
+#   pwsh -File .work\swap-desktop-exe.ps1 -DelaySeconds 5        # shorter wait
+#   pwsh -File .work\swap-desktop-exe.ps1 -NoRelaunch            # swap only
+#
+# ASCII-only on purpose (Windows PowerShell 5.1 misreads BOM-less UTF-8 scripts).
+param(
+  [string]$Source = "D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe",
+  [string]$Staged = "D:\dsh\app\current\dsh-desktop.new.exe",
+  [string]$Target = "D:\dsh\app\current\dsh-desktop.exe",
+  [int]$DelaySeconds = 20,
+  [switch]$NoRelaunch
+)
 $ErrorActionPreference = "Continue"
 
-$log    = "D:\opencode\001\dsh-desktop\.work\rebuild-desktop.log"
-$oldExe = "D:\opencode\001\dsh-desktop\build\bin\dsh-desktop.exe"
-$newExe = "D:\opencode\001\dsh-desktop\.work\deepseek-harness\desktop\build\bin\dsh-desktop.exe"
+$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$log = Join-Path $repoRoot ".work\swap-desktop.log"
 
 function Log($m) {
-  Add-Content -Path $log -Value ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $m)
+  $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m
+  Write-Host $line
+  try { Add-Content -Path $log -Value $line -ErrorAction SilentlyContinue } catch {}
 }
 
-Log "=== swap task started ==="
-Start-Sleep -Seconds 20
+# Prefer the freshly built artifact; fall back to the staged copy (used when the
+# exe could not be staged because the running shell holds the lock).
+if (-not (Test-Path $Source)) {
+  if (Test-Path $Staged) {
+    Log "source missing, using staged exe: $Staged"
+    $Source = $Staged
+  } else {
+    Log "FATAL: neither source ($Source) nor staged ($Staged) exists"
+    exit 1
+  }
+}
+$newInfo = Get-Item $Source
+Log "new exe: $($newInfo.FullName) ($($newInfo.Length) bytes, $($newInfo.LastWriteTime))"
+if ($newInfo.Length -lt 1MB) {
+  Log "FATAL: exe suspiciously small, refusing to swap"
+  exit 1
+}
 
-# close the running (old) shell gracefully; fallback force
+Log "waiting $DelaySeconds s before closing the shell"
+Start-Sleep -Seconds $DelaySeconds
+
+# Close the running shell gracefully, then force if needed.
 $shell = Get-Process -Name "dsh-desktop" -ErrorAction SilentlyContinue
 if ($shell) {
   Log "closing shell PID(s): $($shell.Id -join ',')"
   foreach ($p in $shell) { $null = $p.CloseMainWindow() }
   Start-Sleep -Seconds 6
-  Get-Process -Name "dsh-desktop" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  $left = Get-Process -Name "dsh-desktop" -ErrorAction SilentlyContinue
+  if ($left) {
+    Log "force-stopping PID(s): $($left.Id -join ',')"
+    $left | Stop-Process -Force -ErrorAction SilentlyContinue
+  }
   Start-Sleep -Seconds 2
 } else {
   Log "no running shell found"
 }
 
-# make sure 3080 is free so the relaunched shell owns a fresh dsh web
-try {
-  Get-NetTCPConnection -LocalPort 3080 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
-    Log "freeing 3080: killing PID $($_.OwningProcess)"
-    Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue
-  }
-} catch {
-  Log "3080 cleanup skipped: $_"
-}
-
-# wait for the old exe file lock to release
+# Wait for the target exe lock to be released (Windows holds it while running).
 $deadline = (Get-Date).AddSeconds(60)
+$free = $false
 while ((Get-Date) -lt $deadline) {
   try {
-    $fs = [System.IO.File]::Open($oldExe, 'Open', 'ReadWrite', 'None')
+    $fs = [System.IO.File]::Open($Target, 'Open', 'ReadWrite', 'None')
     $fs.Close()
+    $free = $true
     break
   } catch {
     Start-Sleep -Seconds 2
   }
 }
-Log "old exe lock released"
-
-# swap in the new exe
-if (-not (Test-Path $newExe)) {
-  Log "FATAL: new exe missing at $newExe"
-  Start-Process -FilePath $oldExe
+if (-not $free) {
+  Log "FATAL: target exe still locked after 60 s: $Target"
+  if (-not $NoRelaunch) { Start-Process -FilePath $Target }
   exit 1
 }
-Copy-Item -Path $newExe -Destination $oldExe -Force
-Log "copied new exe -> $oldExe"
+Log "target exe lock released"
 
-# verify the copied exe carries the menu string
-$bytes = [System.IO.File]::ReadAllBytes($oldExe)
-$needle = [System.Text.Encoding]::UTF8.GetBytes("重新加载")
-$found = $false
-for ($i = 0; $i -le $bytes.Length - $needle.Length; $i++) {
-  $match = $true
-  for ($j = 0; $j -lt $needle.Length; $j++) {
-    if ($bytes[$i + $j] -ne $needle[$j]) { $match = $false; break }
-  }
-  if ($match) { $found = $true; break }
+# Keep a backup of the replaced build next to it.
+try {
+  Copy-Item -Path $Target -Destination ($Target + ".bak") -Force
+  Log "backup written: $Target.bak"
+} catch {
+  Log "backup skipped: $_"
 }
-Log "copied exe contains menu string: $found"
 
-Start-Process -FilePath $oldExe
-Log "shell relaunched"
-Log "=== swap task finished ==="
+try {
+  Copy-Item -Path $Source -Destination $Target -Force
+  Log "swapped in: $Source -> $Target"
+} catch {
+  Log "FATAL: copy failed: $_"
+  if (-not $NoRelaunch) { Start-Process -FilePath $Target }
+  exit 1
+}
+
+$after = Get-Item $Target
+if ($after.Length -ne $newInfo.Length) {
+  Log "WARNING: size mismatch after copy ($($after.Length) vs $($newInfo.Length))"
+} else {
+  Log "size verified: $($after.Length) bytes"
+}
+
+if ($NoRelaunch) {
+  Log "done (no relaunch requested)"
+  exit 0
+}
+Start-Process -FilePath $Target
+Log "shell relaunched; the new launcher will start (or adopt) dsh web on port 43080"
+Log "=== swap finished ==="
