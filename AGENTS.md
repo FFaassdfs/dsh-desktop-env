@@ -32,10 +32,12 @@
 ## 高频坑（详情见 HANDOVER.md §10.7，共 18 条）
 
 - 沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`（schannel 凭据库被拒）→ 用 `danger-full-access` 重试
-- 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`（返回 200 即正常）
-- 改 Go 后端后 `wails build -s`（跳过前端 vite，免 EPERM 提权）；产物要**拷贝到启动路径** `build\bin\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
-- 推送 `.github/workflows/*` 文件：`GITHUB_TOKEN` 推不了 → 用带 `workflow` scope 的 PAT（已存为 secret `SYNC_TOKEN`）
+- 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`
+  - 🔴 **返回 `401` = 正常**（0.1.2-rc.1+ 浏览器认证门，裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
+- 改 Go 后端后 `wails build -s`（跳过前端 vite，免提权）；**改前端/绑定或首次构建必须完整 `wails build`**；产物要拷到**应用区** `D:\dsh\app\current\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
+- 推送 `.github/workflows/*` 文件：`GITHUB_TOKEN` 推不了 → 需带 `workflow` scope 的凭据（fork 的 `SYNC_TOKEN` **可能已随旧 PAT 失效**，见 `HANDOVER.md` §20.7）
 - 沙箱里 Go 构建：把 `GOCACHE`/`GOTMPDIR` 重定向到 `.cache/`，否则写 `%APPDATA%\go-build` 被拒
+- **本机 git 推送走 SSH 443**（`github.com:22` 不通；旧 PAT 已失效）：remote = `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`
 
 ## 凭据与同步
 
