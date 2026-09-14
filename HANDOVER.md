@@ -1,9 +1,22 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
+
+## 🟢 当前状态（2026-09-14 迁移后，每会话先看这里）
+
+| 项 | 值 |
+|---|---|
+| 源码区（唯一权威） | `D:\dsh\dsh-desktop-env`（本仓库） |
+| 应用区（exe） | `D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\`） |
+| 旧工作区 | `D:\opencode\001\dsh-desktop` **已冻结**（见其 `FROZEN.md`），勿再写入 |
+| 当前壳 | **launcher @ 43080**（状态面板 + node 直启 + 带 token URL 交系统浏览器） |
+| 核心版本 | `@deepseek-ai/dsh 0.1.2-rc.1`（全局 npm，= npm `latest`） |
+| 进行中 | 路径E「模型能力」插件（**WIP，自另一会话迁移，未验证**）；版本徽标插件 `dsh-client-ui-plugin-core-version`（已装可用） |
+| 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
+| 下一步（建议） | ①验证两个插件并纳入 `scripts/setup-plugins.mjs` ②HANDOVER 瘦身 + 单一事实源（端口/版本/同步频率）③壳 P0：端口保留段避让、崩溃退避 + 日志上限 |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -822,5 +835,51 @@ litellm-auto-router-setup-v1.0.md              # 正式方案文档：架构/con
 ### 19.3 已落地
 
 - 本节即为本约定在项目层的记录；**全局约定已写入 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md`（权威副本 + 安装副本）**，对所有项目所有会话生效。
+
+---
+
+## 20. 工作区迁移与应用区分离（2026-09-14）
+
+### 20.1 为什么迁
+
+多会话在同一工作区并发写同一批文件（`AGENTS.md`/`HANDOVER.md` 反复被并行改写，见 §19 事故）；且**壳 exe 与源码同目录**，清理/重建工作区会影响正在运行的应用。2026-09-14 决定：**换新工作区 + 源码区与应用区分离**。
+
+### 20.2 迁移结果
+
+| 区域 | 路径 | 说明 |
+|---|---|---|
+| 源码（唯一权威） | `D:\dsh\dsh-desktop-env` | 自 env 仓库克隆（origin=GitHub）；HEAD = `460b544` + 迁移 WIP 提交 `f51e7c3` |
+| 应用（exe） | `D:\dsh\app\current\dsh-desktop.exe` | 版本化：`versions\2026-09-14\`，附 `VERSION.txt`（构建时间/源码提交/端口/核心版本） |
+| 迁移快照 | `D:\dsh\_migrate-2026-09-14` | tracked patch（49.8KB）+ fork 2 个补丁 + 未跟踪产出副本 |
+| 旧工作区 | `D:\opencode\001\dsh-desktop` | **已冻结**（`FROZEN.md`），仅作回溯 |
+
+### 20.3 带了什么 / 没带什么
+
+- **带**：4 个 tracked 改动文件（`AGENTS.md`/`HANDOVER.md`/`global/AGENTS.md`/`scripts/setup-plugins.mjs`，含另一会话**进行中**的路径E 改动）；2 个未入库插件（`core-version` 徽标、`model-capabilities` WIP）；最新文档（`vekenllm-auto-setup-v1.8.md`、`vekenllm-deepseek-v4-flash-setup-v3.5.md`、`litellm-auto-router-setup-v1.0.md`）；4 个 `.work` 脚本/测试。
+- **没带（可再生）**：`.work\deepseek-harness`（351MB fork 克隆 → 仅导出 2 个未推送提交为补丁）、`.cache`、`build`、`frontend\node_modules`（改用复制复用，免联网）、`__pycache__`、`*.bak`、临时脚本（`takeover-trigger.ps1`/`apply-new-shell.ps1`，repo 内已有正式版 `swap-desktop-exe.ps1`/`restart-desktop-shell.ps1`/`rebuild-desktop-shell.ps1`）。
+- **小事故（已修正）**：迁移中一次 `wails build` 因未指定 workdir 误在**旧工作区**执行（重复构建，无损害）；已在新工作区重新构建并部署。
+
+### 20.4 不随项目走的全局态（重要）
+
+`~\.dsh\`（DSH_HOME：profiles/已装插件/settings/凭据）、`%APPDATA%\dsh-desktop\`（config/window/dsh.log）、全局 npm `@deepseek-ai/dsh` **都不在项目内、不在迁移范围**。因此两个工作区**共用同一 DSH_HOME** → 约定「**只有一处跑 `scripts/setup-plugins.mjs`**」，否则插件安装互相覆盖。
+
+### 20.5 复现步骤（新机器 / 重建环境）
+
+```powershell
+git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh\dsh-desktop-env
+cd D:\dsh\dsh-desktop-env\frontend; npm install; cd ..
+wails build                                    # 产物 build\bin\dsh-desktop.exe
+mkdir D:\dsh\app\current
+copy build\bin\dsh-desktop.exe D:\dsh\app\current\
+node scripts\setup-plugins.mjs                 # 装插件（幂等）
+D:\dsh\app\current\dsh-desktop.exe             # 启动壳（launcher@43080，自动开系统浏览器）
+```
+
+### 20.6 迁移后待办（建议 P0）
+
+1. **插件入库**：验证 `model-capabilities`（WIP）与 `core-version` 徽标，纳入 `scripts/setup-plugins.mjs` 并提交——`plugins/` 本就是入库目录。
+2. **单一事实源**：端口（43080）、核心版本、官方同步频率（每天 08:00）各只在一处定义，其余文档引用。
+3. **壳 P0 加固**：端口保留段自动避让（winnat）、崩溃自愈退避 + `dsh.log` 大小上限。
+4. **fork 处置**：仅保留「官方镜像」职责；其 `desktop/` 内嵌壳**已废弃**。补丁 0002（外部实例掉线自动接管）是 fork 壳唯一未被本仓库吸收的能力，需要时从 `.work\migration-2026-09-14\` 择取。
 
 

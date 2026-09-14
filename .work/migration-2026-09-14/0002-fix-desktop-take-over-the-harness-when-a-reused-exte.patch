@@ -1,0 +1,85 @@
+From 402fe67b02203d5e60e2d6a9bde9f2b336d8a613 Mon Sep 17 00:00:00 2001
+From: FFaassdfs <aassdfs@qq.com>
+Date: Mon, 7 Sep 2026 08:45:48 +0800
+Subject: [PATCH 2/2] fix(desktop): take over the harness when a reused
+ external instance dies
+
+When the shell reused an externally started dsh web it could never learn
+its launch token, so the window stayed on the auth notice until that
+instance was gone. recoverHarness now adopts: once the port actually
+drops it spawns its own instance (token URL lands in the log) and
+navigates the window into the GUI. Also raises waitTimeout to 60s for
+cold first boots.
+
+local only; not pushed.
+---
+ desktop/app.go | 29 +++++++++++++++++++++--------
+ 1 file changed, 21 insertions(+), 8 deletions(-)
+
+diff --git a/desktop/app.go b/desktop/app.go
+index 353975b723..14c47320a9 100644
+--- a/desktop/app.go
++++ b/desktop/app.go
+@@ -13,7 +13,7 @@ import (
+ )
+ 
+ const (
+-	waitTimeout         = 30 * time.Second
++	waitTimeout         = 60 * time.Second
+ 	pollInterval        = 300 * time.Millisecond
+ 	healthCheckInterval = 5 * time.Second
+ )
+@@ -159,17 +159,23 @@ func (a *App) startHealthMonitor(ctx context.Context) {
+ 	}()
+ }
+ 
+-// recoverHarness 检测到端口掉线后，尝试重启自拉起的 harness 并重连。
++// recoverHarness 检测到端口掉线后拉起 harness 并接管：
++// 自拉实例崩溃 → 重启并重连；复用的外部实例掉线 → 同样接管拉起自己的实例
++// （不杀任何现存进程，仅在端口已死时拉起；dsh web 的 token URL 会打进日志，
++// 接管后窗口即可直达 GUI）。
+ func (a *App) recoverHarness(ctx context.Context) {
+ 	a.mu.Lock()
+-	if a.shuttingDown || a.recovering || !a.owns {
++	if a.shuttingDown || a.recovering {
+ 		a.mu.Unlock()
+-		if !a.owns && !a.shuttingDown {
+-			runtime.EventsEmit(ctx, "dsh-disconnected", "harness 连接已断开")
+-			notify(ctx, "dsh-disconnected", "DeepSeek Harness", "harness 连接已断开")
+-		}
+ 		return
+ 	}
++	owns := a.owns
++	a.mu.Unlock()
++	if !owns {
++		runtime.EventsEmit(ctx, "dsh-disconnected", "harness 连接已断开")
++		notify(ctx, "dsh-disconnected", "DeepSeek Harness", "harness 连接已断开")
++	}
++	a.mu.Lock()
+ 	a.recovering = true
+ 	a.mu.Unlock()
+ 	defer func() {
+@@ -187,12 +193,19 @@ func (a *App) recoverHarness(ctx context.Context) {
+ 		a.failWithLog(ctx, "harness 已断开，重启失败：\n"+err.Error())
+ 		return
+ 	}
++	a.mu.Lock()
++	a.owns = true
++	a.mu.Unlock()
+ 	if !a.waitReady(waitTimeout) {
+ 		a.failWithLog(ctx, "harness 重启超时，请重试")
+ 		return
+ 	}
+ 	a.navigateToWebUI(ctx)
+-	notify(ctx, "dsh-restarted", "DeepSeek Harness", "harness 已崩溃并自动重启")
++	if owns {
++		notify(ctx, "dsh-restarted", "DeepSeek Harness", "harness 已崩溃并自动重启")
++	} else {
++		notify(ctx, "dsh-takeover", "DeepSeek Harness", "外部实例已停止，桌面壳已接管并重启")
++	}
+ }
+ 
+ func (a *App) shutdown(ctx context.Context) {
+-- 
+2.53.0.windows.2
+

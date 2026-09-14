@@ -1,6 +1,8 @@
 # dsh-desktop 项目默认预设
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
+>
+> **当前状态（2026-09-14）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**；核心 = `@deepseek-ai/dsh 0.1.2-rc.1`（全局 npm）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；进行中：路径E「模型能力」插件（WIP，自另一会话迁移，未验证）。
 
 ## 开工必做
 
@@ -17,9 +19,15 @@
 
 ## 权威源码位置（别改错）
 
-- **桌面壳源码**：`.work\deepseek-harness\desktop\`（改桌面壳只改这里；本目录根下的 `app.go`/`main.go` 等是 08/14 旧副本，已废弃）
-- **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等）：**只读，不要改**——会被官方同步覆盖，改了也白做
-- fork 本地克隆：`.work\deepseek-harness\`（git 仓库，`origin`=你的 fork，`upstream`=官方）
+> ⚠️ **2026-09-14 迁移后更新**：壳源码权威位置已变更，旧记录（`.work\deepseek-harness\desktop\`）**作废**。
+
+- **桌面壳源码（唯一权威）**：**本仓库根目录**——`app.go`、`main.go`、`dsh_windows.go`、`dsh_other.go`、`windowstate.go`、`frontend/`（launcher：状态面板 + node 直启 + token 交系统浏览器）
+  - 当前形态：**启动器（端口 43080）**，真正的 dsh 界面由**系统浏览器**打开（见 `HANDOVER.md` §14）
+- **应用产物（与源码分离）**：`D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\<日期>\`）
+  - 改壳后：`wails build` → 把 `build\bin\dsh-desktop.exe` 拷到 `D:\dsh\app\current\`
+- **旧工作区 `D:\opencode\001\dsh-desktop` 已冻结**（见其 `FROZEN.md`）：**不要再写入/提交**
+- **fork 本地克隆不在本工作区**：`.work\deepseek-harness` 未迁移；fork 仅作官方镜像用，历史补丁存 `.work\migration-2026-09-14\`
+- **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等，若日后自行 clone）：**只读，不要改**——会被官方同步覆盖
 
 ## 高频坑（详情见 HANDOVER.md §10.7，共 18 条）
 
@@ -33,4 +41,4 @@
 
 - GitHub PAT、同步机制、构建命令：见 `HANDOVER.md` §10.3 / §10.5 / §10.6
 - PAT 明文在 HANDOVER.md 里，**不要提交到任何 git 仓库**
-- 官方同步：GitHub Action 每小时自动跑（`.github/workflows/sync-upstream.yml`）；手动检查用 `pwsh -File .work\sync-upstream.ps1`
+- 官方同步：**每天 08:00（北京时间 = UTC 00:00，cron `0 0 * * *`）**自动跑（fork 的 `sync-upstream.yml`，见 `HANDOVER.md` §10.5）；手动检查用 `pwsh -File .work\sync-upstream.ps1`（需先自行 clone fork）

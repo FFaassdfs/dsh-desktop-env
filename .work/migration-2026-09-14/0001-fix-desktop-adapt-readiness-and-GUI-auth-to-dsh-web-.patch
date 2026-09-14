@@ -1,0 +1,209 @@
+From 3aa204a7bf7bdf72994bc3cd9b104ab6877c45b2 Mon Sep 17 00:00:00 2001
+From: FFaassdfs <aassdfs@qq.com>
+Date: Mon, 7 Sep 2026 08:28:59 +0800
+Subject: [PATCH 1/2] fix(desktop): adapt readiness and GUI auth to dsh web
+ token gate
+
+dsh web 0.1.2-rc.1+ rejects unauthenticated requests with 401, so the
+old 200-only readiness check always timed out and the WebView could not
+enter the GUI.
+
+- waitReady: any HTTP response (401 auth gate included) means the
+  harness is up; only connection failure keeps polling.
+- webui.go: parse the tokenized URL printed by dsh web at startup
+  (dsh web: http://127.0.0.1:PORT/?token=...) from the harness log tail
+  and navigate the WebView there; when no token is available (reusing
+  an externally started instance) fall back to the system browser.
+- webui_test.go: token parsing cases mirroring the upstream log line.
+
+local only; not pushed (pending cross-machine reconciliation).
+---
+ desktop/app.go        | 10 +++---
+ desktop/webui.go      | 77 +++++++++++++++++++++++++++++++++++++++++++
+ desktop/webui_test.go | 55 +++++++++++++++++++++++++++++++
+ 3 files changed, 137 insertions(+), 5 deletions(-)
+ create mode 100644 desktop/webui.go
+ create mode 100644 desktop/webui_test.go
+
+diff --git a/desktop/app.go b/desktop/app.go
+index 74408e6691..353975b723 100644
+--- a/desktop/app.go
++++ b/desktop/app.go
+@@ -88,7 +88,7 @@ func (a *App) bootstrap(ctx context.Context) {
+ 	a.mu.Lock()
+ 	a.booted = true
+ 	a.mu.Unlock()
+-	runtime.WindowExecJS(ctx, "window.location.href = '"+a.cfg.URL()+"';")
++	a.navigateToWebUI(ctx)
+ 	a.startHealthMonitor(ctx)
+ 	a.startLinkInterceptor(ctx)
+ }
+@@ -109,9 +109,9 @@ func (a *App) waitReady(timeout time.Duration) bool {
+ 		resp, err := client.Get(a.cfg.URL())
+ 		if err == nil {
+ 			resp.Body.Close()
+-			if resp.StatusCode == http.StatusOK {
+-				return true
+-			}
++			// dsh web 0.1.2-rc.1 起对未认证请求返回 401（认证门，服务在跑）；
++			// 任何 HTTP 应答都说明 harness 已启动，只有连接失败才算未就绪。
++			return true
+ 		}
+ 		time.Sleep(pollInterval)
+ 	}
+@@ -191,7 +191,7 @@ func (a *App) recoverHarness(ctx context.Context) {
+ 		a.failWithLog(ctx, "harness 重启超时，请重试")
+ 		return
+ 	}
+-	runtime.WindowExecJS(ctx, "window.location.href = '"+a.cfg.URL()+"';")
++	a.navigateToWebUI(ctx)
+ 	notify(ctx, "dsh-restarted", "DeepSeek Harness", "harness 已崩溃并自动重启")
+ }
+ 
+diff --git a/desktop/webui.go b/desktop/webui.go
+new file mode 100644
+index 0000000000..08c4b5da25
+--- /dev/null
++++ b/desktop/webui.go
+@@ -0,0 +1,77 @@
++package main
++
++import (
++	"context"
++	"net/url"
++	"regexp"
++	"strconv"
++	"time"
++
++	"github.com/wailsapp/wails/v2/pkg/runtime"
++)
++
++// dsh web 0.1.2-rc.1 起启用浏览器认证：启动时打印带 token 的地址，形如
++//
++//	dsh web: http://127.0.0.1:3080/?token=<token> (LAN: http://192.168.x.x:3080/?token=<token>)
++//
++// 无 token/cookie 的任何请求一律 401（正文提示 reopen the URL printed by dsh web），
++// 因此桌面壳必须携带该 token 进入 GUI：先访问 ?token= URL，服务端种下会话 cookie
++// 后 303 回跳到干净的 /。
++//
++// tokenURLPattern 只匹配回环地址上的 /?token= URL；token 为 base64url（[A-Za-z0-9_-]）。
++var tokenURLPattern = regexp.MustCompile(`https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):[0-9]+/\?token=[A-Za-z0-9_-]+`)
++
++// tokenURLFromLogText 从日志文本中取「最近一次打印且端口匹配」的带 token URL。
++// 日志按启动顺序累积；旧启动的 token 随进程死亡失效，所以从后往前找第一个端口匹配项。
++func tokenURLFromLogText(tail string, port int) string {
++	if tail == "" {
++		return ""
++	}
++	portStr := strconv.Itoa(port)
++	matches := tokenURLPattern.FindAllString(tail, -1)
++	for i := len(matches) - 1; i >= 0; i-- {
++		u, err := url.Parse(matches[i])
++		if err != nil {
++			continue
++		}
++		if u.Port() != portStr {
++			continue
++		}
++		switch u.Hostname() {
++		case "localhost", "127.0.0.1", "0.0.0.0", "::1":
++			return matches[i]
++		}
++	}
++	return ""
++}
++
++// authURLFromLog 读取 harness 日志尾部（256KB 覆盖多次启动）并解析带 token URL。
++func authURLFromLog(cfg *DesktopConfig) string {
++	return tokenURLFromLogText(readLogTail(dshLogPath(), 256<<10), cfg.Port)
++}
++
++// navigateToWebUI 把壳内 WebView 导航到已认证的 GUI 地址。
++// dsh web 打印 URL 与端口开始应答存在毫秒级竞态，先短暂重试解析；
++// 取不到 token（如复用非本壳启动的实例）时在窗口内打开普通地址，并把
++// 复用外部实例的场景兜底交给系统浏览器（浏览器一般已带会话 cookie）。
++func (a *App) navigateToWebUI(ctx context.Context) {
++	tokenURL := ""
++	deadline := time.Now().Add(2 * time.Second)
++	for time.Now().Before(deadline) {
++		if tokenURL = authURLFromLog(a.cfg); tokenURL != "" {
++			break
++		}
++		time.Sleep(300 * time.Millisecond)
++	}
++	a.mu.Lock()
++	owns := a.owns
++	a.mu.Unlock()
++	if tokenURL != "" {
++		runtime.WindowExecJS(ctx, "window.location.href = '"+tokenURL+"';")
++		return
++	}
++	runtime.WindowExecJS(ctx, "window.location.href = '"+a.cfg.URL()+"';")
++	if !owns {
++		runtime.BrowserOpenURL(ctx, a.cfg.URL())
++	}
++}
+diff --git a/desktop/webui_test.go b/desktop/webui_test.go
+new file mode 100644
+index 0000000000..c39b1f7012
+--- /dev/null
++++ b/desktop/webui_test.go
+@@ -0,0 +1,55 @@
++package main
++
++import "testing"
++
++func TestTokenURLFromLogText(t *testing.T) {
++	cases := []struct {
++		name string
++		tail string
++		port int
++		want string
++	}{
++		{
++			name: "single local URL with LAN suffix",
++			tail: "dsh web: http://127.0.0.1:3080/?token=abc123 (LAN: http://192.168.1.5:3080/?token=abc123)",
++			port: 3080,
++			want: "http://127.0.0.1:3080/?token=abc123",
++		},
++		{
++			name: "last boot wins",
++			tail: "dsh web: http://127.0.0.1:3080/?token=oldtoken\n" +
++				"dsh web: http://127.0.0.1:3080/?token=newtoken",
++			port: 3080,
++			want: "http://127.0.0.1:3080/?token=newtoken",
++		},
++		{
++			name: "port mismatch skipped",
++			tail: "dsh web: http://127.0.0.1:3099/?token=otherport",
++			port: 3080,
++			want: "",
++		},
++		{
++			name: "no token present",
++			tail: "dsh web: http://127.0.0.1:3080/",
++			port: 3080,
++			want: "",
++		},
++		{
++			name: "empty tail",
++			tail: "",
++			port: 3080,
++			want: "",
++		},
++		{
++			name: "LAN-only line still carries the local URL",
++			tail: "some noise\ndsh web: http://localhost:3080/?token=hostname (LAN: http://10.0.0.2:3080/?token=hostname)",
++			port: 3080,
++			want: "http://localhost:3080/?token=hostname",
++		},
++	}
++	for _, tc := range cases {
++		if got := tokenURLFromLogText(tc.tail, tc.port); got != tc.want {
++			t.Errorf("%s: tokenURLFromLogText() = %q, want %q", tc.name, got, tc.want)
++		}
++	}
++}
+-- 
+2.53.0.windows.2
+
