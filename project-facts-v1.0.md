@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.4**（2026-09-15 更新）
+> **文档版本：v1.5**（2026-09-15 更新）
 > 变更记录：
+> - v1.5 — F5 补记：fork 已按 `HANDOVER.md` §24 降级为**纯官方镜像**（fork 独有根级 `desktop/` 已于 `41aaec8` 删除）；`SYNC_TOKEN` 仍待换新。
 > - v1.4 — 新增 **F13：上游已有一方官方桌面端 `apps/desktop/`（Electron）**，及其「不提供 `webServer`」对我们 4 个插件的含义（`HANDOVER.md` §24.5）。
 > - v1.3 — F7 补记 2026-09-15 实踩：桌面快捷方式曾指向冻结旧工作区 → 「启动的必须是应用区 exe，且要核对运行进程路径」。
 > - v1.2 — F1 标注「端口浮动避让已暂缓（用户决定）」，指向 `HANDOVER.md` §23.4 的触发条件。
@@ -26,7 +27,7 @@
 | F2 | **核心版本** | 实测 `dsh --version`（全局 npm `@deepseek-ai/dsh`） | **`0.1.5-rc.1`**（2026-09-14 实测；三处一致：`dsh --version` / `npm ls -g` / `GET /plugin-core-version/version`） | `AGENTS.md`、`HANDOVER.md`、`README.md`、`DEPLOY.md` |
 | F3 | **服务探测语义** | 实测（`curl`） | 裸 URL `401` = **正常**（浏览器认证围栏，0.1.2-rc.1 起）；`000` = 未运行；`200` 只在带 token/cookie 时出现 | `AGENTS.md`、`HANDOVER.md` §10.7-18 |
 | F4 | **官方同步频率 = 每天 08:00（北京时间）** | fork `FFaassdfs/deepseek-harness` 的 `.github/workflows/sync-upstream.yml` 里 `cron: '0 0 * * *'`（UTC 00:00） | `0 0 * * *`（实测 workflow 源码）。**勘误**：`HANDOVER.md` §10.5 旧记「每小时 `0 * * * *`」有误，已就地更正 | `AGENTS.md`「凭据与同步」、`HANDOVER.md` §10.5 |
-| F5 | **官方同步当前状态** | fork 的 Actions 运行记录 | ⚠️ **失败中**：run 47（2026-09-14）`failure`，run 45/46（09-12/09-13）`success` → `SYNC_TOKEN` 随旧 PAT 失效（见 `HANDOVER.md` §20.7 / §22） | `HANDOVER.md` §20.7、§22 |
+| F5 | **官方同步当前状态 / fork 职责** | fork 的 Actions 运行记录 + fork 内容 | ⚠️ **同步失败中**：run 47（2026-09-14）`failure`，run 45/46（09-12/09-13）`success` → `SYNC_TOKEN` 随旧 PAT 失效。fork 已于 2026-09-15 降级为**纯官方镜像**（删掉 fork 独有的根级 `desktop/`，提交 `41aaec8`；`HANDOVER.md` §24） | `HANDOVER.md` §20.7、§22、§24 |
 | F6 | **源码区（唯一权威）** | 本仓库 | `D:\dsh\dsh-desktop-env` | 各处 |
 | F7 | **应用区（exe）与启动路径** | 部署约定 | `D:\dsh\app\current\dsh-desktop.exe`；历史版本 `D:\dsh\app\versions\<日期>\` + `VERSION.txt`。⚠️ ①运行中的壳**持有该文件的锁** → 换 exe 必须先关壳（`.work\swap-desktop-exe.ps1`，见 `HANDOVER.md` §23.3）②**启动入口必须指向应用区**：桌面快捷方式 `C:\Users\veken\Desktop\DeepSeek Harness.lnk` 已于 2026-09-15 从冻结旧工作区改指应用区；换壳后要核对 `Get-Process dsh-desktop \| Select Id,Path`（见 §23.4） | `AGENTS.md`、`HANDOVER.md` §20/§23 |
 | F8 | **DSH_HOME / profile** | 环境变量 `DSH_HOME`（默认 `~/.dsh`） | `C:\Users\veken\.dsh`；profile = `profiles/web`；插件包 = `profiles/node_modules` | `HANDOVER.md` §2.1、§20.4 |
