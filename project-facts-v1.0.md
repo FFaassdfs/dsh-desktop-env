@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.2**（2026-09-14 更新）
+> **文档版本：v1.3**（2026-09-15 更新）
 > 变更记录：
+> - v1.3 — F7 补记 2026-09-15 实踩：桌面快捷方式曾指向冻结旧工作区 → 「启动的必须是应用区 exe，且要核对运行进程路径」。
 > - v1.2 — F1 标注「端口浮动避让已暂缓（用户决定）」，指向 `HANDOVER.md` §23.4 的触发条件。
 > - v1.1 — 新增 F12（壳日志上限/轮转，随 §23 壳加固落地）；F7 补充「替换 exe 需先关壳」的文件锁事实。
 > - v1.0 — 建立事实源索引，收口端口 / 核心版本 / 同步频率 / 路径 / 插件清单 等被多处复制的数值；勘误「官方同步每小时」（实为每天 08:00，见 F4）。
@@ -26,7 +27,7 @@
 | F4 | **官方同步频率 = 每天 08:00（北京时间）** | fork `FFaassdfs/deepseek-harness` 的 `.github/workflows/sync-upstream.yml` 里 `cron: '0 0 * * *'`（UTC 00:00） | `0 0 * * *`（实测 workflow 源码）。**勘误**：`HANDOVER.md` §10.5 旧记「每小时 `0 * * * *`」有误，已就地更正 | `AGENTS.md`「凭据与同步」、`HANDOVER.md` §10.5 |
 | F5 | **官方同步当前状态** | fork 的 Actions 运行记录 | ⚠️ **失败中**：run 47（2026-09-14）`failure`，run 45/46（09-12/09-13）`success` → `SYNC_TOKEN` 随旧 PAT 失效（见 `HANDOVER.md` §20.7 / §22） | `HANDOVER.md` §20.7、§22 |
 | F6 | **源码区（唯一权威）** | 本仓库 | `D:\dsh\dsh-desktop-env` | 各处 |
-| F7 | **应用区（exe）** | 部署约定 | `D:\dsh\app\current\dsh-desktop.exe`；历史版本 `D:\dsh\app\versions\<日期>\` + `VERSION.txt`。⚠️ 运行中的壳**持有该文件的锁** → 换 exe 必须先关壳（用 `.work\swap-desktop-exe.ps1`，见 `HANDOVER.md` §23.3） | `AGENTS.md`、`HANDOVER.md` §20/§23 |
+| F7 | **应用区（exe）与启动路径** | 部署约定 | `D:\dsh\app\current\dsh-desktop.exe`；历史版本 `D:\dsh\app\versions\<日期>\` + `VERSION.txt`。⚠️ ①运行中的壳**持有该文件的锁** → 换 exe 必须先关壳（`.work\swap-desktop-exe.ps1`，见 `HANDOVER.md` §23.3）②**启动入口必须指向应用区**：桌面快捷方式 `C:\Users\veken\Desktop\DeepSeek Harness.lnk` 已于 2026-09-15 从冻结旧工作区改指应用区；换壳后要核对 `Get-Process dsh-desktop \| Select Id,Path`（见 §23.4） | `AGENTS.md`、`HANDOVER.md` §20/§23 |
 | F8 | **DSH_HOME / profile** | 环境变量 `DSH_HOME`（默认 `~/.dsh`） | `C:\Users\veken\.dsh`；profile = `profiles/web`；插件包 = `profiles/node_modules` | `HANDOVER.md` §2.1、§20.4 |
 | F9 | **插件清单（4 个 + patch id）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组 | `plugin-explainer`、`plugin-project-explorer`、`plugin-model-capabilities`、`plugin-core-version` | `HANDOVER.md` §3/§11/§15/§21 |
 | F10 | **跨机锁定的 dsh 版本** | `deploy.ps1` 的 `-HarnessVersion` 默认值（+ `DEPLOY.md`/`OPENCODE_PROMPT.md` 引用） | **`0.1.5-rc.1`**（原 `0.1.0-rc.7` 已过时） | `DEPLOY.md`、`OPENCODE_PROMPT.md` |

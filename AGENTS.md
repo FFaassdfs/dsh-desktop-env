@@ -35,6 +35,7 @@
 - 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`
   - 🔴 **返回 `401` = 正常**（0.1.2-rc.1 起的浏览器认证门，本机 0.1.5-rc.1；裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
 - 改 Go 后端后 `wails build -s`（跳过前端 vite，免提权）；**改前端/绑定或首次构建必须完整 `wails build`**；产物要拷到**应用区** `D:\dsh\app\current\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
+- 🔴 **换壳后必须核对「运行中的进程」，不是磁盘上的文件**：`Get-Process dsh-desktop | Select Id,Path`。2026-09-15 实踩：应用区 exe 已是新构建，但桌面快捷方式仍指向**冻结的旧工作区**（`D:\opencode\001\dsh-desktop\build\bin\`），启动出来的还是旧壳——已把快捷方式改到应用区（详见 `HANDOVER.md` §23.4）
 - 推送 `.github/workflows/*` 文件：`GITHUB_TOKEN` 推不了 → 需带 `workflow` scope 的凭据（fork 的 `SYNC_TOKEN` **可能已随旧 PAT 失效**，见 `HANDOVER.md` §20.7）
 - 沙箱里 Go 构建：把 `GOCACHE`/`GOTMPDIR` 重定向到 `.cache/`，否则写 `%APPDATA%\go-build` 被拒
 - **本机 git 推送走 SSH 443**（`github.com:22` 不通；旧 PAT 已失效）：remote = `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`

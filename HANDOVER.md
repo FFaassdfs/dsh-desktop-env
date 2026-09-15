@@ -1090,7 +1090,24 @@ wails build -s          # 产物 build\bin\dsh-desktop.exe（11,333,632 字节�
   pwsh -File D:\dsh\dsh-desktop-env\.work\swap-desktop-exe.ps1 -NoRelaunch # 只换不启
   ```
 
-### 23.4 未做 / 后续
+### 23.4 换壳实测（2026-09-15）：应用区文件换对了，但**运行的仍是旧壳**
+
+用户按 §23.3 换好 exe 并重启后核查，发现一个**会反复咬人的陷阱**：
+
+| | 路径 | 大小 | 含 P0-3 代码 |
+|---|---|---|---|
+| 当时**运行中**的壳（PID 7252，09-15 13:04 启动） | `D:\opencode\001\dsh-desktop\build\bin\dsh-desktop.exe`（**已冻结的旧工作区**） | 11,325,952 | ❌ |
+| 应用区（用户已换入的新壳） | `D:\dsh\app\current\dsh-desktop.exe` | 11,336,632 | ✅ |
+
+- **根因**：桌面快捷方式 `C:\Users\veken\Desktop\DeepSeek Harness.lnk` 的 TargetPath 一直指向**旧工作区**（`D:\opencode\001\dsh-desktop\build\bin\`）。即「从桌面图标启动」= 每次都跑冻结区的旧壳 —— 这正是 §20 交接里「当前运行的壳仍是从旧路径启动的」反复出现的原因。
+- **已修**（2026-09-15）：快捷方式 TargetPath / WorkingDirectory / Icon 改为 `D:\dsh\app\current\dsh-desktop.exe`；`app\current\VERSION.txt` 更新为新构建信息，删除 `VERSION.new.txt`。
+- **🔴 换壳检查清单（必须核对「进程」而不是「文件」）**：
+  1. 关壳 → 覆盖应用区 exe（**壳运行时会锁住该文件**，实测 `访问被拒绝`）；
+  2. 启动后核对**运行中的进程路径**：`Get-Process dsh-desktop | Select Id,Path` —— 不要只看磁盘上的文件（本次就是文件对了、进程不对）；
+  3. 想确认新代码真在跑：在 exe 二进制里搜本次新增字符串（如「后自动重启（第 %d/%d 次）」）。
+- 记录时 PID 7252 仍是旧壳；从（已修好的）桌面快捷方式再启动一次即可用上新壳。
+
+### 23.5 未做 / 后续
 
 - **① 端口保留段自动避让 —— 用户决定暂缓（2026-09-14）**：不做端口浮动，**保留固定 43080**；"躲开了但不会躲"的状态被接受，**等真遇到问题再处理**。
   - 触发信号（真出问题时照这个判）：① 壳报「启动超时（30 秒）」或「服务进程反复启动失败」；② `%APPDATA%\dsh-desktop\dsh.log` 里出现 **`EACCES` / `permission denied`** 且 `netstat` 查不到占用进程；③ `netsh interface ipv4 show excludedportrange protocol=tcp` 里 43080 落在某个保留段内（winnat/Hyper-V/WSL 动态保留）。
