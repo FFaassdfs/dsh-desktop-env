@@ -4,10 +4,13 @@
 # the same harness + shell environment as the dev machine:
 #   1. check Node.js / npm
 #   2. check (and optionally pin/install) the global dsh version
-#   3. install the two custom plugins into $DSH_HOME/profiles/node_modules
+#   3. install the custom plugins into $DSH_HOME/profiles/node_modules
 #      and merge cordis.patch.yml (via scripts/setup-plugins.mjs)
 #   4. install the global preset (~/.dsh/AGENTS.md) from global/AGENTS.md
-#   5. clone the desktop-shell fork and build dsh-desktop.exe (optional)
+#   5. build dsh-desktop.exe from THIS repo (optional)
+#
+# Later updates on the same machine: run update.ps1 (pull + plugins + rebuild
+# + deploy to the app area).
 #
 # Usage:
 #   pwsh -File setup.ps1                                # full setup
@@ -92,23 +95,14 @@ if (Test-Path $globalDst) {
   Ok("global preset installed -> $globalDst")
 }
 
-# --- 5. desktop shell (fork clone + wails build) -------------------------------
+# --- 5. desktop shell (wails build from this repo) -----------------------------
+# The shell source lives in THIS repository (app.go / frontend/ / build/).
+# The old flow that cloned the FFaassdfs/deepseek-harness fork and built its
+# desktop/ directory is retired: that directory was removed on 2026-09-15.
 if ($SkipDesktopBuild) {
   Ok("desktop build skipped (-SkipDesktopBuild)")
 } else {
-  Step "5/5 desktop shell (fork clone + wails build)"
-  $forkDir = Join-Path $repoRoot ".work\deepseek-harness"
-  if (-not (Test-Path (Join-Path $forkDir ".git"))) {
-    if ($CheckOnly) {
-      Warn "fork not cloned (would run: git clone https://github.com/FFaassdfs/deepseek-harness.git)"
-    } else {
-      git clone "https://github.com/FFaassdfs/deepseek-harness.git" $forkDir
-      if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
-      Ok("fork cloned -> $forkDir")
-    }
-  } else {
-    Ok("fork already cloned")
-  }
+  Step "5/5 desktop shell (wails build in this repo)"
 
   $wails = Get-Command wails -ErrorAction SilentlyContinue
   if (-not $wails) {
@@ -117,20 +111,27 @@ if ($SkipDesktopBuild) {
     } else {
       throw "wails CLI not found. Install Go 1.26+ then: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
     }
-  } elseif (-not $CheckOnly) {
-    Push-Location (Join-Path $forkDir "desktop")
-    try {
-      wails build
-      if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
-    } finally {
-      Pop-Location
+  } elseif ($CheckOnly) {
+    Warn "would run: wails build in $repoRoot"
+  } else {
+    $frontendModules = Join-Path $repoRoot "frontend\node_modules"
+    if (-not (Test-Path $frontendModules)) {
+      Ok "frontend node_modules missing - running npm install"
+      Push-Location (Join-Path $repoRoot "frontend")
+      try {
+        & npm install
+        if ($LASTEXITCODE -ne 0) { throw "npm install (frontend) failed" }
+      } finally { Pop-Location }
     }
-    $exe = Join-Path $forkDir "desktop\build\bin\dsh-desktop.exe"
+    Push-Location $repoRoot
+    try {
+      & wails build
+      if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
+    } finally { Pop-Location }
+    $exe = Join-Path $repoRoot "build\bin\dsh-desktop.exe"
     if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
-    $outDir = Join-Path $repoRoot "build\bin"
-    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    Copy-Item $exe (Join-Path $outDir "dsh-desktop.exe") -Force
-    Ok("dsh-desktop.exe copied to $outDir")
+    Ok("dsh-desktop.exe built -> $exe")
+    Ok("deploy it with: pwsh -File update.ps1 -SkipPull -SkipPlugins -SkipBuild")
   }
 }
 
@@ -139,3 +140,4 @@ Step "done"
 Write-Host "Manual per-machine steps (NOT synced on purpose):"
 Write-Host "  1. configure dsh API key / .env for this machine"
 Write-Host "  2. start: $repoRoot\build\bin\dsh-desktop.exe   (or: dsh web)"
+Write-Host "  3. later updates: pwsh -File update.ps1   (pull + plugins + rebuild + deploy)"
