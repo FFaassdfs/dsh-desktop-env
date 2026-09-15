@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.3**（2026-09-15 更新）
+> **文档版本：v1.4**（2026-09-15 更新）
 > 变更记录：
+> - v1.4 — 新增 **F13：上游已有一方官方桌面端 `apps/desktop/`（Electron）**，及其「不提供 `webServer`」对我们 4 个插件的含义（`HANDOVER.md` §24.5）。
 > - v1.3 — F7 补记 2026-09-15 实踩：桌面快捷方式曾指向冻结旧工作区 → 「启动的必须是应用区 exe，且要核对运行进程路径」。
 > - v1.2 — F1 标注「端口浮动避让已暂缓（用户决定）」，指向 `HANDOVER.md` §23.4 的触发条件。
 > - v1.1 — 新增 F12（壳日志上限/轮转，随 §23 壳加固落地）；F7 补充「替换 exe 需先关壳」的文件锁事实。
@@ -33,6 +34,7 @@
 | F10 | **跨机锁定的 dsh 版本** | `deploy.ps1` 的 `-HarnessVersion` 默认值（+ `DEPLOY.md`/`OPENCODE_PROMPT.md` 引用） | **`0.1.5-rc.1`**（原 `0.1.0-rc.7` 已过时） | `DEPLOY.md`、`OPENCODE_PROMPT.md` |
 | F11 | **测试入口** | 仓库 `.work/`（套件 + `lib/react-source.mjs`） | 7 个套件：explainer 冒烟 + 开关路由、文件树 host/冒烟、core-version、model-capabilities host/冒烟 | `HANDOVER.md` §21 |
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |
+| F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 4 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |
 
 ## 使用示例
 

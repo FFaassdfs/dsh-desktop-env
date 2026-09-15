@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§24 fork 处置 B 阻塞 + 上游官方桌面端发现（2026-09-15）**——① 用户选 **B（删掉 fork 独有的根级 `desktop/`）**；事前核查确认安全（43 文件、fork 独有、`pnpm-workspace.yaml` 无引用），但**沙箱↔GitHub 的 SSH 链路做不了**（全量克隆 600s 超时、blobless 克隆的 `write-tree` 报 `invalid object`、惰性拉取会卡死）→ 改走 **REST API（待 PAT）** 或 github.dev（fork 未被改动，仍 `810c1c8`）②**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）**，且它**不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效，需换传输层（§24.5）；**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -16,7 +16,7 @@
 | 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm；2026-09-10 安装）——文档里旧记的 `0.1.2-rc.1` 已是过时快照，见 §21 |
 | 进行中 | 路径E「模型能力」插件 **host 半区已验证活跃**（§21.3）；4 插件均已纳入 `scripts/setup-plugins.mjs`。待办：client 半区目视确认 + 重装重启以生效注入边修正 |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | ①**替换新 exe 并重启壳**（§23.3，需用户操作：壳持有 exe 锁；可用 `.work\swap-desktop-exe.ps1` 作一次性计划任务）②**P0-4 重新生成 PAT 更新 `SYNC_TOKEN`**（每日同步已失败，需用户提供 PAT）+ fork 降级为纯镜像 ③HANDOVER 瘦身。**端口保留段避让已按用户决定暂缓**（§23.4，遇到 EACCES/保留段问题再启用） |
+| 下一步（建议） | ①**提供新 PAT**（一枚两用：写回 fork 的 `SYNC_TOKEN` 修好每日同步 + 用 REST API 完成 §24 的 B 方案删 `desktop/`）②**评估改用上游官方桌面端** `apps/desktop/`（Electron，已 implemented；注意它无 `webServer`，4 个插件 host 路由需迁移，见 §24.5）③HANDOVER 瘦身。**端口保留段避让已暂缓**（§23.5，遇 EACCES/保留段问题再启用）；新壳的替换与重启已完成待验证（§23.4） |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -1114,6 +1114,56 @@ wails build -s          # 产物 build\bin\dsh-desktop.exe（11,333,632 字节�
   - 届时的做法：端口改为运行时变量（`app.go` 的 `dshPort` → App 字段，两处 `--port` 传参照用）+ 定义「已存在实例」的复用判定（不能只看单一端口）+ 同步改写 `project-facts` F1 与 README/AGENTS 的端口表述。
   - 现状记录：2026-09-14 查 `netsh` **无任何排除段**，43080 可用。
 - 顺带可做：前端状态面板目前只区分「运行/失败」，可加「自动重启第 n 次 / 已重置」的展示（事件已在发，面板未渲染细节）。
+
+---
+
+## 24. 路径L：fork 处置（B 方案）+ 上游官方桌面端发现（2026-09-15）
+
+### 24.1 目标与备份
+
+- 用户在 P0-4 的 fork 处置中选 **B 彻底**：删除 fork **独有**的根目录 `desktop/`（Wails 壳旧副本），fork 只保留「官方镜像 + `sync-upstream` workflow」职责。
+- 可恢复来源（三处）：fork 的 git 历史、`.work/migration-2026-09-14/0001-*.patch` 与 `0002-*.patch`（0002 = 外部实例掉线自动接管，fork 壳唯一未被本仓库吸收的能力）、冻结旧工作区 `D:\opencode\001\dsh-desktop`。
+
+### 24.2 事前核查（结论：删除安全）
+
+- fork 根目录 `desktop/` 共 **43 个文件**，**fork 独有**（上游没有根级 `desktop/`）。
+- 扫描根级配置是否引用它：**`pnpm-workspace.yaml`（唯一决定 workspace 成员的文件）无任何根级 `desktop/` 引用** → 删除不会破坏 workspace / CI 依赖解析；其余文件里出现的 "desktop" 全是上游自己的 `apps/desktop/`（官方 Electron 桌面端）与 `.agents/notes/*desktop*` 架构笔记。
+- 工具：`.work/fork-desktop-refs.mjs`（node 拉取 fork 的根级配置文件，按「根级 `desktop/` 引用」过滤；可用它复查）。
+- 🔴 **原则**：只能删/加 **fork 独有路径**；改动上游也有的文件会在每次 `sync-upstream` 合并时制造冲突。
+
+### 24.3 阻塞：沙箱 ↔ GitHub 的 SSH 链路做不了这次操作（实测记录）
+
+| 尝试 | 结果 |
+|---|---|
+| `git clone --depth 1`（带全部对象） | **600s 超时未完成** |
+| `git clone --depth 1 --filter=blob:none --no-checkout` | 24.5s **成功**（只拉 tree） |
+| 在 blobless 克隆里 `git grep` | **卡死**（按需惰性拉取 blob，每个都走 SSH） |
+| `git commit` / `git write-tree` | **卡死**（同上），且超时中断后留下 `.git/index.lock` |
+| `remote.origin.promisor=false` 后 `write-tree` | 立刻报错 `invalid object … for '.editorconfig'` → **`write-tree` 需要 blob**，blobless 克隆无法直接提交 |
+| **结论** | 本沙箱走不通 git 路线。可行替代：**REST API（需 PAT）** 或 **github.dev / 网页端**。另：被超时中断的 git 操作会留 `.git/index.lock`，重试前必须清（含 `Get-Process git` 残留） |
+
+> fork 未被改动（核查：`GET /git/refs/heads/master` → 仍是 `810c1c8`）。本地那份 blobless 克隆已删除（无用）。
+
+### 24.4 待 PAT 到位后用 REST API 完成 B（4 步）
+
+```
+1) GET   /repos/FFaassdfs/deepseek-harness/git/refs/heads/master        # 取 base commit
+2) POST  /repos/.../git/trees   { base_tree, tree:[{path:"desktop", mode:"040000", type:"tree", sha:null}] }
+3) POST  /repos/.../git/commits { message, tree, parents:[base] }
+4) PATCH /repos/.../git/refs/heads/master { sha:newCommit, force:false }
+```
+（同一枚 PAT 还可用于回写 fork 的 `SYNC_TOKEN` secret —— 那需要 libsodium sealed box 加密，届时装 `tweetsodium`/`libsodium-wrappers`。）
+
+### 24.5 🔴 重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，**implemented**）
+
+排查引用时发现，**上游自己就有桌面端**，而且是已实现状态（`.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md` 等 4 篇 plus 2026-09-08/09 多篇 implemented 笔记）。
+
+- **形态**：Electron 壳，**不开任何监听端口**（framed byte pipes 传 Fetch/流式响应 + Node IPC 传生命周期 + `dsh-app://` 提供前端资源）；打包自带上游 Node.js 与 pnpm、以及完整 dsh 生产依赖树；独占 **`$DSH_HOME/profiles/desktop`**；有签名/公证/差分自动更新（macOS arm64/x64 + Windows x64；Linux 不是发布目标）。
+- **对我们项目的直接影响（务必知道）**：
+  1. **官方桌面端不提供 `webServer`** —— upstream README「Known limitations」明写：Web 的 "Open In..." 在 Desktop 被禁用，因为其 host 插件需要 HTTP 路由。而我们 4 个插件的 **host 半区全部依赖 `ctx.webServer.register` 自定义路由**（explainer 的 toggle、project-explorer 的 root/list/open、model-capabilities 的 list、core-version 的 version）→ **若切到官方 Desktop 的 profile，这些路由会拿不到 `webServer`，插件必须换传输层**（改走 remote/RPC，或把数据内嵌进 ui slot）。这是真实迁移成本，提前记下。
+  2. 我们的 launcher（Wails + 43080 端口 + `profiles/web` + 交系统浏览器）与官方是**两条路线**；官方既已实现且带自动更新，长期可考虑把精力从「自维护壳」转向「插件与配置」。
+  3. 官方 profile 名 `desktop` 与我们的 `web` **互不共享可执行包**（上游明确：CLI 不能 boot/mutate desktop profile）。
+- **待办（建议）**：①评估是否改用官方 Desktop 作为日常入口（需拿到安装包或自行 `pnpm run package:desktop*`）；②评估 4 个插件 host 路由的去 `webServer` 迁移方案。
 
 
 

@@ -28,6 +28,7 @@
 - **旧工作区 `D:\opencode\001\dsh-desktop` 已冻结**（见其 `FROZEN.md`）：**不要再写入/提交**
 - **fork 本地克隆不在本工作区**：`.work\deepseek-harness` 未迁移；fork 仅作官方镜像用，历史补丁存 `.work\migration-2026-09-14\`
 - **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等，若日后自行 clone）：**只读，不要改**——会被官方同步覆盖
+- 🔴 **别混淆两个「desktop」**：上游仓库有自己的 **一方官方桌面端 `apps/desktop/`**（Electron 壳，已 implemented，独占 `$DSH_HOME/profiles/desktop`，**不提供 `webServer`**）；我们自己的 Wails 壳是**另一个**东西（本仓库根目录，launcher @ 43080 + `profiles/web`）。fork 里被删掉的是**根级** `desktop/`（我们的旧副本），与上游 `apps/desktop/` 无关。详见 `HANDOVER.md` §24.5 / `project-facts-v1.0.md` F13
 
 ## 高频坑（详情见 HANDOVER.md §10.7，共 18 条）
 
