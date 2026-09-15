@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§24 fork 处置 B + `SYNC_TOKEN` 全部完成（2026-09-15）**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§25 其他电脑「一条命令更新壳」（2026-09-15）**——修复被 §24 打断的构建路径：`setup.ps1` 第 5 步从「clone fork 构建 `desktop/`」改为**在本仓库根 `wails build`**；新增 **`update.ps1`**（`git pull` → 刷新插件 → `wails build` → 部署到应用区，含 dated 归档 + `VERSION.txt`，exe 被锁时自动暂存 `.new.exe`；支持 `-SkipPull/-SkipPlugins/-SkipFrontend/-SkipBuild/-NoDeploy/-AppDir/-CheckOnly`）与 **`.work/verify-fresh-clone.ps1`**（回归验证：新克隆能否构建）。**实跑验证**：克隆 HEAD `7f5291d` → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节且含 P0-3 标记；`update.ps1` 部署/`-CheckOnly` 两条路径均正确。**§24 fork 处置 B + `SYNC_TOKEN` 全部完成**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -16,7 +16,7 @@
 | 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm；2026-09-10 安装）——文档里旧记的 `0.1.2-rc.1` 已是过时快照，见 §21 |
 | 进行中 | 路径E「模型能力」插件 **host 半区已验证活跃**（§21.3）；4 插件均已纳入 `scripts/setup-plugins.mjs`。待办：client 半区目视确认 + 重装重启以生效注入边修正 |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | **P0 全部关闭** ✅（P0-1 插件入库/0.1.5 适配、P0-2 单一事实源、P0-3 壳加固 ②③、P0-4 fork 降级 + `SYNC_TOKEN`）。可选下一步：①**评估改用上游官方桌面端** `apps/desktop/`（Electron，已 implemented；注意它无 `webServer`，4 个插件 host 路由需迁移，见 §24.5）②HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`）③壳加固 ①端口保留段避让（已按用户决定暂缓，§23.5） |
+| 下一步（建议） | **P0 全部关闭** ✅ 且**多机更新链已修好**（§25：`update.ps1` 一条命令 + 新克隆构建已实测）。可选下一步：①**等官方发布后再评估官方桌面端**（现在只留了评估交接：`D:\dsh\official-desktop-eval\`，结论=未发布、只能自行构建）②HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`）③壳加固 ①端口保留段避让（已按用户决定暂缓，§23.5） |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -1177,6 +1177,48 @@ wails build -s          # 产物 build\bin\dsh-desktop.exe（11,333,632 字节�
   - 之后我们的删除提交 `41aaec8` 以 `810c1c8` 为父正常 fast-forward 推上去。
 - **新工具 `.work/sync-status.mjs`**（不需要本地 fork 克隆，直接走 REST API；旧 `.work/sync-upstream.ps1` 需要先 clone fork）：打印最近 5 次 sync 运行 + fork/upstream 的 ahead/behind，若最新一次非 success 或 fork 落后上游则**退出码 1**，可用于巡检。用法：`node .work\sync-status.mjs`。
 - 结论：fork 现为**纯官方镜像**（`behind_by = 0`，与上游唯一差别只剩 `sync-upstream.yml` 本身），每日 08:00 的定时同步恢复正常，**P0-4 全部关闭**。
+
+---
+
+## 25. 路径M：其他电脑"一条命令更新壳"（含修复被 §24 打断的构建路径）（2026-09-15）
+
+### 25.1 问题：§24 删掉 fork 的 `desktop/` 后，其他电脑的构建路径断了
+
+- 用户需求：**"确保其他电脑同步仓库的项目即可更新到最新壳版本"**。
+- 但 `setup.ps1` 第 5 步原先的做法是「**clone `FFaassdfs/deepseek-harness` fork → 构建 `fork/desktop/`**」—— 该目录已在 §24 被删除（B 方案），**这条路径对任何新机器/老机器都已失效**。
+- 事实核查（结论：不需要 fork）：**壳源码本来就完整入库在本仓库**：`app.go`/`main.go`/`dsh_windows.go`/`dsh_other.go`/`windowstate*.go`/`logutil*.go`/`go.mod`/`go.sum`/`wails.json`/`frontend/{index.html,package.json,package-lock.json,src,wailsjs}`/`build/{appicon.png,windows/*,darwin/*}`（共 100 个 tracked 文件）。
+
+### 25.2 改了什么
+
+| 文件 | 变更 |
+|---|---|
+| **`update.ps1`（新增）** | 「一条命令更新」：① `git pull --ff-only`（并列出新提交）② 刷新 4 个插件（`scripts/setup-plugins.mjs`）③ `wails build`（本仓库；前端 `node_modules` 缺失时先 `npm install`）④ 部署到应用区 `D:\dsh\app\current`（dated 归档 + `VERSION.txt`）。开关：`-SkipPull` / `-SkipPlugins` / `-SkipFrontend`（= `wails build -s`）/ `-SkipBuild` / `-NoDeploy` / `-AppDir` / `-CheckOnly`。**应用区 exe 被运行中的壳锁住时自动暂存为 `dsh-desktop.new.exe` + `VERSION.new.txt`** 并给出换法提示 |
+| **`setup.ps1`** | 第 5 步由「clone fork + 构建 desktop/」改为「**在本仓库根 `wails build`**」；头部注释同步（两个插件 → 四个）；收尾提示后续用 `update.ps1` |
+| `.work/verify-fresh-clone.ps1`（新增） | 回归验证：**克隆 HEAD 到临时目录** → 检查构建所需文件是否都在 git 里 → `npm install` + `wails build` → 校验 exe（大小 + P0-3 标记）。另有 `-SkipBuild`/`-Keep` |
+| `README.md` / `DEPLOY.md` / `OPENCODE_PROMPT.md` | 新增/改写「更新到最新壳」入口：`git pull` + `pwsh -File update.ps1`；并明确「壳源码在本仓库、fork 的 `desktop/` 已废弃（§24）」 |
+
+### 25.3 验证（都是实跑，不是推断）
+
+**① 全新克隆能否构建** —— `pwsh -File .work\verify-fresh-clone.ps1`（克隆 HEAD=`7f5291d` 到 `.cache\fresh-clone`）：
+- 构建所需 **21 个文件全部在克隆里**（tracked 文件共 100 个）✅
+- `npm install`（frontend，14 包）13s → `wails build`（完整：生成绑定 + 前端 install/compile + 编译）**21.99s** ✅
+- 产出 `build\bin\dsh-desktop.exe` = **11,333,632 字节**（与本机应用区那份**大小完全一致**），且**含 P0-3 的退避字符串** ✅
+
+**② `update.ps1` 部署路径**（用临时 `-AppDir` 测，不碰真实环境）：
+- `-SkipBuild` 部署：归档 → `versions\2026-09-15\dsh-desktop-170117.exe`，部署 → `current\dsh-desktop.exe`，写 `VERSION.txt`（含 `built:` exe 真实构建时间 / `deployed:` / source commit / port / core 版本 / launch 路径）✅
+- `-CheckOnly`：只打印将要做的事，**不写任何文件** ✅
+
+### 25.4 其他电脑的正确用法（写进 README/DEPLOY/OPENCODE 了）
+
+```powershell
+cd D:\dsh\dsh-desktop-env
+git pull
+pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
+# 只改 Go：pwsh -File update.ps1 -SkipFrontend
+# 干跑：   pwsh -File update.ps1 -CheckOnly
+```
+- 换壳后**必须重启壳**才生效（运行中的壳 owns GUI 会话的 dsh web，重启会中断该会话）。
+- 应用区默认 `D:\dsh\app\current`（可用 `-AppDir` 改）；**不同步的内容**：API key/`.env`、exe 本身（各机自行构建）、`$DSH_HOME` 下的会话与凭据。
 
 
 

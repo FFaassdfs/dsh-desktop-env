@@ -25,6 +25,13 @@
    - 插件是否生效（Web UI：设置 → 插件里多出「插件说明」tab；设置里有「模型能力」分区；页面右侧有「项目文件」面板；左下角有 `dsh v…` 版本徽标）
    - 桌面壳是否构建成功（若未构建说明原因）
    - 遗留的待办（如需要我手动配 API key）
+5. **以后每次更新**（这台机器已部署过）：
+   ```
+   cd D:\dsh\dsh-desktop-env
+   git pull
+   pwsh -File update.ps1
+   ```
+   它会 pull → 刷新插件 → `wails build` → 把 exe 部署到应用区；换壳后需**重启壳**才生效（运行中的壳 owns GUI 会话的 dsh web）。壳源码就在本仓库，**不需要**再 clone fork 的 `desktop/`（该目录已于 2026-09-15 删除）。
 
 ## 预期结果（自检）
 
@@ -33,4 +40,5 @@
 - 全局预设已安装：`Test-Path $env:USERPROFILE\.dsh\AGENTS.md` 为 True（部署时自动安装，含通用避坑经验）
 - （可选）`D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe` 可启动
 
-> 文档版本：v1.1（2026-09-14 更新）— 路径统一为 `D:\dsh\dsh-desktop-env`、锁版改 `0.1.5-rc.1`、插件数 2→4（4 个 patch 条目）。
+> 文档版本：v1.2（2026-09-15 更新）— 新增第 5 步「以后每次更新用 `update.ps1`」；说明壳源码在本仓库、fork `desktop/` 已废弃。
+> v1.1（2026-09-14）— 路径统一为 `D:\dsh\dsh-desktop-env`、锁版改 `0.1.5-rc.1`、插件数 2→4（4 个 patch 条目）。

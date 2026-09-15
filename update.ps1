@@ -144,11 +144,12 @@ if ($NoDeploy) {
     $dshVer = (& cmd /c "dsh --version 2>nul")
     $versionText = @"
 dsh-desktop launcher
-built:  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-source: $repoRoot (commit $commit)
-port:   43080
-core:   @deepseek-ai/dsh $dshVer (global npm)
-launch: $target
+built:    $($builtInfo.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))
+deployed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+source:   $repoRoot (commit $commit)
+port:     43080
+core:     @deepseek-ai/dsh $dshVer (global npm)
+launch:   $target
 "@
 
     if ($locked) {

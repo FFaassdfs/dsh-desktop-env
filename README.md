@@ -52,6 +52,32 @@ wails build            # 产物: build\bin\dsh-desktop.exe（改完壳记得拷�
 wails build -s
 ```
 
+## 更新到最新壳（其他电脑 / 日常）
+
+**壳源码就在本仓库**（`app.go`、`frontend/`、`build/`），所以其他电脑拉一下仓库、跑一条命令即可拿到最新壳：
+
+```powershell
+cd D:\dsh\dsh-desktop-env
+git pull
+pwsh -File update.ps1          # pull + 刷新插件 + wails build + 部署到应用区（D:\dsh\app\current）
+```
+
+`update.ps1` 会：① `git pull --ff-only` 并列出新提交 ② 重装 4 个自定义插件 ③ `wails build` ④ 把 exe 部署到应用区（附历史归档 + `VERSION.txt`）。常用开关：
+
+```powershell
+pwsh -File update.ps1 -SkipPull          # 用手头这份源码构建
+pwsh -File update.ps1 -SkipFrontend      # 只改了 Go：wails build -s（更快）
+pwsh -File update.ps1 -SkipPlugins       # 不动 $DSH_HOME
+pwsh -File update.ps1 -NoDeploy          # 只构建，不碰应用区
+pwsh -File update.ps1 -CheckOnly         # 干跑，什么都不写
+```
+
+- **换壳后必须重启壳**才生效（运行中的壳 owns GUI 会话的 dsh web，重启会中断该会话）。
+- 应用区 exe 被运行中的壳锁住时，脚本会自动暂存为 `dsh-desktop.new.exe` 并提示换法（或改用 `.work\swap-desktop-exe.ps1`）。
+- 验证"新克隆能否构建"：`pwsh -File .work\verify-fresh-clone.ps1`（克隆 HEAD 到临时目录并跑完整构建）。
+
+> ⚠️ 旧流程（clone `FFaassdfs/deepseek-harness` fork 再构建其 `desktop/`）**已废弃**：该目录已于 2026-09-15 从 fork 删除（见 `HANDOVER.md` §24）。
+
 ## 结构
 
 ```
@@ -59,8 +85,11 @@ app.go             # 启动编排 + 状态面板事件 + 版本自更新 + 健�
 dsh_windows.go     # Windows 平台 node 直启 dsh web（解析 dsh.cmd shim 取 bin.js）+ npm 更新
 dsh_other.go       # 其他平台 spawn dsh web + npm 更新
 windowstate.go     # 窗口状态（当前固定尺寸，已不再还原）
+logutil.go         # 日志上限轮转 + 只读尾部（详见 HANDOVER §23）
 main.go            # Wails 入口（单实例锁、固定窗口 440×400 DisableResize）
 frontend/          # 状态面板页（Vite + 原生 JS）
+update.ps1         # 一键更新（pull + 插件 + 构建 + 部署）
+setup.ps1          # 首次复刻环境（依赖检查 + dsh + 插件 + 全局预设 + 构建）
 ```
 
 ## 关键注意点（跨机应用必读）
@@ -72,4 +101,5 @@ frontend/          # 状态面板页（Vite + 原生 JS）
 
 详见 [`HANDOVER.md`](HANDOVER.md) §14「壳重定位与跨机应用说明」。
 
-> 文档版本：v1.1（2026-09-14 更新）— 修正 dsh 版本号/端口所述、插件数（2→4）、`HANDOVER.md` §12→§14 引用、clone 与构建路径；新增指向 `project-facts-v1.0.md`。
+> 文档版本：v1.2（2026-09-15 更新）— 新增「更新到最新壳」一节（`update.ps1` 一条命令）；结构清单补 `logutil.go`/`update.ps1`/`setup.ps1`；说明壳源码在本仓库、fork `desktop/` 已废弃。
+> v1.1（2026-09-14）— 修正 dsh 版本号/端口所述、插件数（2→4）、`HANDOVER.md` §12→§14 引用、clone 与构建路径；新增指向 `project-facts-v1.0.md`。

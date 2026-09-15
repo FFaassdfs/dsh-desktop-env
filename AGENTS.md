@@ -25,6 +25,8 @@
   - 当前形态：**启动器（端口 43080）**，真正的 dsh 界面由**系统浏览器**打开（见 `HANDOVER.md` §14）
 - **应用产物（与源码分离）**：`D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\<日期>\`）
   - 改壳后：`wails build` → 把 `build\bin\dsh-desktop.exe` 拷到 `D:\dsh\app\current\`
+  - 🟢 **一条命令搞定（含 pull/插件/构建/部署）**：`pwsh -File update.ps1`（开关 `-SkipFrontend` 只编 Go、`-CheckOnly` 干跑、`-AppDir` 改应用区）；首次部署用 `setup.ps1`。**壳源码就在本仓库**，fork 根级 `desktop/` 已废弃（见 `HANDOVER.md` §24/§25）
+  - 回归验证「新克隆能否构建」：`pwsh -File .work\verify-fresh-clone.ps1`
 - **旧工作区 `D:\opencode\001\dsh-desktop` 已冻结**（见其 `FROZEN.md`）：**不要再写入/提交**
 - **fork 本地克隆不在本工作区**：`.work\deepseek-harness` 未迁移；fork 仅作官方镜像用，历史补丁存 `.work\migration-2026-09-14\`
 - **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等，若日后自行 clone）：**只读，不要改**——会被官方同步覆盖
