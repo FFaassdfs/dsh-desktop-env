@@ -1,0 +1,125 @@
+name: release-desktop
+
+# Builds the portable dsh-desktop release and attaches it to a GitHub Release.
+#
+# The package is self-contained (shell exe + bundled harness tree + portable
+# Node), so a fresh Windows machine only needs to unzip it and run
+# install-offline.ps1 - see scripts/pack-release.ps1 for the layout.
+#
+# Trigger it by pushing a tag like `desktop-v0.1.0`, or manually (Actions ->
+# release-desktop -> Run workflow) and give the tag to create/update.
+#
+# The release step uses the built-in GITHUB_TOKEN (permissions: contents: write)
+# - no PAT is needed for releasing. Pushing THIS file to the repository once
+# requires a credential with the `workflow` scope.
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (e.g. desktop-v0.1.0)'
+        required: true
+      dsh_version:
+        description: 'Harness version to bundle (blank = npm latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # The shell is built with Go 1.26+ (see README prerequisites).
+          go-version: '1.26.x'
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Wails CLI
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          "$env:USERPROFILE\go\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Build the shell
+        shell: pwsh
+        run: |
+          Push-Location frontend; npm install --no-audit --no-fund; Pop-Location
+          wails build
+          if (-not (Test-Path build\bin\dsh-desktop.exe)) { throw "wails build produced no exe" }
+
+      - name: Stage the harness runtime (offline dependency tree)
+        shell: pwsh
+        run: |
+          $dsh = "${{ inputs.dsh_version }}"
+          if (-not $dsh) { $dsh = (npm view @deepseek-ai/dsh version).Trim() }
+          Write-Host "bundling @deepseek-ai/dsh@$dsh"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          npm install --prefix staging --no-audit --no-fund "@deepseek-ai/dsh@$dsh"
+          if (-not (Test-Path staging\node_modules\@deepseek-ai\dsh\lib\bin.js)) {
+            throw "harness tree incomplete: staging\node_modules\@deepseek-ai\dsh\lib\bin.js missing"
+          }
+          "DSH_VERSION=$dsh" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Download portable Node.js (bundled runtime)
+        shell: pwsh
+        run: |
+          $ver = (node --version).TrimStart('v')
+          $url = "https://nodejs.org/dist/v$ver/node-v$ver-win-x64.zip"
+          Write-Host "downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile node.zip
+          Expand-Archive node.zip -DestinationPath node-dist -Force
+          $src = "node-dist\node-v$ver-win-x64"
+          Copy-Item "$src\node.exe" staging\node.exe -Force
+          if (Test-Path "$src\LICENSE") { Copy-Item "$src\LICENSE" staging\LICENSE -Force }
+          "NODE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Pack the portable release
+        shell: pwsh
+        run: |
+          pwsh -File scripts/pack-release.ps1 `
+            -RuntimeSource staging `
+            -DshVersion "$env:DSH_VERSION" `
+            -ShellVersion "$($env:GITHUB_REF_NAME)" `
+            -OutDir dist
+          Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: dsh-desktop ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          body: |
+            Portable dsh-desktop release: **self-contained** (no Node.js, npm, Go or Wails needed on the target machine).
+
+            | item | value |
+            |---|---|
+            | shell | commit `${{ github.sha }}` |
+            | harness | `@deepseek-ai/dsh ${{ env.DSH_VERSION }}` (bundled offline) |
+            | node | `${{ env.NODE_VERSION }}` (bundled portable runtime) |
+
+            **Quick start**: unzip anywhere, optionally run `powershell -File install-offline.ps1`
+            (installs the custom plugins into `%USERPROFILE%\.dsh`), then run `dsh-desktop.exe`.
+
+            Notes: API keys/`.env` are not included; the build is unsigned, so SmartScreen may warn
+            on first run; port 43080 is fixed; sessions/settings live in `$DSH_HOME` and survive updates.

@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§26 统一启动入口 + 版本锚点刷新（2026-09-20）**——① 抽出 **`scripts/deploy-shell.ps1`** 作为部署唯一实现，`setup.ps1`（新增 5b 步）与 `update.ps1` 共用 → **唯一启动入口 = `D:\dsh\app\current\dsh-desktop.exe`**（`build\bin\` 只是中间产物），并给 `setup.ps1`/`deploy.ps1` 加 `-AppDir`；② 发现环境已升到 **`0.1.5-rc.2`**（`npm latest` 同版本），把锁版/文档/事实源从 rc.1 统一刷新；③ **rc.2 下插件复验通过**（3 条 host 路由 200、patch 4 条目、`--check-only` 全过）；④ 核对 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md` 完全一致（v2.17）。**§25 其他电脑「一条命令更新壳」（2026-09-15）**——修复被 §24 打断的构建路径：`setup.ps1` 第 5 步从「clone fork 构建 `desktop/`」改为**在本仓库根 `wails build`**；新增 **`update.ps1`**（`git pull` → 刷新插件 → `wails build` → 部署到应用区，含 dated 归档 + `VERSION.txt`，exe 被锁时自动暂存 `.new.exe`；支持 `-SkipPull/-SkipPlugins/-SkipFrontend/-SkipBuild/-NoDeploy/-AppDir/-CheckOnly`）与 **`.work/verify-fresh-clone.ps1`**（回归验证：新克隆能否构建）。**实跑验证**：克隆 HEAD `7f5291d` → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节且含 P0-3 标记；`update.ps1` 部署/`-CheckOnly` 两条路径均正确。**§24 fork 处置 B + `SYNC_TOKEN` 全部完成**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+> **最后更新**：**§27 便携发行包（壳 + harness + Node 全离线）+ CI 发布（2026-09-20）**——① 壳新增**便携运行时解析**（`runtime.go`：`$DSH_DESKTOP_RUNTIME` → `<exeDir>\runtime` → `<exeDir>` → 原有 shim 回退；便携模式**跳过 npm 自更新**）② **`scripts/pack-release.ps1`** 打出 `dsh-desktop-<shell>-dsh<ver>-win-x64.zip`（实测 **106.2 MB**，原始 312.6 MB/25,482 文件）+ `install-offline.ps1` ③ **`.github/workflows/release-desktop.yml`**：打 `desktop-v*` tag 自动构建并发 Release（用内置 `GITHUB_TOKEN`，无需 PAT）④ 实测：离线树 `node ...bin.js --version` → `0.1.5-rc.2`、离线安装器对临时 DSH_HOME `SETUP OK`、**17/17 Go 测试通过**；⚠️ 本机因 `SingleInstanceLock` 无法做实机便携启动（需目标机验证）。**§26 统一启动入口 + 版本锚点刷新（2026-09-20）**——① 抽出 **`scripts/deploy-shell.ps1`** 作为部署唯一实现，`setup.ps1`（新增 5b 步）与 `update.ps1` 共用 → **唯一启动入口 = `D:\dsh\app\current\dsh-desktop.exe`**（`build\bin\` 只是中间产物），并给 `setup.ps1`/`deploy.ps1` 加 `-AppDir`；② 发现环境已升到 **`0.1.5-rc.2`**（`npm latest` 同版本），把锁版/文档/事实源从 rc.1 统一刷新；③ **rc.2 下插件复验通过**（3 条 host 路由 200、patch 4 条目、`--check-only` 全过）；④ 核对 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md` 完全一致（v2.17）。**§25 其他电脑「一条命令更新壳」（2026-09-15）**——修复被 §24 打断的构建路径：`setup.ps1` 第 5 步从「clone fork 构建 `desktop/`」改为**在本仓库根 `wails build`**；新增 **`update.ps1`**（`git pull` → 刷新插件 → `wails build` → 部署到应用区，含 dated 归档 + `VERSION.txt`，exe 被锁时自动暂存 `.new.exe`；支持 `-SkipPull/-SkipPlugins/-SkipFrontend/-SkipBuild/-NoDeploy/-AppDir/-CheckOnly`）与 **`.work/verify-fresh-clone.ps1`**（回归验证：新克隆能否构建）。**实跑验证**：克隆 HEAD `7f5291d` → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节且含 P0-3 标记；`update.ps1` 部署/`-CheckOnly` 两条路径均正确。**§24 fork 处置 B + `SYNC_TOKEN` 全部完成**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -1251,6 +1251,70 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 **rc.2 下的插件复验（实测通过）**：`43080` 根 = `401`（正常）；host 路由 `core-version`=**200**、`model-capabilities`=**200**、`project-explorer`=**200**；`node scripts\setup-plugins.mjs --check-only` 全过（4 插件 `dsh.client` 声明 OK + patch YAML 含 4 个 id）；运行中的壳仍来自应用区 `D:\dsh\app\current\dsh-desktop.exe`。
 
 > 附：`global/AGENTS.md` 与安装副本 `~/.dsh/AGENTS.md` 已核对**完全一致**（同哈希、同 mtime 2026-09-18 17:02，均为 v2.17）——无需同步。
+
+---
+
+## 27. 路径O：便携发行包（壳 + harness + Node 全离线）+ CI 发布（2026-09-20）
+
+### 27.1 为什么做
+
+用户要求"仓库发布一个正式包，含壳与 harness 核心，第一次安装所有文件都在本地、速度快"。目标机器**什么前置都不装**（Node/npm/Go/Wails 全免）。方案经评估取 **C 档**：壳 exe + 离线 harness 依赖树 + 便携 Node。
+
+### 27.2 关键可行性实测（决定了包怎么做）
+
+| 检查 | 结果 |
+|---|---|
+| harness 依赖是否被提升到 npm 根 | **没有**：`commander`/`open`/`zod`/`@deepseek-ai/cordis` 等**全部嵌套在 `@deepseek-ai\dsh\node_modules`**（190 项）→ **只拷这一棵树就完整**，不必拷整个全局 npm root |
+| 原生模块 | 树内仅 **11 个 `.node`**，且是**跨平台预编译**（darwin/linux/win32 各架构齐备）→ win-x64 目标机**无需编译**；但预编译与 **Node ABI** 绑定 ⇒ 必须同时带 Node（故取 C 档） |
+| 体积 | dsh 树 213.4 MB / 25,447 文件；`node.exe` 88 MB；壳 10.8 MB；插件 0.2 MB ⇒ 原始 **312.6 MB / 25,482 文件**，**zip 后 106.2 MB**（tar.exe 压缩 25.1s） |
+
+### 27.3 壳的改动：便携运行时解析（`runtime.go` + 两处接线）
+
+原先只能靠 PATH 找 `dsh.cmd` shim。现在新增**便携运行时优先**：
+
+```
+解析顺序：$DSH_DESKTOP_RUNTIME → <exeDir>\runtime → <exeDir> →（回退）原有 dsh.cmd shim 逻辑
+运行布局：<某目录>\node.exe + <某目录>\node_modules\@deepseek-ai\dsh\lib\bin.js
+```
+
+- 新增 `runtime.go`（跨平台纯函数，便于单测）：`portableRuntimeIn` / `runtimeCandidateDirs` / `findPortableRuntime` / `bundledRuntimeInUse` / `executableDir`。
+- `dsh_windows.go`：`resolveDshWeb()` **先试便携运行时**，命中则用 `runtime\node.exe` + 包内 `bin.js`（保留 shim 回退）。
+- `dsh_other.go`：非 Windows 同样支持便携运行时（`runtimeNodeName()`）。
+- `app.go`：`installedVersion()` 优先读**包内** manifest；`versionFromPackageJSON()` 抽出复用；**`checkUpdates()` 在便携模式下跳过 npm 自更新**（面板显示「内置运行时 <ver>（便携版随发行包更新，已跳过 npm 自更新）」）——避免全局 dsh 与包内运行时版本分裂。
+- 测试：新增 `runtime_test.go`（5 个用例）+ `dsh_windows_test.go`（1 个用例，直接验证 `resolveDshWeb` 会选包内 runtime）→ **全部 17 个用例通过**，`go vet`（含 `GOOS=linux`）为 0。
+
+### 27.4 打包与安装脚本
+
+- **`scripts/pack-release.ps1`**：装配并压缩出便携包，产出 `dsh-desktop-<shell>-dsh<dshver>-win-x64.zip` + `SHA256SUMS.txt`。布局：
+  ```
+  dsh-desktop-<shell>-dsh<dshver>-win-x64\
+    dsh-desktop.exe                 # 壳（自己认 ./runtime）
+    runtime\node.exe + LICENSE      # 便携 Node
+    runtime\node_modules\@deepseek-ai\dsh\...   # harness + 全部依赖
+    plugins\<4 个包>  scripts\setup-plugins.mjs  install-offline.ps1
+    VERSION.txt  README.txt
+  ```
+  开关：`-NoNode`（不带宽 Node，体积小但目标机需自备 Node）/ `-SkipZip` / `-KeepStaging` / `-CheckOnly` / `-RuntimeSource` / `-NodeExe` / `-ShellVersion` / `-DshVersion`。
+- **`install-offline.ps1`**（随包发、也可单跑）：① 校验包布局 ② 用**包内 Node** 跑 `scripts/setup-plugins.mjs` 把 4 个插件装进 `$DSH_HOME`（幂等；支持 `-DSHome`）③ 可选 `-AppDir` 把 exe+runtime 拷到应用区。
+
+**本地实测（2026-09-20）**：
+- 打包成功：`dsh-desktop-a3f4804-dsh0.1.5-rc.2-win-x64.zip` = **106.2 MB**（原始 312.6 MB / 25,482 文件），SHA256 已生成。
+- **离线树可用**：`<pkg>\runtime\node.exe <pkg>\runtime\node_modules\@deepseek-ai\dsh\lib\bin.js --version` → **`0.1.5-rc.2`**（证明依赖树完整、无缺失提升依赖）。
+- **离线安装器可用**：`install-offline.ps1 -DSHome <临时目录>` → `SETUP OK`，临时 DSH_HOME 里出现 4 个插件 `node_modules` 目录 + patch 条目（用完已删，未碰真实 `$DSH_HOME`）。
+- ⚠️ **无法在本机做实机便携启动**：壳有 `SingleInstanceLock`（`main.go`，`UniqueId: dsh-desktop-9a7f1e2b`）——本机已跑着正式壳，第二个实例会立刻退出（这正是测试时"秒退、无日志"的原因）。**该限制要写进说明**（便携包不能与本机已装壳同时运行）。便携模式的接线由单测覆盖，**真正"便携 exe 拉起自带 runtime"需在目标机验证**（那也正是使用场景）。
+
+### 27.5 CI：打 tag 自动出包并发 Release
+
+- 新增 **`.github/workflows/release-desktop.yml`**：`push: tags: ['desktop-v*']`（或手动 `workflow_dispatch` 指定 tag）→ `windows-latest` 上：setup Go 1.26.x / Node 24 → 装 Wails CLI → `wails build` → `npm install --prefix staging @deepseek-ai/dsh@<ver>`（`<ver>` 取输入或 npm latest）→ 下载官方 Node zip 取 `node.exe`+`LICENSE` → `scripts/pack-release.ps1` → `softprops/action-gh-release@v2` 挂上 `*.zip` + `SHA256SUMS.txt`。
+- 发布用**内置 `GITHUB_TOKEN`**（`permissions: contents: write`），**不需要 PAT**；只有"把该 workflow 文件本身推上去"这一次需要带 `workflow` scope 的凭据。
+- YAML 已用 js-yaml 校验（name/on/permissions/9 个步骤解析正常）。**CI 本身尚未在真实 runner 跑过**——首次发 tag 时观察。
+
+### 27.6 待办 / 风险
+
+1. **首次真实发版**：打 `desktop-v0.1.0` tag 触发 workflow（或先 `workflow_dispatch` 试跑），确认 9 步全绿、资产挂上。
+2. **许可证合规**：包内分发第三方依赖树 + Node，需随包保留 Node 的 `LICENSE`（已带）与各包 LICENSE/notices；若公开发布，建议生成一份 `THIRD_PARTY_NOTICES.txt`。
+3. **未签名**：SmartScreen 会警告（现状如此）；要消除需代码签名证书。
+4. 可选：把"壳自更新"从 npm 改为**下载新发行包**（便携模式下目前只提示"随发行包更新"）。
 
 
 

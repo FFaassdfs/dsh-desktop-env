@@ -466,6 +466,16 @@ func (a *App) GetUpdateStatus() string {
 // ---- version / update ----
 
 func (a *App) installedVersion() string {
+	// A portable release ships its own runtime next to the exe: read that first
+	// so the panel reports the version actually being served.
+	if rt, ok := bundledRuntimeInUse(); ok {
+		if v := versionFromPackageJSON(rt.Package); v != "" {
+			return v
+		}
+		debugLog("installedVersion: bundled runtime manifest unreadable: %s", rt.Package)
+		return ""
+	}
+
 	shim, err := exec.LookPath("dsh.cmd")
 	if err != nil {
 		shim, err = exec.LookPath("dsh")
@@ -475,16 +485,21 @@ func (a *App) installedVersion() string {
 		return ""
 	}
 	pkg := filepath.Join(filepath.Dir(shim), "node_modules", "@deepseek-ai", "dsh", "package.json")
+	return versionFromPackageJSON(pkg)
+}
+
+// versionFromPackageJSON reads the "version" field of a dsh package manifest.
+func versionFromPackageJSON(pkg string) string {
 	data, err := os.ReadFile(pkg)
 	if err != nil {
-		debugLog("installedVersion: cannot read %s: %v", pkg, err)
+		debugLog("versionFromPackageJSON: cannot read %s: %v", pkg, err)
 		return ""
 	}
 	var m struct {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
-		debugLog("installedVersion: cannot parse %s: %v", pkg, err)
+		debugLog("versionFromPackageJSON: cannot parse %s: %v", pkg, err)
 		return ""
 	}
 	return m.Version
@@ -512,6 +527,18 @@ func (a *App) latestVersion() string {
 
 func (a *App) checkUpdates() {
 	a.emitUpdate("正在检查更新…")
+	if rt, ok := bundledRuntimeInUse(); ok {
+		// Portable release: the runtime is part of the package, so npm self-update
+		// is skipped on purpose (installing a global dsh would not be used anyway
+		// and would only create version divergence).
+		debugLog("checkUpdates: bundled runtime at %s, npm self-update disabled", rt.Root)
+		if v := versionFromPackageJSON(rt.Package); v != "" {
+			a.emitUpdate("内置运行时 " + v + "（便携版随发行包更新，已跳过 npm 自更新）")
+		} else {
+			a.emitUpdate("内置运行时（便携版随发行包更新，已跳过 npm 自更新）")
+		}
+		return
+	}
 	installed := a.installedVersion()
 	latest := a.latestVersion()
 	if latest == "" {

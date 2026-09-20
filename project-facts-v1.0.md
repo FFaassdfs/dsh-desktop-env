@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.8**（2026-09-20 更新）
+> **文档版本：v1.9**（2026-09-20 更新）
 > 变更记录：
+> - v1.9 — 新增 **F15：便携发行包**（`scripts/pack-release.ps1` + `.github/workflows/release-desktop.yml`；实测 zip 106.2 MB、含便携 Node 与离线 harness 树；壳的便携运行时解析见 `HANDOVER.md` §27）。
 > - v1.8 — **版本锚点刷新（0.1.5-rc.1 → `0.1.5-rc.2`）**：F2（核心版本）、F10（跨机锁版 = `deploy.ps1` 默认值）；**部署入口统一**：F7/F14 补记「首装与更新共用 `scripts/deploy-shell.ps1`，**唯一启动入口 = 应用区 exe**」。
 > - v1.7 — 新增 **F14：壳更新入口 = `update.ps1`**（一条命令：pull + 插件 + 构建 + 部署；回归验证脚本 `.work/verify-fresh-clone.ps1`）；F7 补记「壳源码在本仓库、fork 根级 `desktop/` 已废弃（§24）」。
 > - v1.6 — **F5 转为健康**：`SYNC_TOKEN` 已换新并端到端验证（run #49 `success`，fork `behind_by = 0`）；新增巡检工具 `.work/sync-status.mjs`（`HANDOVER.md` §24.6）。
@@ -40,6 +41,7 @@
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |
 | F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 4 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |
 | F14 | **壳更新入口（多机同步）** | `update.ps1`（+ `setup.ps1` 首次、`scripts/deploy-shell.ps1` 部署、`.work/verify-fresh-clone.ps1` 回归验证） | `git pull` + `pwsh -File update.ps1` = pull → 刷新 4 插件 → `wails build`（**壳源码在本仓库**，fork 根级 `desktop/` 已废弃）→ 部署到应用区（dated 归档 + `VERSION.txt`）。实测（2026-09-15）：新克隆 HEAD → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节 | `README.md`「更新到最新壳」、`DEPLOY.md` §8、`OPENCODE_PROMPT.md` 第 5 步、`HANDOVER.md` §25/§26 |
+| F15 | **便携发行包（离线一键）** | `scripts/pack-release.ps1`（打包）+ `.github/workflows/release-desktop.yml`（打 `desktop-v*` tag 自动发 Release）+ `install-offline.ps1`（包内安装器） | 资产 `dsh-desktop-<shell>-dsh<dshver>-win-x64.zip` + `SHA256SUMS.txt`；含壳 exe + **便携 Node** + **离线 harness 树**（`runtime\node_modules\@deepseek-ai\dsh`）+ 4 插件。实测 **zip 106.2 MB**（原始 312.6 MB / 25,482 文件）。目标机零前置依赖；⚠️ 壳是**单实例**（`SingleInstanceLock`），不能与本机已装壳同时运行 | `README.md`「便携发行包」、`HANDOVER.md` §27 |
 
 ## 使用示例
 

@@ -16,15 +16,26 @@ import (
 // e.g. "%dp0%\node_modules\@deepseek-ai\dsh\lib\bin.js".
 var jsEntryPattern = regexp.MustCompile(`"[^"]+\.js"`)
 
-// resolveDshWeb locates the node entry behind the `dsh` npm shim so dsh web
-// can be spawned as `node <entry> web --no-open` directly. cmd.exe combined
-// with CREATE_NO_WINDOW breaks the inherited stdio of the node grandchild:
-// neither the stdout pipe nor the log file ever receives its output, so the
-// shell cannot observe the authenticated URL that dsh web prints. Spawning
-// node directly keeps stdout capture working while the hidden-window flags
-// apply. ok=false means resolution failed and the caller should fall back to
-// the legacy `cmd /C dsh web` (no token capture).
+// runtimeNodeName is the node executable name on this platform.
+func runtimeNodeName() string { return "node.exe" }
+
+// resolveDshWeb locates the node entry so dsh web can be spawned as
+// `node <entry> web --no-open` directly. cmd.exe combined with
+// CREATE_NO_WINDOW breaks the inherited stdio of the node grandchild: neither
+// the stdout pipe nor the log file ever receives its output, so the shell
+// cannot observe the authenticated URL that dsh web prints. Spawning node
+// directly keeps stdout capture working while the hidden-window flags apply.
+//
+// Order: a portable runtime shipped next to the exe (offline release) wins;
+// otherwise the `dsh` npm shim on PATH is used. ok=false means resolution
+// failed and the caller should fall back to the legacy `cmd /C dsh web`
+// (no token capture).
 func resolveDshWeb() (string, []string, bool) {
+	if rt, ok := bundledRuntimeInUse(); ok {
+		debugLog("resolveDshWeb: using bundled runtime at %s", rt.Root)
+		return rt.NodeExe, []string{rt.Entry, "web", "--no-open", "--port", dshPort}, true
+	}
+
 	shim, err := exec.LookPath("dsh.cmd")
 	if err != nil {
 		debugLog("resolveDshWeb: dsh.cmd not found in PATH: %v", err)
