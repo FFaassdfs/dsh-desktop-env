@@ -94,10 +94,14 @@ jobs:
       - name: Pack the portable release
         shell: pwsh
         run: |
+          $tag = "${{ github.event.inputs.tag }}"
+          if (-not $tag) { $tag = $env:GITHUB_REF_NAME }
+          $shellVersion = $tag -replace '^desktop-v', ''
+          Write-Host "packing for tag $tag (shell version $shellVersion)"
           pwsh -File scripts/pack-release.ps1 `
             -RuntimeSource staging `
             -DshVersion "$env:DSH_VERSION" `
-            -ShellVersion "$($env:GITHUB_REF_NAME)" `
+            -ShellVersion "$shellVersion" `
             -OutDir dist
           Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
 

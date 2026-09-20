@@ -17,8 +17,11 @@
 //      (resolvable package, dsh.client declaration, exports["./client"],
 //      host main exists) + patch YAML still parses.
 //
-// Usage: node scripts/setup-plugins.mjs [--check-only]
+// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>]
 //   --check-only: verify only, write nothing.
+//   --plugins:    which plugins to install. "all" (default), "none", or a
+//                 comma-separated list of short names / package names / patch
+//                 ids, e.g. --plugins explainer,core-version
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -64,6 +67,57 @@ function fail(message) {
   console.error("SETUP FAILED: " + message);
   process.exit(1);
 }
+
+// --- plugin selection (--plugins) ---------------------------------------------
+// Tokens may be the short name (explainer), the package name
+// (dsh-client-ui-plugin-explainer) or the patch id (plugin-explainer).
+function pluginShortName(plugin) {
+  return plugin.name.replace(/^dsh-client-ui-plugin-/, "");
+}
+
+function matchesToken(plugin, token) {
+  const t = token.trim().toLowerCase();
+  if (!t) return false;
+  const name = plugin.name.toLowerCase();
+  const id = plugin.patchId.toLowerCase();
+  const short = pluginShortName(plugin).toLowerCase();
+  return t === name || t === id || t === short || id.endsWith("-" + t) || name.endsWith("-" + t);
+}
+
+function selectPlugins(arg) {
+  const raw = (arg ?? "all").trim();
+  if (raw === "" || raw.toLowerCase() === "all") {
+    return { selected: PLUGINS.slice(), skipped: [] };
+  }
+  if (raw.toLowerCase() === "none") {
+    return { selected: [], skipped: PLUGINS.slice() };
+  }
+  const tokens = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const selected = [];
+  const unknown = [];
+  for (const token of tokens) {
+    const hit = PLUGINS.find((p) => matchesToken(p, token));
+    if (!hit) {
+      unknown.push(token);
+      continue;
+    }
+    if (!selected.includes(hit)) selected.push(hit);
+  }
+  if (unknown.length > 0) {
+    fail(
+      `unknown plugin(s): ${unknown.join(", ")} — known: ` +
+      PLUGINS.map(pluginShortName).join(", ")
+    );
+  }
+  return { selected, skipped: PLUGINS.filter((p) => !selected.includes(p)) };
+}
+
+const pluginsArgIndex = process.argv.indexOf("--plugins");
+if (pluginsArgIndex >= 0 && process.argv[pluginsArgIndex + 1] === undefined) {
+  fail("--plugins needs a value (all | none | comma-separated list)");
+}
+const pluginsArg = pluginsArgIndex >= 0 ? process.argv[pluginsArgIndex + 1] : "all";
+const { selected: SELECTED, skipped: SKIPPED } = selectPlugins(pluginsArg);
 
 // --- 1. copy package (idempotent: delete-first, then copy) -------------------
 function installPackage(plugin) {
@@ -175,7 +229,7 @@ async function verifyPatch() {
     .filter((e) => e && Array.isArray(e.insert))
     .flatMap((e) => e.insert.map((i) => i && i.id))
     .filter(Boolean);
-  for (const plugin of PLUGINS) {
+  for (const plugin of SELECTED) {
     if (!ids.includes(plugin.patchId)) fail(`patch entry missing after append: ${plugin.patchId}`);
   }
   console.log(`3e. patch YAML OK (ids: ${ids.join(", ")})`);
@@ -185,9 +239,19 @@ async function verifyPatch() {
 console.log(`repoRoot : ${repoRoot}`);
 console.log(`DSH_HOME : ${DSH_HOME}`);
 console.log(`checkOnly: ${checkOnly}`);
+console.log(`plugins  : ${SELECTED.length === 0 ? "none" : SELECTED.map(pluginShortName).join(", ")}` +
+  (SKIPPED.length > 0 && SELECTED.length > 0
+    ? ` (skipped: ${SKIPPED.map(pluginShortName).join(", ")})`
+    : ""));
 console.log("");
 
-for (const plugin of PLUGINS) {
+if (SELECTED.length === 0) {
+  console.log("No plugins selected — nothing to install.");
+  console.log(checkOnly ? "CHECK ONLY — nothing written." : "SETUP OK — no changes made.");
+  process.exit(0);
+}
+
+for (const plugin of SELECTED) {
   console.log(`--- ${plugin.name} ---`);
   installPackage(plugin);
   ensurePatchEntry(plugin);

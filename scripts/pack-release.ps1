@@ -167,8 +167,9 @@ Quick start
 
 Optional: install the 4 custom plugins into your DSH home
 --------------------------------------------------------
-Double-click install-offline.cmd      (recommended, works with a double click)
+Double-click install-offline.cmd      (recommended; it asks which plugins)
    or:  powershell -ExecutionPolicy Bypass -File install-offline.ps1
+        add -Plugins all | none | ask | explainer,core-version to choose.
 
 This copies the bundled plugins into %USERPROFILE%\.dsh and adds their entries
 to the profile patch. Use -DSHome <dir> to target another home, and

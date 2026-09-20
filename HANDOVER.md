@@ -1296,7 +1296,11 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
   ```
   开关：`-NoNode`（不带宽 Node，体积小但目标机需自备 Node）/ `-SkipZip` / `-KeepStaging` / `-CheckOnly` / `-RuntimeSource` / `-NodeExe` / `-ShellVersion` / `-DshVersion`。
 - **`install-offline.ps1`**（随包发、也可单跑）：① 校验包布局 ② 用**包内 Node** 跑 `scripts/setup-plugins.mjs` 把 4 个插件装进 `$DSH_HOME`（幂等；支持 `-DSHome`）③ 可选 `-AppDir` 把 exe+runtime 拷到应用区。
-- **`install-offline.cmd`**（随包发）：上面那个 .ps1 的**双击包装**（`powershell -ExecutionPolicy Bypass -File ...`，并 `pause` 保留窗口）——因为 Windows 双击 `.ps1` 不会执行、且默认执行策略可能拦截。包内 `README.txt` 已明确写「**没有安装步骤，解压即用**；该脚本只是可选地把插件装进 DSH_HOME」，并补充 **WebView2 Runtime** 前提。
+- **`install-offline.cmd`**（随包发）：上面那个 .ps1 的**双击包装**（`powershell -ExecutionPolicy Bypass -File ...`，并 `pause` 保留窗口）——因为 Windows 双击 `.ps1` 不会执行、且默认执行策略可能拦截。**双击后默认以 `-Plugins ask` 弹出插件选择菜单**（全装 / 逐个选 / 不装）；若调用方自带 `-Plugins`，包装器就不再追加。包内 `README.txt` 已明确写「**没有安装步骤，解压即用**；该脚本只是可选地把插件装进 DSH_HOME」，并补充 **WebView2 Runtime** 前提。
+- **插件选择能力（2026-09-20 加）**：
+  - `scripts/setup-plugins.mjs` 新增 `--plugins <all|none|逗号列表>`：token 可用**简名**（`explainer`）、全名（`dsh-client-ui-plugin-explainer`）或 patch id（`plugin-explainer`）；`--plugins` 缺值或名字未知都**立即报错并列出可选项**；`none` 直接退出不写任何东西；`verifyPatch` 只校验**被选中**的 patch 条目。
+  - `install-offline.ps1` 新增 `-Plugins <all|none|ask|列表>`（默认 `all`）；`ask` 时弹编号菜单（`a` 全装 / `n` 不装 / 输入 `1,3` 选装）；**无控制台**（`-not [Environment]::UserInteractive` 或 **stdin 被重定向**）时自动退化为全装，避免挂死 agent/计划任务。
+  - 实测：`--plugins explainer`（只校验该插件、patch 仍报 4 条目）、`--plugins none`、未知名/缺值报错、包内 `-Plugins none|explainer,core-version|all` 三条落位正确（临时 DSH_HOME 里确实只出现被选的插件）、`-Plugins ask` 重定向 stdin 不挂起。
 
 **本地实测（2026-09-20）**：
 - 打包成功：`dsh-desktop-a3f4804-dsh0.1.5-rc.2-win-x64.zip` = **106.2 MB**（原始 312.6 MB / 25,482 文件），SHA256 已生成。

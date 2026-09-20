@@ -33,10 +33,15 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
   2) 双击 dsh-desktop.exe          ← 就这样，壳自己认同目录的 runtime\
   3) （可选）想让 4 个插件也进 DSH_HOME：双击 install-offline.cmd
   ```
-  - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）。想自定义就命令行跑：
+  - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**问你要装哪些插件**。命令行同样支持选择：
     ```powershell
-    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -DSHome D:\dsh-home
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins all              # 全装（默认）
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins none             # 不装（只跑壳）
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins ask              # 交互菜单
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins explainer,core-version
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -DSHome D:\dsh-home       # 指定 DSH_HOME
     ```
+    （可用简名：`explainer` / `project-explorer` / `model-capabilities` / `core-version`；无控制台调用时 `ask` 会自动退化为全装，不会挂住）
   - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
 - **自己打包**：`pwsh -File scripts\pack-release.ps1`（`-NoNode` 可打不含 Node 的小包；`-KeepStaging` 保留中间目录）
