@@ -1396,5 +1396,17 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 重推 tag 后 **run #4 = success，资产 109.3 MB**（+4.4 MB ≈ npm 压缩增量）→ npm 确实进包了。
 > **教训（与 §27.7 同源）**：凡是"包内应包含某物"的承诺，都要在**打包时**有断言并**失败**；用"事后比对体积"发现问题虽然有效，但不该是主防线。
 
+**0.1.1 发布资产端到端验证（2026-09-20，全部通过）**：
+
+| 步骤 | 结果 |
+|---|---|
+| 下载 | 109.3 MB（链路约 117 KiB/s，**断点续传**共耗 48 分钟才拉完） |
+| **SHA256** | 线上 `ac87c542b74cf5080d6be45e7497529b59f12556be7f45b44345e745611b0f0e` = 本地实测，**MATCH** ✅ |
+| 归档内容 | 共 **31,180 条**；`runtime/node.exe`、**`runtime/node_modules/npm/bin/npm-cli.js`**、`npm/package.json`、`@deepseek-ai/dsh/lib/bin.js`、`commander/package.json`、`express/package.json` **全部存在** ✅ |
+| 解压实跑 | **bundled dsh → `0.1.5-rc.2`**；**bundled npm → `11.19.0`** ✅ |
+| `VERSION.txt` | 含 `npm: bundled (enables in-package self-update)`、`node: v24.20.0 (bundled)` ✅ |
+
+⇒ **发布出去的 0.1.1 具备"与源码装一致的自更新能力"**（包内 npm 在位 + 机制已本地端到端演练）。
+
 
 
