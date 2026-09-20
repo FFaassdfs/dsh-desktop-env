@@ -20,8 +20,14 @@
 # Usage:
 #   pwsh -File scripts\pack-release.ps1                        # full package
 #   pwsh -File scripts\pack-release.ps1 -NoNode                # without the bundled Node (needs Node on target)
+#   pwsh -File scripts\pack-release.ps1 -RuntimeMode full-node-modules   # force copying the whole node_modules
 #   pwsh -File scripts\pack-release.ps1 -SkipZip               # stage only
 #   pwsh -File scripts\pack-release.ps1 -CheckOnly             # plan only
+#
+# -RuntimeMode: auto (default) | dsh-tree | full-node-modules
+#   auto picks by layout: nested deps inside @deepseek-ai/dsh -> dsh-tree;
+#   hoisted deps (npm install --prefix) -> full-node-modules. Either way the
+#   staged runtime is executed once as a gate, so a wrong layout cannot ship.
 #
 # NOTE: ASCII-only on purpose (Windows PowerShell 5.1 misreads BOM-less UTF-8
 # scripts with non-ASCII content).
@@ -31,6 +37,7 @@ param(
   [string]$RuntimeSource = "",
   [string]$NodeExe = "",
   [string]$NodeLicense = "",
+  [string]$RuntimeMode = "auto",
   [string]$ShellVersion = "",
   [string]$DshVersion = "",
   [switch]$NoNode,
@@ -109,17 +116,61 @@ Ok "shell exe staged"
 
 if (-not $NoNode) {
   $rt = Join-Path $pkgDir "runtime"
-  New-Item -ItemType Directory -Force -Path (Join-Path $rt "node_modules\@deepseek-ai") | Out-Null
+  New-Item -ItemType Directory -Force -Path $rt | Out-Null
   Copy-Item $NodeExe (Join-Path $rt "node.exe") -Force
   if (Test-Path $NodeLicense) { Copy-Item $NodeLicense (Join-Path $rt "LICENSE") -Force }
   Ok "node.exe staged ($([math]::Round((Get-Item $NodeExe).Length/1MB,1)) MB)"
 
-  $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
-    $dshTree, (Join-Path $rt "node_modules\@deepseek-ai\dsh"),
-    "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
-  ) -Wait -PassThru -NoNewWindow
-  if ($rc.ExitCode -ge 8) { throw "robocopy (harness tree) failed with exit code $($rc.ExitCode)" }
-  Ok "harness tree staged ($([math]::Round((DirSize (Join-Path $rt 'node_modules'))/1MB,1)) MB)"
+  # npm lays the dependency graph out differently depending on how it installed:
+  #   * `npm install -g`      -> deps NESTED in @deepseek-ai/dsh/node_modules
+  #   * `npm install --prefix` -> deps HOISTED to <root>/node_modules siblings
+  # Copying only the dsh directory is correct for the first layout and produces a
+  # broken runtime for the second (this shipped a broken 37.7 MB package in the
+  # first CI release, 2026-09-20). Resolve the mode automatically, then VERIFY the
+  # staged runtime really starts.
+  $nestedDeps = Join-Path $dshTree "node_modules"
+  $effectiveMode = $RuntimeMode
+  if ($effectiveMode -eq "auto") {
+    $effectiveMode = if (Test-Path $nestedDeps) { "dsh-tree" } else { "full-node-modules" }
+    Ok "runtime layout: $effectiveMode (auto: nested deps $(if (Test-Path $nestedDeps) { 'present' } else { 'ABSENT -> hoisted' }))"
+  }
+
+  if ($effectiveMode -eq "full-node-modules") {
+    # Copy the whole node_modules so hoisted siblings come along. RuntimeSource is
+    # expected to be a dedicated prefix (its node_modules is exactly the closure).
+    $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
+      (Join-Path $RuntimeSource "node_modules"), (Join-Path $rt "node_modules"),
+      "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
+    ) -Wait -PassThru -NoNewWindow
+    if ($rc.ExitCode -ge 8) { throw "robocopy (node_modules) failed with exit code $($rc.ExitCode)" }
+  } else {
+    New-Item -ItemType Directory -Force -Path (Join-Path $rt "node_modules\@deepseek-ai") | Out-Null
+    $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
+      $dshTree, (Join-Path $rt "node_modules\@deepseek-ai\dsh"),
+      "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
+    ) -Wait -PassThru -NoNewWindow
+    if ($rc.ExitCode -ge 8) { throw "robocopy (harness tree) failed with exit code $($rc.ExitCode)" }
+  }
+  Ok "harness staged ($([math]::Round((DirSize (Join-Path $rt 'node_modules'))/1MB,1)) MB, $((Get-ChildItem (Join-Path $rt 'node_modules') -Recurse -File | Measure-Object).Count) files)"
+
+  # GATE: the packaged runtime must actually load the harness. A layout mistake
+  # (missing hoisted deps) fails here instead of shipping a broken release.
+  # Strict check: exit code 0 AND the first output line is exactly the version
+  # (matching the version anywhere in the output is not enough - the staging path
+  # itself contains the version string, which once let an error stack pass).
+  $rtEntry = Join-Path $rt "node_modules\@deepseek-ai\dsh\lib\bin.js"
+  if (-not (Test-Path $rtEntry)) { throw "staged runtime is missing $rtEntry" }
+  $probeRaw = (& (Join-Path $rt "node.exe") $rtEntry --version 2>&1 | Out-String)
+  $probeExit = $LASTEXITCODE
+  $probeFirst = (($probeRaw -split "`r?`n") | Where-Object { $_.Trim() -ne "" } | Select-Object -First 1)
+  if ($null -eq $probeFirst) { $probeFirst = "" }
+  $probeFirst = $probeFirst.Trim()
+  if ($probeExit -ne 0 -or $probeFirst -ne $DshVersion) {
+    throw ("staged runtime is NOT runnable (exit=$probeExit, first line='$probeFirst', expected='$DshVersion'). " +
+      "Check -RuntimeMode / -RuntimeSource: hoisted layouts need -RuntimeMode full-node-modules.")
+  }
+  Ok "runtime self-check passed: bundled dsh reports $probeFirst"
+  $global:LASTEXITCODE = 0
 }
 
 $pluginsSrc = Join-Path $repoRoot "plugins"
