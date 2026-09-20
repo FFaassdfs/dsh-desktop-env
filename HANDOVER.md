@@ -1321,7 +1321,28 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 3. **未签名**：SmartScreen 会警告（现状如此）；要消除需代码签名证书。
 4. 可选：把"壳自更新"从 npm 改为**下载新发行包**（便携模式下目前只提示"随发行包更新"）。
 
-### 27.7 实测经验（顺手更正一条旧说法）
+### 27.7 🔴 首发事故与修复：hoisted 布局导致的"坏包"（2026-09-20 当天）
+
+**现象**：`desktop-v0.1.0` 首发 CI **报告 success**，但资产只有 **37.7 MB**（本地同样脚本打出来是 ~106 MB）。下载核对确认：`runtime\node_modules\@deepseek-ai\dsh\` 里**只有 dsh 自身**，`commander`/`open`/`zod` 等**兄弟依赖全缺** → 内置运行时 `ERR_MODULE_NOT_FOUND`，包等于坏的。
+
+**根因（npm 布局随安装方式而变）**：
+
+| 安装方式 | 依赖位置 | 只拷 `@deepseek-ai/dsh` 一棵树的结果 |
+|---|---|---|
+| `npm i -g`（我本地打包时用的） | **嵌套**在 `@deepseek-ai/dsh\node_modules`（190 项） | 完整 ✅ |
+| `npm install --prefix <dir>`（CI 用法） | **提升**到 `<dir>\node_modules` 根，dsh 目录里**没有** `node_modules` | 空壳 ❌ |
+
+**修复（`scripts/pack-release.ps1`）**：
+1. 新增 **`-RuntimeMode auto|dsh-tree|full-node-modules`**（默认 `auto`）：auto 检测 `<dshTree>\node_modules` 是否存在 → 有=nested→`dsh-tree`；无=hoisted→`full-node-modules`（整棵 `node_modules` 一起拷，CI 的 staging 前缀刚好就是完整闭包）。
+2. **新增运行时自检闸门**：装完后**实跑** `runtime\node.exe …\dsh\lib\bin.js --version`，**严格要求 `exit=0` 且首个非空行恰好等于目标版本**，否则 `throw` —— 坏包**不可能**再发出去。
+   - ⚠️ 闸门自身也踩过一次假通过：第一版用"整段输出里包含版本号"判断，而 staging **路径本身**含版本号（`…dsh-desktop-053340c-dsh0.1.5-rc.2-win-x64\runtime\…`），错误堆栈因而被判为通过 → 已改为严格比较（退出码 + 首行全等）。
+3. 三个用例实测：hoisted+auto→`full-node-modules`（213.7 MB）自检通过；全局 nested+auto→`dsh-tree`（213.4 MB）自检通过；**强制 `dsh-tree` 跑 hoisted → 抛 `staged runtime is NOT runnable (exit=1, first line=…)` 且退出码 1**（证明闸门有牙）。
+
+**重新发布**：删除并重推 `desktop-v0.1.0` 标签（softprops 动作会**就地更新**同名资产）→ **run #2 = success，资产 104.9 MB**（与本地一致）。随后做了一次"下载 → 比对 SHA256SUMS → 解压 → **实跑包内运行时**"的端到端验证（脚本 `.cache/verify-published.mjs`，未入库）。
+
+> **教训（写进本节，供后续发版遵循）**：**CI 绿灯 ≠ 包能用**。凡是"把运行时打进去"的产物，**打包器必须自己跑一次再放行**；此外凡是依赖 npm 布局的逻辑，都要显式区分 `-g`（嵌套）与 `--prefix`（提升）。
+
+### 27.8 实测经验（顺手更正一条旧说法）
 
 - 🟢 **SSH push 可以直接推送 `.github/workflows/*` 文件**：本次把 `release-desktop.yml` 用 `git push`（SSH 443）推上去，**未被拒绝**，且 GitHub API 立即把它列为 `state=active`。→ 旧文档"推送 workflow 必须用带 `workflow` scope 的 PAT"**只对 token 方式成立**（PAT/OAuth；CI 里的内置 `GITHUB_TOKEN` 也推不了 workflow）。`AGENTS.md` 高频坑已就地更正。
 - ⚠️ **壳的 `SingleInstanceLock`（`main.go`，`UniqueId: dsh-desktop-9a7f1e2b`）导致无法在同机并行验证便携包**：本机已跑正式壳时，便携包 exe 会**立刻退出**（并向第一个实例发"显示窗口"请求）。已把这条写进包内 `README.txt` 与 `install-offline.ps1` 的输出；**真正的便携启动验证要在目标机做**（也正是它的使用场景）。
