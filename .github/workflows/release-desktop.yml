@@ -121,9 +121,16 @@ jobs:
             | shell | commit `${{ github.sha }}` |
             | harness | `@deepseek-ai/dsh ${{ env.DSH_VERSION }}` (bundled offline) |
             | node | `${{ env.NODE_VERSION }}` (bundled portable runtime) |
+            | npm | bundled — the portable shell **self-updates** like the script install |
 
-            **Quick start**: unzip anywhere, optionally run `powershell -File install-offline.ps1`
-            (installs the custom plugins into `%USERPROFILE%\.dsh`), then run `dsh-desktop.exe`.
+            **Quick start**: unzip anywhere, optionally run `install-offline.cmd`
+            (choose which custom plugins to install into `%USERPROFILE%\.dsh`), then run `dsh-desktop.exe`.
+
+            **Updates**: the shell checks the npm registry at startup and every 24 h; a newer harness is
+            downloaded with the bundled npm into a staging folder and swapped in on the next start
+            (restart to apply). Unzipping a newer package over the folder works too.
 
             Notes: API keys/`.env` are not included; the build is unsigned, so SmartScreen may warn
             on first run; port 43080 is fixed; sessions/settings live in `$DSH_HOME` and survive updates.
+            Keep the folder layout intact (the shell resolves `runtime\` next to the exe) and note the
+            shell is single-instance per user.
