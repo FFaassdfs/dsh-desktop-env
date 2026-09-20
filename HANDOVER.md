@@ -1338,7 +1338,19 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
    - ⚠️ 闸门自身也踩过一次假通过：第一版用"整段输出里包含版本号"判断，而 staging **路径本身**含版本号（`…dsh-desktop-053340c-dsh0.1.5-rc.2-win-x64\runtime\…`），错误堆栈因而被判为通过 → 已改为严格比较（退出码 + 首行全等）。
 3. 三个用例实测：hoisted+auto→`full-node-modules`（213.7 MB）自检通过；全局 nested+auto→`dsh-tree`（213.4 MB）自检通过；**强制 `dsh-tree` 跑 hoisted → 抛 `staged runtime is NOT runnable (exit=1, first line=…)` 且退出码 1**（证明闸门有牙）。
 
-**重新发布**：删除并重推 `desktop-v0.1.0` 标签（softprops 动作会**就地更新**同名资产）→ **run #2 = success，资产 104.9 MB**（与本地一致）。随后做了一次"下载 → 比对 SHA256SUMS → 解压 → **实跑包内运行时**"的端到端验证（脚本 `.cache/verify-published.mjs`，未入库）。
+**重新发布**：删除并重推 `desktop-v0.1.0` 标签（softprops 动作会**就地更新**同名资产）→ **run #2 = success，资产 104.9 MB**（与本地一致）。
+
+**发布资产端到端验证（2026-09-20，全部通过）**——从 GitHub Release 下载后实测：
+
+| 步骤 | 结果 |
+|---|---|
+| 下载 | 104.9 MB（1,099 字节级一致：109,978,357 bytes；链路慢且会断流，脚本改成**流式 + Range 断点续传 + 重试**才拉完，耗时 ~19 分钟） |
+| **SHA256 比对** | 线上 `SHA256SUMS.txt` = `328E61DC…0C27`，本地实测 **完全一致** ✅（首次"不匹配"是本机验证脚本没检查响应状态拿到了空内容，非产物问题） |
+| 归档内容 | 包根 = `dsh-desktop.exe` / `install-offline.cmd` / `install-offline.ps1` / `plugins/` / `runtime/` / `scripts/` / `README.txt` / `VERSION.txt`；`runtime/node_modules` 下 **190 个依赖目录**（`commander`/`express`/`open`/`zod`/`koffi`/`js-yaml`… 全在）✅ |
+| **实跑包内运行时** | 解压后 `runtime\node.exe runtime\node_modules\@deepseek-ai\dsh\lib\bin.js --version` → **`0.1.5-rc.2`，exit=0** ✅ |
+| 磁盘占用 | 314.0 MB / 25,487 文件；`VERSION.txt` 记录 shell commit `0.1.0`、harness `0.1.5-rc.2`、**CI 自带 Node v24.20.0**（本机打包用的是 v24.16.0——CI 用 runner 上的官方 Node zip，同主版本即 ABI 兼容） |
+
+> 验证脚本 `.cache/verify-published.mjs` / `.cache/finish-verify.mjs`（未入库，属 scratch）。其中踩到两个本机脚本坑，记下备用：① `fetch` 拿 Release 资产**必须检查 `resp.ok`**，否则失败时会得到空内容而误判；② `execFileSync("tar.exe", ["-tf", zip])` 对 2.5 万个条目的输出会撞 **`ENOBUFS`（默认 maxBuffer 1 MB）**，需要调大 `maxBuffer` 或改用 pwsh 直接跑 tar。
 
 > **教训（写进本节，供后续发版遵循）**：**CI 绿灯 ≠ 包能用**。凡是"把运行时打进去"的产物，**打包器必须自己跑一次再放行**；此外凡是依赖 npm 布局的逻辑，都要显式区分 `-g`（嵌套）与 `--prefix`（提升）。
 
