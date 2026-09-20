@@ -1316,5 +1316,11 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 3. **未签名**：SmartScreen 会警告（现状如此）；要消除需代码签名证书。
 4. 可选：把"壳自更新"从 npm 改为**下载新发行包**（便携模式下目前只提示"随发行包更新"）。
 
+### 27.7 实测经验（顺手更正一条旧说法）
+
+- 🟢 **SSH push 可以直接推送 `.github/workflows/*` 文件**：本次把 `release-desktop.yml` 用 `git push`（SSH 443）推上去，**未被拒绝**，且 GitHub API 立即把它列为 `state=active`。→ 旧文档"推送 workflow 必须用带 `workflow` scope 的 PAT"**只对 token 方式成立**（PAT/OAuth；CI 里的内置 `GITHUB_TOKEN` 也推不了 workflow）。`AGENTS.md` 高频坑已就地更正。
+- ⚠️ **壳的 `SingleInstanceLock`（`main.go`，`UniqueId: dsh-desktop-9a7f1e2b`）导致无法在同机并行验证便携包**：本机已跑正式壳时，便携包 exe 会**立刻退出**（并向第一个实例发"显示窗口"请求）。已把这条写进包内 `README.txt` 与 `install-offline.ps1` 的输出；**真正的便携启动验证要在目标机做**（也正是它的使用场景）。
+- 📦 本次本地测试产物（未入库，`.cache` 已被 gitignore）：`.cache\release\dsh-desktop-a3f4804-dsh0.1.5-rc.2-win-x64.zip`（106.2 MB）+ `SHA256SUMS.txt`，可直接拷到别的机器试。
+
 
 

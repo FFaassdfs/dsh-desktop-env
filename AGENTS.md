@@ -40,7 +40,7 @@
   - 🔴 **返回 `401` = 正常**（0.1.2-rc.1 起的浏览器认证门，本机 0.1.5-rc.2；裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
 - 改 Go 后端后 `wails build -s`（跳过前端 vite，免提权）；**改前端/绑定或首次构建必须完整 `wails build`**；产物要拷到**应用区** `D:\dsh\app\current\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
 - 🔴 **换壳后必须核对「运行中的进程」，不是磁盘上的文件**：`Get-Process dsh-desktop | Select Id,Path`。2026-09-15 实踩：应用区 exe 已是新构建，但桌面快捷方式仍指向**冻结的旧工作区**（`D:\opencode\001\dsh-desktop\build\bin\`），启动出来的还是旧壳——已把快捷方式改到应用区（详见 `HANDOVER.md` §23.4）
-- 推送 `.github/workflows/*` 文件：内置 `GITHUB_TOKEN` 推不了（GitHub 安全限制）→ 需带 `workflow` scope 的 PAT；fork 的 `SYNC_TOKEN` 已于 2026-09-15 换新并验证（§24.6），历史失效故障见 `HANDOVER.md` §20.7
+- 推送 `.github/workflows/*` 文件：🔴 **2026-09-20 实测更正——用 SSH push 是允许的**（把 `.github/workflows/release-desktop.yml` 直接推上去，GitHub 随即识别为 `active`）；`workflow` scope 的限制**只针对 token 方式**（PAT/OAuth），CI 内部的内置 `GITHUB_TOKEN` 同样推不了 workflow。fork 的 `SYNC_TOKEN` 已于 2026-09-15 换新并验证（§24.6），历史失效故障见 `HANDOVER.md` §20.7
 - 沙箱里 Go 构建：把 `GOCACHE`/`GOTMPDIR` 重定向到 `.cache/`，否则写 `%APPDATA%\go-build` 被拒
 - **本机 git 推送走 SSH 443**（`github.com:22` 不通；旧 PAT 已失效）：remote = `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`
 
