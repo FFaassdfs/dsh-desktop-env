@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,4 +98,87 @@ func executableDir() string {
 // bundledRuntimeInUse returns the portable runtime this shell runs from, if any.
 func bundledRuntimeInUse() (harnessRuntime, bool) {
 	return findPortableRuntime(runtimeCandidateDirs(executableDir(), os.Getenv), runtimeNodeName())
+}
+
+// ---- portable self-update ----------------------------------------------------
+//
+// The portable package carries its own runtime, so "npm i -g" would be useless
+// (nothing reads the global install). Instead the bundled npm installs the newer
+// harness into a staging prefix next to the runtime, and the swap happens at the
+// next start - nothing under the live runtime is touched while dsh is running.
+
+// updateStagingDir is the npm prefix used to prepare a newer harness.
+func updateStagingDir(runtimeRoot string) string {
+	return filepath.Join(filepath.Dir(runtimeRoot), ".update")
+}
+
+// bundledNpmCLI returns the npm CLI entry shipped inside the runtime ("" if absent).
+func bundledNpmCLI(runtimeRoot string) string {
+	p := filepath.Join(runtimeRoot, "node_modules", "npm", "bin", "npm-cli.js")
+	if !fileExists(p) {
+		return ""
+	}
+	return p
+}
+
+// stagedRuntimeIn reports whether dir (an npm prefix) holds a complete harness.
+func stagedRuntimeIn(dir string) (harnessRuntime, bool) {
+	if dir == "" {
+		return harnessRuntime{}, false
+	}
+	rt := harnessRuntime{
+		Root:    dir,
+		Entry:   filepath.Join(dir, runtimeEntryRel),
+		Package: filepath.Join(dir, runtimePackageRel),
+	}
+	if !fileExists(rt.Entry) {
+		return harnessRuntime{}, false
+	}
+	return rt, true
+}
+
+func dirExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
+}
+
+// runtimeBackupDir is where the replaced node_modules is kept for rollback.
+func runtimeBackupDir(runtimeRoot string) string {
+	return filepath.Join(runtimeRoot, "node_modules.old")
+}
+
+// swapRuntimeModules replaces <runtimeRoot>\node_modules with the staged one,
+// keeping the previous tree at runtimeBackupDir for rollback. node.exe and the
+// licence stay in place. Returns a rollback function.
+func swapRuntimeModules(runtimeRoot, stagingRoot string) (func(), error) {
+	live := filepath.Join(runtimeRoot, "node_modules")
+	staged := filepath.Join(stagingRoot, "node_modules")
+	if !dirExists(staged) {
+		return nil, fmt.Errorf("staged node_modules missing: %s", staged)
+	}
+	backup := runtimeBackupDir(runtimeRoot)
+	_ = os.RemoveAll(backup)
+	if dirExists(live) {
+		if err := os.Rename(live, backup); err != nil {
+			return nil, fmt.Errorf("cannot move the current runtime aside: %w", err)
+		}
+	}
+	if err := os.Rename(staged, live); err != nil {
+		if dirExists(backup) {
+			_ = os.Rename(backup, live)
+		}
+		return nil, fmt.Errorf("cannot install the staged runtime: %w", err)
+	}
+	rollback := func() {
+		_ = os.RemoveAll(live)
+		if dirExists(backup) {
+			_ = os.Rename(backup, live)
+		}
+	}
+	return rollback, nil
+}
+
+// cleanupRuntimeBackup drops the rollback copy once the new runtime is known good.
+func cleanupRuntimeBackup(runtimeRoot string) {
+	_ = os.RemoveAll(runtimeBackupDir(runtimeRoot))
 }

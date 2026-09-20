@@ -4,10 +4,14 @@ package main
 
 import (
 	"os/exec"
+	"syscall"
 )
 
 // runtimeNodeName is the node executable name on this platform.
 func runtimeNodeName() string { return "node" }
+
+// hiddenWindowAttr has no meaning off Windows.
+func hiddenWindowAttr() *syscall.SysProcAttr { return nil }
 
 // startDsh prefers a portable runtime shipped next to the exe (offline release)
 // and falls back to the `dsh` CLI on PATH.

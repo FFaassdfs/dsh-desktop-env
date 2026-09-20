@@ -41,6 +41,7 @@ param(
   [string]$ShellVersion = "",
   [string]$DshVersion = "",
   [switch]$NoNode,
+  [switch]$NoNpm,
   [switch]$SkipZip,
   [switch]$KeepStaging,
   [switch]$CheckOnly
@@ -171,6 +172,33 @@ if (-not $NoNode) {
   }
   Ok "runtime self-check passed: bundled dsh reports $probeFirst"
   $global:LASTEXITCODE = 0
+
+  # Bundle npm as well, so the portable shell can self-update into its own runtime
+  # (same user-visible behaviour as the script install: check the registry, fetch
+  # the newer harness, ask for a restart). npm is ~11 MB and is driven directly by
+  # the bundled node: node runtime\node_modules\npm\bin\npm-cli.js ...
+  if (-not $NoNpm) {
+    $npmSrc = Join-Path (Split-Path $NodeExe -Parent) "node_modules\npm"
+    if (-not (Test-Path $npmSrc)) {
+      Warn "npm not found next to $NodeExe - package will not be able to self-update (pass -NoNpm to silence)"
+    } else {
+      $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
+        $npmSrc, (Join-Path $rt "node_modules\npm"),
+        "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
+      ) -Wait -PassThru -NoNewWindow
+      if ($rc.ExitCode -ge 8) { throw "robocopy (npm) failed with exit code $($rc.ExitCode)" }
+      $npmProbeRaw = (& (Join-Path $rt "node.exe") (Join-Path $rt "node_modules\npm\bin\npm-cli.js") --version 2>&1 | Out-String)
+      $npmProbeExit = $LASTEXITCODE
+      $npmProbe = (($npmProbeRaw -split "`r?`n") | Where-Object { $_.Trim() -ne "" } | Select-Object -First 1)
+      if ($npmProbeExit -ne 0 -or -not ("$npmProbe".Trim() -match '^\d+\.\d+\.\d+')) {
+        throw "bundled npm is not runnable (exit=$npmProbeExit, first line='$npmProbe')"
+      }
+      Ok "npm bundled and runnable ($($npmProbe.Trim()), $([math]::Round((DirSize (Join-Path $rt 'node_modules\npm'))/1MB,1)) MB)"
+      $global:LASTEXITCODE = 0
+    }
+  } else {
+    Warn "npm not bundled (-NoNpm): the portable shell will not self-update"
+  }
 }
 
 $pluginsSrc = Join-Path $repoRoot "plugins"
@@ -197,6 +225,7 @@ built:     $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 shell:     commit $ShellVersion (from $repoRoot)
 harness:   @deepseek-ai/dsh $DshVersion (bundled, offline)
 node:      $(if ($NoNode) { 'not bundled' } else { "$nodeVersion (bundled)" })
+npm:       $(if ($NoNode -or $NoNpm) { 'not bundled (no self-update)' } else { 'bundled (enables in-package self-update)' })
 plugins:   $pluginCount package(s)
 port:      43080 (fixed; bare URL answers 401 until the token URL is opened)
 contents:  dsh-desktop.exe, runtime\, plugins\, scripts\, install-offline.ps1 (+ .cmd wrapper)
@@ -247,8 +276,12 @@ Notes
 
 Update
 ------
-Download a newer package and repeat step 1-2; your $DSH_HOME (sessions,
-settings, plugins) is kept separately and is not touched.
+The shell checks the npm registry at startup and every 24 h - exactly like the
+source/script install - and downloads a newer harness with the bundled npm. The
+new version is installed into a staging folder and swapped in on the next start
+("check for updates" -> restart), so nothing is replaced while dsh is running.
+You can always unzip a newer package over this folder instead; your $DSH_HOME
+(sessions, settings, plugins) is kept separately and is not touched.
 "@
 Set-Content -Path (Join-Path $pkgDir "README.txt") -Value $readmeText -Encoding utf8
 Ok "metadata written"

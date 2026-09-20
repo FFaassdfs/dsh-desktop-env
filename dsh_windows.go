@@ -19,6 +19,13 @@ var jsEntryPattern = regexp.MustCompile(`"[^"]+\.js"`)
 // runtimeNodeName is the node executable name on this platform.
 func runtimeNodeName() string { return "node.exe" }
 
+// hiddenWindowAttr returns the process attributes used for helper processes
+// (npm during a self-update, version probes): no console window, no window for
+// the child either.
+func hiddenWindowAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{CreationFlags: 0x08000000 | 0x00000008}
+}
+
 // resolveDshWeb locates the node entry so dsh web can be spawned as
 // `node <entry> web --no-open` directly. cmd.exe combined with
 // CREATE_NO_WINDOW breaks the inherited stdio of the node grandchild: neither

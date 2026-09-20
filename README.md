@@ -44,7 +44,8 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
     （可用简名：`explainer` / `project-explorer` / `model-capabilities` / `core-version`；无控制台调用时 `ask` 会自动退化为全装，不会挂住）
   - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
-- **自己打包**：`pwsh -File scripts\pack-release.ps1`（`-NoNode` 可打不含 Node 的小包；`-KeepStaging` 保留中间目录）
+- **自动更新（与源码装一致）**：便携版启动时 + 每 24h 也会查 npm registry，发现新版就用**包内 npm** 自动下载，提示「重启服务」生效；重启时把新 harness 换入 `runtime\`（先暂存、验证能跑、失败自动回滚；`node.exe` 不动）。包内 npm 缺失（`-NoNpm` 构建）或解压到只读目录时会如实提示，可改用下载新版发行包。
+- **自己打包**：`pwsh -File scripts\pack-release.ps1`（`-NoNode` 打不含 Node 的小包；`-NoNpm` 关掉自更新能力；`-KeepStaging` 保留中间目录）
 - **自动发版**：往仓库打 tag `desktop-v0.1.0` → `.github/workflows/release-desktop.yml` 在 windows runner 上构建并挂到 GitHub Release（用内置 `GITHUB_TOKEN`，不需要 PAT）；也可在 Actions 页手动 `workflow_dispatch`。
 
 ## 原理（当前行为）

@@ -117,6 +117,9 @@ func (a *App) bootstrap(ctx context.Context) {
 		a.mu.Unlock()
 	}()
 
+	// A staged portable self-update is applied here, before anything runs.
+	a.applyPendingRuntimeUpdate()
+
 	a.emitStatus("正在启动 DeepSeek Harness…")
 	if !a.portOpen() {
 		debugLog("bootstrap: port %s closed, spawning dsh web", dshPort)
@@ -156,6 +159,10 @@ func (a *App) bootstrap(ctx context.Context) {
 	a.bootedAt = time.Now()
 	a.mu.Unlock()
 	debugLog("bootstrap: ready")
+	if rt, ok := bundledRuntimeInUse(); ok {
+		// The new runtime proved itself by starting: drop the rollback copy.
+		cleanupRuntimeBackup(rt.Root)
+	}
 	a.emitStatus("DeepSeek Harness 已启动")
 	a.emitURL(target)
 	runtime.BrowserOpenURL(ctx, target)
@@ -528,15 +535,11 @@ func (a *App) latestVersion() string {
 func (a *App) checkUpdates() {
 	a.emitUpdate("正在检查更新…")
 	if rt, ok := bundledRuntimeInUse(); ok {
-		// Portable release: the runtime is part of the package, so npm self-update
-		// is skipped on purpose (installing a global dsh would not be used anyway
-		// and would only create version divergence).
-		debugLog("checkUpdates: bundled runtime at %s, npm self-update disabled", rt.Root)
-		if v := versionFromPackageJSON(rt.Package); v != "" {
-			a.emitUpdate("内置运行时 " + v + "（便携版随发行包更新，已跳过 npm 自更新）")
-		} else {
-			a.emitUpdate("内置运行时（便携版随发行包更新，已跳过 npm 自更新）")
-		}
+		// Portable release: same user-visible behaviour as the script install
+		// (query the registry, fetch the newer harness, then ask for a restart),
+		// except that the new version is installed into the package's own runtime
+		// instead of the global npm prefix - nothing reads the global install here.
+		a.checkBundledUpdate(rt)
 		return
 	}
 	installed := a.installedVersion()
@@ -562,8 +565,144 @@ func (a *App) checkUpdates() {
 	a.emitUpdate("已更新到 " + latest + "，请点击「重启服务」生效")
 }
 
-func (a *App) checkUpdatesLoop() {
-	a.checkUpdates()
+// ---- portable (bundled runtime) self-update ---------------------------------
+
+// checkBundledUpdate mirrors the npm self-update path for a portable package:
+// query the registry, download the newer harness into a staging prefix using the
+// BUNDLED npm, then ask the user to restart (the swap happens at next start).
+func (a *App) checkBundledUpdate(rt harnessRuntime) {
+	current := versionFromPackageJSON(rt.Package)
+	latest := a.latestVersion()
+	if latest == "" {
+		a.emitUpdate("检查更新失败（网络不可用）")
+		return
+	}
+	if current == "" {
+		a.emitUpdate("内置运行时版本未知，最新版本 " + latest)
+		return
+	}
+	if current == latest {
+		a.emitUpdate("已是最新版本 " + latest)
+		return
+	}
+
+	npmCLI := bundledNpmCLI(rt.Root)
+	if npmCLI == "" {
+		debugLog("checkBundledUpdate: no bundled npm, cannot self-update")
+		a.emitUpdate("内置运行时 " + current + "（本包未内置 npm，无法自更新；请下载新版发行包）")
+		return
+	}
+	// Already staged and waiting for a restart?
+	staging := updateStagingDir(rt.Root)
+	if staged, ok := stagedRuntimeIn(staging); ok {
+		if v := versionFromPackageJSON(staged.Package); v == latest {
+			a.emitUpdate("已下载 " + latest + "，重启服务后生效")
+			return
+		}
+		_ = os.RemoveAll(staging)
+	}
+
+	a.emitUpdate("发现新版本 " + latest + "（当前 " + current + "），正在下载…")
+	if err := a.stageBundledRuntime(rt, npmCLI, latest); err != nil {
+		debugLog("checkBundledUpdate: staging failed: %v", err)
+		a.emitUpdate("自动更新失败：" + err.Error() + "（也可下载新版发行包）")
+		return
+	}
+	debugLog("checkBundledUpdate: staged %s at %s", latest, staging)
+	a.emitUpdate("已下载 " + latest + "，请点击「重启服务」生效")
+}
+
+// stageBundledRuntime installs @deepseek-ai/dsh@version into the staging prefix
+// with the bundled npm, then verifies that the staged tree actually runs.
+func (a *App) stageBundledRuntime(rt harnessRuntime, npmCLI, version string) error {
+	staging := updateStagingDir(rt.Root)
+	_ = os.RemoveAll(staging)
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		return fmt.Errorf("cannot create %s: %w", staging, err)
+	}
+	cmd := exec.Command(rt.NodeExe, npmCLI, "install",
+		"--prefix", staging,
+		"--no-audit", "--no-fund", "--loglevel=error",
+		"@deepseek-ai/dsh@"+version)
+	cmd.SysProcAttr = hiddenWindowAttr()
+	cmd.Dir = staging
+	cmd.Env = append(os.Environ(),
+		"npm_config_cache="+filepath.Join(filepath.Dir(rt.Root), ".npm-cache"),
+		"npm_config_update_notifier=false",
+		"npm_config_fund=false",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("npm install %s failed: %v", version, firstLine(string(out)))
+	}
+	staged, ok := stagedRuntimeIn(staging)
+	if !ok {
+		return fmt.Errorf("staged tree is incomplete (no %s)", runtimeEntryRel)
+	}
+	if got := probeRuntimeVersion(rt.NodeExe, staged.Entry); got != version {
+		return fmt.Errorf("staged runtime reports %q instead of %s", got, version)
+	}
+	return nil
+}
+
+// applyPendingRuntimeUpdate swaps a verified staged runtime into place. It runs
+// before the harness is started, so the live runtime is never touched while dsh
+// is running (Windows would refuse to replace those files anyway).
+func (a *App) applyPendingRuntimeUpdate() {
+	rt, ok := bundledRuntimeInUse()
+	if !ok {
+		return
+	}
+	staging := updateStagingDir(rt.Root)
+	staged, ok := stagedRuntimeIn(staging)
+	if !ok {
+		return
+	}
+	want := versionFromPackageJSON(staged.Package)
+	if got := probeRuntimeVersion(rt.NodeExe, staged.Entry); want == "" || got != want {
+		debugLog("applyPendingRuntimeUpdate: staged runtime failed its probe, discarding")
+		_ = os.RemoveAll(staging)
+		return
+	}
+	rollback, err := swapRuntimeModules(rt.Root, staging)
+	if err != nil {
+		debugLog("applyPendingRuntimeUpdate: swap failed: %v", err)
+		return
+	}
+	if got := probeRuntimeVersion(rt.NodeExe, filepath.Join(rt.Root, runtimeEntryRel)); got != want {
+		debugLog("applyPendingRuntimeUpdate: swapped runtime reports %q, want %s - rolling back", got, want)
+		rollback()
+		return
+	}
+	_ = os.RemoveAll(staging)
+	debugLog("applyPendingRuntimeUpdate: applied harness %s", want)
+	a.emitUpdate("内置运行时已更新到 " + want)
+}
+
+// probeRuntimeVersion runs `node <entry> --version` and returns the first output
+// line ("" when the runtime cannot be loaded at all).
+func probeRuntimeVersion(nodeExe, entry string) string {
+	cmd := exec.Command(nodeExe, entry, "--version")
+	cmd.SysProcAttr = hiddenWindowAttr()
+	out, err := cmd.Output()
+	if err != nil {
+		debugLog("probeRuntimeVersion: %s failed: %v", entry, err)
+		return ""
+	}
+	return firstLine(string(out))
+}
+
+// firstLine returns the first non-empty line, trimmed.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+func (a *App) checkUpdatesLoop() {	a.checkUpdates()
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 	for range ticker.C {

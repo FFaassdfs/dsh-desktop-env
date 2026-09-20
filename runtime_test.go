@@ -184,3 +184,138 @@ func TestBundledRuntimeInUse_NoOverrideNoRuntime(t *testing.T) {
 		t.Errorf("test binary has no runtime/ next to it, so nothing should be found")
 	}
 }
+
+func TestUpdateStagingAndNpmHelpers(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	if err := os.MkdirAll(runtimeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	staging := updateStagingDir(runtimeRoot)
+	if staging != filepath.Join(filepath.Dir(runtimeRoot), ".update") {
+		t.Errorf("staging dir = %q", staging)
+	}
+
+	// No npm bundled yet.
+	if got := bundledNpmCLI(runtimeRoot); got != "" {
+		t.Errorf("expected no npm CLI, got %q", got)
+	}
+	npmDir := filepath.Join(runtimeRoot, "node_modules", "npm", "bin")
+	if err := os.MkdirAll(npmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	npmCLI := filepath.Join(npmDir, "npm-cli.js")
+	if err := os.WriteFile(npmCLI, []byte("// npm"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := bundledNpmCLI(runtimeRoot); got != npmCLI {
+		t.Errorf("npm CLI = %q, want %q", got, npmCLI)
+	}
+}
+
+func TestStagedRuntimeIn(t *testing.T) {
+	staging := t.TempDir()
+	if _, ok := stagedRuntimeIn(staging); ok {
+		t.Errorf("empty staging dir must not count as a staged runtime")
+	}
+	if _, ok := stagedRuntimeIn(""); ok {
+		t.Errorf("empty path must not count")
+	}
+	makeRuntime(t, staging, "node.exe", false, true) // manifest + entry, no node needed here
+	rt, ok := stagedRuntimeIn(staging)
+	if !ok {
+		t.Fatalf("staged runtime with %s should be detected", runtimeEntryRel)
+	}
+	if rt.Entry != filepath.Join(staging, runtimeEntryRel) {
+		t.Errorf("Entry = %q", rt.Entry)
+	}
+}
+
+func TestSwapRuntimeModules_AndRollback(t *testing.T) {
+	base := t.TempDir()
+	runtimeRoot := filepath.Join(base, "runtime")
+	staging := filepath.Join(base, ".update")
+
+	// Current runtime: node.exe + a node_modules tree marked "old".
+	live := filepath.Join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib")
+	if err := os.MkdirAll(live, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldMarker := filepath.Join(runtimeRoot, "node_modules", "marker.txt")
+	if err := os.WriteFile(oldMarker, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeRoot, "node.exe"), []byte("node"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Staged runtime: node_modules with a different marker.
+	stagedNm := filepath.Join(staging, "node_modules")
+	if err := os.MkdirAll(filepath.Join(stagedNm, "@deepseek-ai", "dsh", "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stagedNm, "marker.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Missing staged tree must fail without touching anything.
+	if _, err := swapRuntimeModules(runtimeRoot, filepath.Join(base, "nope")); err == nil {
+		t.Errorf("swap must fail when the staged node_modules is missing")
+	}
+	if data, err := os.ReadFile(oldMarker); err != nil || string(data) != "old" {
+		t.Errorf("live tree must be untouched after a failed swap: %q %v", data, err)
+	}
+
+	rollback, err := swapRuntimeModules(runtimeRoot, staging)
+	if err != nil {
+		t.Fatalf("swap failed: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(runtimeRoot, "node_modules", "marker.txt")); string(data) != "new" {
+		t.Errorf("live tree should now be the staged one, got %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(runtimeRoot, "node.exe")); err != nil {
+		t.Errorf("node.exe must stay in place: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(runtimeBackupDir(runtimeRoot), "marker.txt")); string(data) != "old" {
+		t.Errorf("backup should hold the previous tree, got %q", data)
+	}
+
+	rollback()
+	if data, _ := os.ReadFile(filepath.Join(runtimeRoot, "node_modules", "marker.txt")); string(data) != "old" {
+		t.Errorf("rollback should restore the previous tree, got %q", data)
+	}
+
+	// Cleanup removes the backup only. The first swap consumed the staged tree
+	// (it was moved into place), so stage it again before swapping a second time.
+	if err := os.MkdirAll(filepath.Join(stagedNm, "@deepseek-ai", "dsh", "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stagedNm, "marker.txt"), []byte("new2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := swapRuntimeModules(runtimeRoot, staging); err != nil {
+		t.Fatalf("second swap failed: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(runtimeRoot, "node_modules", "marker.txt")); string(data) != "new2" {
+		t.Errorf("live tree should be the re-staged one, got %q", data)
+	}
+	cleanupRuntimeBackup(runtimeRoot)
+	if _, err := os.Stat(runtimeBackupDir(runtimeRoot)); !os.IsNotExist(err) {
+		t.Errorf("backup should be gone after cleanup")
+	}
+	if _, err := os.Stat(filepath.Join(runtimeRoot, "node_modules", "marker.txt")); err != nil {
+		t.Errorf("live tree must survive cleanup: %v", err)
+	}
+}
+
+func TestFirstLine(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"1.2.3\n", "1.2.3"},
+		{"\n\n  x  \n y", "x"},
+		{"", ""},
+		{"   ", ""},
+	}
+	for _, tc := range cases {
+		if got := firstLine(tc.in); got != tc.want {
+			t.Errorf("firstLine(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

@@ -1360,5 +1360,35 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 - ⚠️ **壳的 `SingleInstanceLock`（`main.go`，`UniqueId: dsh-desktop-9a7f1e2b`）导致无法在同机并行验证便携包**：本机已跑正式壳时，便携包 exe 会**立刻退出**（并向第一个实例发"显示窗口"请求）。已把这条写进包内 `README.txt` 与 `install-offline.ps1` 的输出；**真正的便携启动验证要在目标机做**（也正是它的使用场景）。
 - 📦 本次本地测试产物（未入库，`.cache` 已被 gitignore）：`.cache\release\dsh-desktop-a3f4804-dsh0.1.5-rc.2-win-x64.zip`（106.2 MB）+ `SHA256SUMS.txt`，可直接拷到别的机器试。
 
+### 27.9 便携版自更新：与源码装"行为一致、机制不同"（2026-09-20 二次迭代）
+
+**用户要求**：便携版在自动更新上要和源码/脚本装一样 —— 查 registry、有新版自动装、提示「重启服务」生效。
+
+**为什么不能照搬 `npm i -g`**：便携壳读的是**包内 `runtime\`**，全局 npm 那份它根本不看（便携包也不依赖系统 Node/npm）→ 装全局等于白装。所以做了**等价改造**：
+
+| 环节 | 源码/脚本装 | 便携版（本次实现） |
+|---|---|---|
+| 触发 | 启动 + 每 24h | **相同**（`checkUpdatesLoop`） |
+| 查版本 | `registry.npmjs.org` 的 `dist-tags.latest` | **相同**（复用 `latestVersion()`） |
+| 下载 | `npm i -g @deepseek-ai/dsh` | **包内 npm** 装到 `<包目录>\.update`（`npm install --prefix .update @deepseek-ai/dsh@<ver>`） |
+| 生效 | 点「重启服务」 | **相同**；重启时把 `.update\node_modules` 换到 `runtime\node_modules` |
+| 提示文案 | 发现新版本…正在自动更新…已更新，请重启 | **相同**（`app.go` 的 `checkBundledUpdate`） |
+
+**前提**：包内必须带 npm（实测 **11.3 MB / 1874 文件**，可直接用包内 node 驱动：`node runtime\node_modules\npm\bin\npm-cli.js --version` → `11.13.0`）。`pack-release.ps1` 现在默认打进去（`-NoNpm` 可关），并加了一道 **npm 可运行性检查**。包内 npm 不存在时，壳会如实提示「本包未内置 npm，无法自更新；请下载新版发行包」。
+
+**安全设计（为什么用"暂存 + 重启交换"而不是原地覆盖）**：运行中的 dsh web 占着 `runtime\` 里的文件，Windows 上原地替换会失败/留下半残树。实现（`runtime.go` + `app.go`）：
+
+1. `stageBundledRuntime()`：用包内 npm 装到 `<pkg>\.update`（cache 指向 `<pkg>\.npm-cache`，全程无窗口）→ 装完**跑一次** `node .update\...\bin.js --version` 验证，版本不符就丢弃并报错。
+2. `applyPendingRuntimeUpdate()`：**在启动任何东西之前**调用 → 再次验证暂存树 → `swapRuntimeModules()` 把 `runtime\node_modules` 改名为 `node_modules.old`、把暂存的换进去 → 再探针一次；**探针不过就自动回滚**。
+3. 新运行时**成功启动后**（bootstrap ready）删掉 `node_modules.old`（`cleanupRuntimeBackup`）。
+4. `node.exe` 与 LICENSE **始终不动**（只换 `node_modules`），所以 node 自身的 ABI 不变。
+
+**单元测试**（`runtime_test.go`，共 22 个用例全绿）：`bundledNpmCLI` 存在/缺失、`stagedRuntimeIn` 完整性判定、`swapRuntimeModules` 交换成功 + **回滚还原** + 暂存缺失时报错且不动现有树、`cleanupRuntimeBackup`、`firstLine`。`go vet`（含 `GOOS=linux`）为 0。
+
+**注意事项**：
+- 包若解压到**只读位置**（如 `C:\Program Files`），暂存安装会失败 → 壳会提示失败原因（可下载新版发行包兜底）。
+- 更新走 npm，需要能访问 registry.npmjs.org。
+- 自更新只换 harness；**壳自身**仍随发行包更新（未来可加"下载新 zip"）。
+
 
 
