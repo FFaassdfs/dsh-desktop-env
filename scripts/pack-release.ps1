@@ -180,22 +180,24 @@ if (-not $NoNode) {
   if (-not $NoNpm) {
     $npmSrc = Join-Path (Split-Path $NodeExe -Parent) "node_modules\npm"
     if (-not (Test-Path $npmSrc)) {
-      Warn "npm not found next to $NodeExe - package will not be able to self-update (pass -NoNpm to silence)"
-    } else {
-      $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
-        $npmSrc, (Join-Path $rt "node_modules\npm"),
-        "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
-      ) -Wait -PassThru -NoNewWindow
-      if ($rc.ExitCode -ge 8) { throw "robocopy (npm) failed with exit code $($rc.ExitCode)" }
-      $npmProbeRaw = (& (Join-Path $rt "node.exe") (Join-Path $rt "node_modules\npm\bin\npm-cli.js") --version 2>&1 | Out-String)
-      $npmProbeExit = $LASTEXITCODE
-      $npmProbe = (($npmProbeRaw -split "`r?`n") | Where-Object { $_.Trim() -ne "" } | Select-Object -First 1)
-      if ($npmProbeExit -ne 0 -or -not ("$npmProbe".Trim() -match '^\d+\.\d+\.\d+')) {
-        throw "bundled npm is not runnable (exit=$npmProbeExit, first line='$npmProbe')"
-      }
-      Ok "npm bundled and runnable ($($npmProbe.Trim()), $([math]::Round((DirSize (Join-Path $rt 'node_modules\npm'))/1MB,1)) MB)"
-      $global:LASTEXITCODE = 0
+      # Hard failure on purpose: a package without npm silently loses the
+      # self-update capability that the release promises (this shipped once,
+      # 2026-09-20 - the CI only copied node.exe, so the packer skipped npm).
+      throw "npm not found at $npmSrc - the package could not self-update. Stage npm next to node.exe, or pass -NoNpm to opt out explicitly."
     }
+    $rc = Start-Process -FilePath "robocopy" -ArgumentList @(
+      $npmSrc, (Join-Path $rt "node_modules\npm"),
+      "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1"
+    ) -Wait -PassThru -NoNewWindow
+    if ($rc.ExitCode -ge 8) { throw "robocopy (npm) failed with exit code $($rc.ExitCode)" }
+    $npmProbeRaw = (& (Join-Path $rt "node.exe") (Join-Path $rt "node_modules\npm\bin\npm-cli.js") --version 2>&1 | Out-String)
+    $npmProbeExit = $LASTEXITCODE
+    $npmProbe = (($npmProbeRaw -split "`r?`n") | Where-Object { $_.Trim() -ne "" } | Select-Object -First 1)
+    if ($npmProbeExit -ne 0 -or -not ("$npmProbe".Trim() -match '^\d+\.\d+\.\d+')) {
+      throw "bundled npm is not runnable (exit=$npmProbeExit, first line='$npmProbe')"
+    }
+    Ok "npm bundled and runnable ($($npmProbe.Trim()), $([math]::Round((DirSize (Join-Path $rt 'node_modules\npm'))/1MB,1)) MB)"
+    $global:LASTEXITCODE = 0
   } else {
     Warn "npm not bundled (-NoNpm): the portable shell will not self-update"
   }

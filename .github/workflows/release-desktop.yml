@@ -89,6 +89,12 @@ jobs:
           $src = "node-dist\node-v$ver-win-x64"
           Copy-Item "$src\node.exe" staging\node.exe -Force
           if (Test-Path "$src\LICENSE") { Copy-Item "$src\LICENSE" staging\LICENSE -Force }
+          # The packer takes npm from the folder that holds node.exe, so npm must
+          # travel with it - otherwise the portable shell cannot self-update.
+          Copy-Item "$src\node_modules\npm" staging\node_modules\npm -Recurse -Force
+          if (-not (Test-Path staging\node_modules\npm\bin\npm-cli.js)) {
+            throw "npm was not staged next to node.exe; the package would not be able to self-update"
+          }
           "NODE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Pack the portable release
