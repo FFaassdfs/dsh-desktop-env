@@ -10,10 +10,15 @@
 # no npm, no Go/Wails needed on the target machine.
 #
 # Usage:
-#   powershell -File install-offline.ps1                  # plugins only, run in place
+#   install-offline.cmd                                   # double-click wrapper (recommended)
+#   powershell -ExecutionPolicy Bypass -File install-offline.ps1   # plugins only, run in place
 #   powershell -File install-offline.ps1 -DSHome D:\dsh-home
 #   powershell -File install-offline.ps1 -AppDir D:\dsh\app\current   # also copy exe+runtime
 #   powershell -File install-offline.ps1 -CheckOnly       # dry run
+#
+# This is OPTIONAL: the package is portable, so unzipping and running
+# dsh-desktop.exe already works. This script only installs the bundled plugins
+# into $DSH_HOME (and optionally copies the shell into an app directory).
 #
 # NOTE: ASCII-only on purpose (Windows PowerShell 5.1 misreads BOM-less UTF-8
 # scripts with non-ASCII content).

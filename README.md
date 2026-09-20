@@ -27,13 +27,17 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
 
 - **产物**：`dsh-desktop-<壳commit>-dsh<harness版本>-win-x64.zip`（实测 **106 MB**）+ `SHA256SUMS.txt`
   - 内含：壳 `dsh-desktop.exe`、**便携 Node**（`runtime\node.exe`）、**离线 harness 树**（`runtime\node_modules\@deepseek-ai\dsh`，含全部依赖）、4 个插件、`install-offline.ps1`
-- **目标机用法**：
-  ```powershell
-  # 1) 解压到任意目录（例如 D:\dsh-desktop-portable）
-  # 2) （可选）把 4 个插件装进 DSH_HOME：
-  powershell -File install-offline.ps1
-  # 3) 运行 dsh-desktop.exe（自己认同目录的 runtime\，无需任何全局安装）
+- **目标机用法（没有"安装"步骤，解压即用）**：
   ```
+  1) 把 zip 解压到任意目录（例如 D:\dsh-desktop-portable）
+  2) 双击 dsh-desktop.exe          ← 就这样，壳自己认同目录的 runtime\
+  3) （可选）想让 4 个插件也进 DSH_HOME：双击 install-offline.cmd
+  ```
+  - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）。想自定义就命令行跑：
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -DSHome D:\dsh-home
+    ```
+  - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
 - **自己打包**：`pwsh -File scripts\pack-release.ps1`（`-NoNode` 可打不含 Node 的小包；`-KeepStaging` 保留中间目录）
 - **自动发版**：往仓库打 tag `desktop-v0.1.0` → `.github/workflows/release-desktop.yml` 在 windows runner 上构建并挂到 GitHub Release（用内置 `GITHUB_TOKEN`，不需要 PAT）；也可在 Actions 页手动 `workflow_dispatch`。

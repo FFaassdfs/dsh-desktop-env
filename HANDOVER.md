@@ -1296,6 +1296,7 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
   ```
   开关：`-NoNode`（不带宽 Node，体积小但目标机需自备 Node）/ `-SkipZip` / `-KeepStaging` / `-CheckOnly` / `-RuntimeSource` / `-NodeExe` / `-ShellVersion` / `-DshVersion`。
 - **`install-offline.ps1`**（随包发、也可单跑）：① 校验包布局 ② 用**包内 Node** 跑 `scripts/setup-plugins.mjs` 把 4 个插件装进 `$DSH_HOME`（幂等；支持 `-DSHome`）③ 可选 `-AppDir` 把 exe+runtime 拷到应用区。
+- **`install-offline.cmd`**（随包发）：上面那个 .ps1 的**双击包装**（`powershell -ExecutionPolicy Bypass -File ...`，并 `pause` 保留窗口）——因为 Windows 双击 `.ps1` 不会执行、且默认执行策略可能拦截。包内 `README.txt` 已明确写「**没有安装步骤，解压即用**；该脚本只是可选地把插件装进 DSH_HOME」，并补充 **WebView2 Runtime** 前提。
 
 **本地实测（2026-09-20）**：
 - 打包成功：`dsh-desktop-a3f4804-dsh0.1.5-rc.2-win-x64.zip` = **106.2 MB**（原始 312.6 MB / 25,482 文件），SHA256 已生成。

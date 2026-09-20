@@ -134,7 +134,8 @@ Ok "$pluginCount plugin package(s) staged"
 New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir "scripts") | Out-Null
 Copy-Item (Join-Path $repoRoot "scripts\setup-plugins.mjs") (Join-Path $pkgDir "scripts\setup-plugins.mjs") -Force
 Copy-Item (Join-Path $repoRoot "install-offline.ps1") (Join-Path $pkgDir "install-offline.ps1") -Force
-Ok "installer + setup-plugins.mjs staged"
+Copy-Item (Join-Path $repoRoot "install-offline.cmd") (Join-Path $pkgDir "install-offline.cmd") -Force
+Ok "installer (install-offline.ps1 + .cmd wrapper) + setup-plugins.mjs staged"
 
 # --- metadata -----------------------------------------------------------------
 Step "2/4 writing VERSION.txt / README.txt"
@@ -147,7 +148,7 @@ harness:   @deepseek-ai/dsh $DshVersion (bundled, offline)
 node:      $(if ($NoNode) { 'not bundled' } else { "$nodeVersion (bundled)" })
 plugins:   $pluginCount package(s)
 port:      43080 (fixed; bare URL answers 401 until the token URL is opened)
-contents:  dsh-desktop.exe, runtime\, plugins\, scripts\, install-offline.ps1
+contents:  dsh-desktop.exe, runtime\, plugins\, scripts\, install-offline.ps1 (+ .cmd wrapper)
 "@
 Set-Content -Path (Join-Path $pkgDir "VERSION.txt") -Value $versionText -Encoding utf8
 
@@ -156,31 +157,45 @@ dsh-desktop portable release ($pkgName)
 =======================================
 
 This package is self-contained: no Node.js, npm, Go or Wails needed.
+There is NO installer - it is portable, just unzip and run.
 
 Quick start
 -----------
 1. Unzip anywhere (for example D:\dsh-desktop-portable).
-2. Optional but recommended - install the 4 custom plugins into your DSH home:
-     powershell -File install-offline.ps1
-   Add -AppDir D:\dsh\app\current to also copy the shell into an app directory.
-3. Run dsh-desktop.exe from this folder. It starts (or reuses) the harness and
-   opens the Web UI in your default browser.
+2. Run dsh-desktop.exe in that folder.
+   It starts (or reuses) the harness and opens the Web UI in your browser.
+
+Optional: install the 4 custom plugins into your DSH home
+--------------------------------------------------------
+Double-click install-offline.cmd      (recommended, works with a double click)
+   or:  powershell -ExecutionPolicy Bypass -File install-offline.ps1
+
+This copies the bundled plugins into %USERPROFILE%\.dsh and adds their entries
+to the profile patch. Use -DSHome <dir> to target another home, and
+-AppDir <dir> to also copy the shell into an app directory.
+
+Requirements
+------------
+* Windows 10/11 with the WebView2 Runtime (shipped with Windows; if the window
+  stays blank, install "Microsoft Edge WebView2 Runtime").
+* Nothing else. The bundled runtime\ provides Node.js and the harness.
 
 Notes
 -----
-* The shell resolves runtime\ next to the exe, so keep the folder layout intact.
+* Keep the folder layout intact - the shell resolves runtime\ next to the exe.
 * The shell is SINGLE-INSTANCE per user: if another dsh-desktop (installed or
   older portable copy) is already running, this one exits and just shows that
   window. Close it first when trying the portable build next to an install.
 * API keys / .env are NOT included; configure them per machine.
-* The build is unsigned: Windows SmartScreen may warn on first run.
+* The build is unsigned: Windows SmartScreen may warn on first run
+  ("More info" -> "Run anyway").
 * Plugin changes need a full shell restart to take effect.
 * Port 43080 is fixed; a bare http://127.0.0.1:43080/ answers 401 by design.
 * Logs: %APPDATA%\dsh-desktop\ (dsh.log, debug.log; rotated at 5 MiB / 1 MiB).
 
 Update
 ------
-Download a newer package and repeat steps 1-3; your $DSH_HOME (sessions,
+Download a newer package and repeat step 1-2; your $DSH_HOME (sessions,
 settings, plugins) is kept separately and is not touched.
 "@
 Set-Content -Path (Join-Path $pkgDir "README.txt") -Value $readmeText -Encoding utf8
