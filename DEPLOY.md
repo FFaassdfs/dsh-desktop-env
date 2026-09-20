@@ -61,9 +61,9 @@ $env:Path += ";$env:USERPROFILE\go\bin"   # 当前会话；长期加用户 PATH
 ```powershell
 cd D:\dsh\dsh-desktop-env
 # 推荐（PowerShell 7）：
-pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1
+pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2
 # 或系统自带（Windows PowerShell 5.1）：
-powershell -File deploy.ps1 -HarnessVersion 0.1.5-rc.1
+powershell -File deploy.ps1 -HarnessVersion 0.1.5-rc.2
 ```
 
 - 不需要桌面壳：加 `-SkipDesktopBuild`
@@ -84,11 +84,13 @@ powershell -File deploy.ps1 -HarnessVersion 0.1.5-rc.1
 ## 6. 启动并验收
 
 ```powershell
-# 桌面壳方式（构建产物；正式运行请拷到应用区 D:\dsh\app\current\）
-D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe
+# 桌面壳方式：**唯一启动入口**（setup.ps1 / update.ps1 都部署到这里）
+D:\dsh\app\current\dsh-desktop.exe
 # 或纯 Web 方式
 dsh web
 ```
+
+> 构建产物本身在 `D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe`，但那只是中间产物——**启动请用应用区那份**（脚本会自动部署；手动构建时可跑 `scripts\deploy-shell.ps1 -BuiltExe build\bin\dsh-desktop.exe`）。
 
 **验收清单**：
 - [ ] 浏览器能打开 Web UI（127.0.0.1:43080）
@@ -122,10 +124,10 @@ pwsh -File update.ps1          # pull + 刷新插件 + wails build + 部署到�
 ```
 
 - 只改了 Go、想快一点：`pwsh -File update.ps1 -SkipFrontend`（等价 `wails build -s`）
-- 只想更新依赖环境/插件：`pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1`
+- 只想更新依赖环境/插件：`pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2`
 - **壳源码就在本仓库**，不再需要 clone fork 的 `desktop/`（该目录已于 2026-09-15 删除，见 `HANDOVER.md` §24）
 - 换壳后**必须重启壳**才生效；应用区 exe 被运行中的壳锁住时，脚本会暂存为 `dsh-desktop.new.exe` 并提示换法（或改跑 `.work\swap-desktop-exe.ps1`）
 
-> 版本号两台机器保持一致（当前锁定 `0.1.5-rc.1`；升级时两台的 `-HarnessVersion` 一起改）。权威源见 `project-facts-v1.0.md` F10。
+> 版本号两台机器保持一致（当前锁定 `0.1.5-rc.2`；升级时两台的 `-HarnessVersion` 一起改）。权威源见 `project-facts-v1.0.md` F10。
 
 > 文档版本：v1.3（2026-09-15 更新）— §8 改为 `update.ps1` 一条命令流程；补充"壳源码在本仓库、fork `desktop/` 已废弃"。

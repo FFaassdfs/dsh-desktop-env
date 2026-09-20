@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-15）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（exe，与源码分离）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.1`**（全局 npm，2026-09-10 安装；旧记的 `0.1.2-rc.1` 已过时，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 与 client 半区均已验证可见（§21.3）。**P0 全部关闭**（§24：fork 降级为纯镜像 + `SYNC_TOKEN` 已换新验证）。
+> **当前状态（2026-09-20）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。旧记的 `0.1.2-rc.1`/`0.1.5-rc.1` 均为过时快照，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 与 client 半区均已验证可见（§21.3）。**P0 全部关闭**（§24：fork 降级为纯镜像 + `SYNC_TOKEN` 已换新验证）；**多机更新链已修好**（§25/§26：`update.ps1` 一条命令 + 首装/更新统一落点）。
 
 ## 开工必做
 
@@ -24,7 +24,7 @@
 - **桌面壳源码（唯一权威）**：**本仓库根目录**——`app.go`、`main.go`、`dsh_windows.go`、`dsh_other.go`、`windowstate.go`、`frontend/`（launcher：状态面板 + node 直启 + token 交系统浏览器）
   - 当前形态：**启动器（端口 43080）**，真正的 dsh 界面由**系统浏览器**打开（见 `HANDOVER.md` §14）
 - **应用产物（与源码分离）**：`D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\<日期>\`）
-  - 改壳后：`wails build` → 把 `build\bin\dsh-desktop.exe` 拷到 `D:\dsh\app\current\`
+  - 改壳后：`wails build` → 用 **`pwsh -File scripts\deploy-shell.ps1 -BuiltExe build\bin\dsh-desktop.exe`** 部署到应用区（首装/更新共用这段逻辑；exe 被运行中的壳锁住时自动暂存 `.new.exe`）
   - 🟢 **一条命令搞定（含 pull/插件/构建/部署）**：`pwsh -File update.ps1`（开关 `-SkipFrontend` 只编 Go、`-CheckOnly` 干跑、`-AppDir` 改应用区）；首次部署用 `setup.ps1`。**壳源码就在本仓库**，fork 根级 `desktop/` 已废弃（见 `HANDOVER.md` §24/§25）
   - 回归验证「新克隆能否构建」：`pwsh -File .work\verify-fresh-clone.ps1`
 - **旧工作区 `D:\opencode\001\dsh-desktop` 已冻结**（见其 `FROZEN.md`）：**不要再写入/提交**
@@ -36,7 +36,7 @@
 
 - 沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`（schannel 凭据库被拒）→ 用 `danger-full-access` 重试
 - 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`
-  - 🔴 **返回 `401` = 正常**（0.1.2-rc.1 起的浏览器认证门，本机 0.1.5-rc.1；裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
+  - 🔴 **返回 `401` = 正常**（0.1.2-rc.1 起的浏览器认证门，本机 0.1.5-rc.2；裸 URL 一律 401）；`000` = 未运行；`200` 只在带 token/cookie 时出现
 - 改 Go 后端后 `wails build -s`（跳过前端 vite，免提权）；**改前端/绑定或首次构建必须完整 `wails build`**；产物要拷到**应用区** `D:\dsh\app\current\dsh-desktop.exe`（构建 exit 0 ≠ 已生效）
 - 🔴 **换壳后必须核对「运行中的进程」，不是磁盘上的文件**：`Get-Process dsh-desktop | Select Id,Path`。2026-09-15 实踩：应用区 exe 已是新构建，但桌面快捷方式仍指向**冻结的旧工作区**（`D:\opencode\001\dsh-desktop\build\bin\`），启动出来的还是旧壳——已把快捷方式改到应用区（详见 `HANDOVER.md` §23.4）
 - 推送 `.github/workflows/*` 文件：内置 `GITHUB_TOKEN` 推不了（GitHub 安全限制）→ 需带 `workflow` scope 的 PAT；fork 的 `SYNC_TOKEN` 已于 2026-09-15 换新并验证（§24.6），历史失效故障见 `HANDOVER.md` §20.7

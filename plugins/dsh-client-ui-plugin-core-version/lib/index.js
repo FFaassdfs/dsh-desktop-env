@@ -7,7 +7,7 @@
 //
 // Route:
 //   GET/POST /plugin-core-version/version
-//     -> {ok:true, version:"0.1.5-rc.1"}   (example; always the installed version)
+//     -> {ok:true, version:"0.1.5-rc.2"}   (example; always the installed version)
 //     -> {ok:false, error:{code,message}} when no candidate package resolves
 //
 // Version resolution order (first hit wins): the globally installed

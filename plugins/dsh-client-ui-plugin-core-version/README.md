@@ -1,6 +1,6 @@
-# dsh-client-ui-plugin-core-version（Web GUI 顶部核心版本徽标）
+# dsh-client-ui-plugin-core-version（Web GUI 左下角核心版本徽标）
 
-在 dsh Web GUI 的**左下角**显示一个只读小徽标：`dsh v0.1.5-rc.1`（= 正在运行的核心 `@deepseek-ai/dsh` 版本，实测与 `dsh --version` 输出一致；数字随核心升级自动变化，此处为 2026-09-14 快照）。
+在 dsh Web GUI 的**左下角**显示一个只读小徽标：`dsh v0.1.5-rc.2`（= 正在运行的核心 `@deepseek-ai/dsh` 版本，实测与 `dsh --version` 输出一致；数字随核心升级自动变化，此处为 2026-09-20 快照）。
 
 - 纯展示：`pointer-events:none`，不挡任何点击；取不到版本时自动隐藏。
 - 挂官方 `shell.overlay` 帧级浮动层（ui-layout 为 badge/toast 设计），不裸插 DOM、不依赖侧栏布局。
@@ -30,7 +30,7 @@ node .work/install-core-version.mjs
 ```
 
 验收清单：
-- [x] Web GUI **左下角**（`left:12px;bottom:56px`）出现 `dsh v0.1.5-rc.1` 徽标，不挡交互（2026-09-14 实测确认可见）；
+- [x] Web GUI **左下角**（`left:12px;bottom:56px`）出现 `dsh v0.1.5-rc.2` 徽标，不挡交互（2026-09-14 确认可见；2026-09-20 在 rc.2 下 host 路由实测 200）；
 - [ ] 徽标旁 hover 提示「DeepSeek Harness 核心版本」；
 - [ ] 官方升级核心后，徽标数字随之变化（host 读的是实际安装包版本）。
 

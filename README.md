@@ -16,8 +16,10 @@ DeepSeek Harness 的桌面**启动器 + 版本自更新器 + 状态面板**（Wa
 ```powershell
 git clone https://github.com/FFaassdfs/dsh-desktop-env.git D:\dsh\dsh-desktop-env
 cd D:\dsh\dsh-desktop-env
-pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1   # 无 pwsh 用 powershell -File
+pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -File
 ```
+
+> 首次安装与后续更新都部署到**同一个启动入口**：`D:\dsh\app\current\dsh-desktop.exe`（`-AppDir` 可改）。
 
 ## 原理（当前行为）
 
@@ -27,7 +29,8 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1   # 无 pwsh 用 powershell -Fi
   - **已有** → 直接复用
 - 就绪后：面板显示状态与 URL，并**自动用系统浏览器打开**带 token 的 URL；退出时杀掉自己拉起的 dsh 进程树
 - **版本自更新**：启动即检查 + 每 24h，发现新版自动 `npm i -g`，提示「重启服务」生效
-- **崩溃自愈**：持有的 dsh web 意外退出会自动重启（最多连续 3 次）
+- **崩溃自愈**：持有的 dsh web 意外退出会自动重启 —— 指数退避 **15s → 45s → 120s 封顶**，连续 3 次仍失败就停手并提示；**稳定运行 5 分钟**后重置重启预算
+- **日志可控**：`dsh.log` 5 MiB / `debug.log` 1 MiB 超限自动轮转；报错只读文件尾（不再整文件读入）
 - 30 秒未就绪且进程已退出 → 面板显示真实错误（`dsh.log` 尾部）
 
 ## 依赖
@@ -46,7 +49,9 @@ npm i -g @deepseek-ai/dsh
 cd D:\dsh\dsh-desktop-env\frontend
 npm install
 cd ..
-wails build            # 产物: build\bin\dsh-desktop.exe（改完壳记得拷到应用区 D:\dsh\app\current\）
+wails build            # 中间产物: build\bin\dsh-desktop.exe
+pwsh -File scripts\deploy-shell.ps1 -BuiltExe build\bin\dsh-desktop.exe   # 部署到应用区（启动用这份）
+# 或者一步到位：pwsh -File update.ps1 -SkipPull -SkipPlugins -SkipFrontend
 
 # 仅改 Go 代码时（跳过前端，更快）
 wails build -s

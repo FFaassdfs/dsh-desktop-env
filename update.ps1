@@ -103,71 +103,23 @@ if ($SkipBuild) {
   }
 }
 
-$built = Join-Path $repoRoot "build\bin\dsh-desktop.exe"
-if (-not $CheckOnly) {
-  if (-not (Test-Path $built)) { throw "build output missing: $built" }
-  $builtInfo = Get-Item $built
-  if ($builtInfo.Length -lt 1MB) { throw "built exe suspiciously small: $($builtInfo.Length) bytes" }
-  Ok "built $($builtInfo.Length) bytes at $($builtInfo.LastWriteTime)"
-}
-
 # --- 4. deploy ----------------------------------------------------------------
+$built = Join-Path $repoRoot "build\bin\dsh-desktop.exe"
 Step "4/4 deploying to the app area"
 if ($NoDeploy) {
   Warn "deploy skipped (-NoDeploy); exe stays at $built"
-} elseif ($CheckOnly) {
-  Warn "would copy $built -> $AppDir\dsh-desktop.exe (+ dated archive + VERSION.txt)"
 } else {
-  $drive = Split-Path -Qualifier $AppDir
-  if (-not (Test-Path $drive)) {
-    Warn "drive $drive does not exist - skipping deploy; exe stays at $built"
-  } else {
-    New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-    $target = Join-Path $AppDir "dsh-desktop.exe"
-    $locked = $false
-    if (Test-Path $target) {
-      try {
-        $fs = [System.IO.File]::Open($target, 'Open', 'ReadWrite', 'None')
-        $fs.Close()
-      } catch { $locked = $true }
-    }
-
-    $appRoot = Split-Path $AppDir -Parent
-    $archiveDir = Join-Path $appRoot ("versions\" + (Get-Date -Format "yyyy-MM-dd"))
-    New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
-    $archive = Join-Path $archiveDir ("dsh-desktop-" + (Get-Date -Format "HHmmss") + ".exe")
-    Copy-Item $built $archive -Force
-    Ok "archived -> $archive"
-
-    $commit = "(unknown)"
-    if (Test-Path (Join-Path $repoRoot ".git")) { $commit = (& git -C $repoRoot rev-parse --short HEAD).Trim() }
-    $dshVer = (& cmd /c "dsh --version 2>nul")
-    $versionText = @"
-dsh-desktop launcher
-built:    $($builtInfo.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))
-deployed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-source:   $repoRoot (commit $commit)
-port:     43080
-core:     @deepseek-ai/dsh $dshVer (global npm)
-launch:   $target
-"@
-
-    if ($locked) {
-      $staged = Join-Path $AppDir "dsh-desktop.new.exe"
-      Copy-Item $built $staged -Force
-      Warn "target exe is locked (the shell is running): staged as $staged"
-      Warn "close the shell, then either rename it over dsh-desktop.exe or run .work\swap-desktop-exe.ps1"
-      Set-Content -Path (Join-Path $AppDir "VERSION.new.txt") -Value $versionText -Encoding utf8
-    } else {
-      Copy-Item $built $target -Force
-      $newInfo = Get-Item $target
-      if ($newInfo.Length -ne $builtInfo.Length) { throw "size mismatch after copy ($($newInfo.Length) vs $($builtInfo.Length))" }
-      Set-Content -Path (Join-Path $AppDir "VERSION.txt") -Value $versionText -Encoding utf8
-      Remove-Item (Join-Path $AppDir "VERSION.new.txt") -Force -ErrorAction SilentlyContinue
-      Remove-Item (Join-Path $AppDir "dsh-desktop.new.exe") -Force -ErrorAction SilentlyContinue
-      Ok "deployed -> $target ($($newInfo.Length) bytes)"
-    }
+  if (-not $CheckOnly) {
+    if (-not (Test-Path $built)) { throw "build output missing: $built" }
+    $builtInfo = Get-Item $built
+    if ($builtInfo.Length -lt 1MB) { throw "built exe suspiciously small: $($builtInfo.Length) bytes" }
+    Ok "built $($builtInfo.Length) bytes at $($builtInfo.LastWriteTime)"
   }
+  # One shared implementation for first install and updates (see HANDOVER path N).
+  $deployArgs = @{ BuiltExe = $built; AppDir = $AppDir; RepoRoot = $repoRoot }
+  if ($CheckOnly) { $deployArgs.CheckOnly = $true }
+  & (Join-Path $repoRoot "scripts\deploy-shell.ps1") @deployArgs
+  if ($LASTEXITCODE -ne 0) { throw "deploy failed (see output above)" }
 }
 
 # --- done ---------------------------------------------------------------------

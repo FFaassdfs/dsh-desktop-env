@@ -14,7 +14,8 @@
 #
 # Usage:
 #   pwsh -File setup.ps1                                # full setup
-#   pwsh -File setup.ps1 -HarnessVersion 0.1.5-rc.1     # pin dsh version
+#   pwsh -File setup.ps1 -HarnessVersion 0.1.5-rc.2     # pin dsh version
+#   pwsh -File setup.ps1 -AppDir D:\dsh\app\current     # where the shell exe lands
 #   pwsh -File setup.ps1 -SkipDesktopBuild              # plugins only
 #   pwsh -File setup.ps1 -CheckOnly                     # dry run, writes nothing
 #
@@ -22,6 +23,7 @@
 # to stay safe on Windows PowerShell 5.1, which misreads BOM-less UTF-8.
 param(
   [string]$HarnessVersion = "",
+  [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipHarnessInstall,
   [switch]$SkipDesktopBuild,
   [switch]$CheckOnly
@@ -113,6 +115,7 @@ if ($SkipDesktopBuild) {
     }
   } elseif ($CheckOnly) {
     Warn "would run: wails build in $repoRoot"
+    Warn "then deploy the exe to $AppDir\dsh-desktop.exe (scripts\deploy-shell.ps1)"
   } else {
     $frontendModules = Join-Path $repoRoot "frontend\node_modules"
     if (-not (Test-Path $frontendModules)) {
@@ -131,7 +134,12 @@ if ($SkipDesktopBuild) {
     $exe = Join-Path $repoRoot "build\bin\dsh-desktop.exe"
     if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
     Ok("dsh-desktop.exe built -> $exe")
-    Ok("deploy it with: pwsh -File update.ps1 -SkipPull -SkipPlugins -SkipBuild")
+
+    # Deploy to the app area with the SAME shared implementation updates use,
+    # so first install and later updates have one launch entry (HANDOVER path N).
+    Step "5b/5 deploying the shell to the app area"
+    & (Join-Path $repoRoot "scripts\deploy-shell.ps1") -BuiltExe $exe -AppDir $AppDir -RepoRoot $repoRoot
+    if ($LASTEXITCODE -ne 0) { throw "shell deploy failed (see output above)" }
   }
 }
 
@@ -139,5 +147,6 @@ if ($SkipDesktopBuild) {
 Step "done"
 Write-Host "Manual per-machine steps (NOT synced on purpose):"
 Write-Host "  1. configure dsh API key / .env for this machine"
-Write-Host "  2. start: $repoRoot\build\bin\dsh-desktop.exe   (or: dsh web)"
+Write-Host "  2. start the shell (single launch entry): $AppDir\dsh-desktop.exe"
+Write-Host "     (or run the harness directly with: dsh web)"
 Write-Host "  3. later updates: pwsh -File update.ps1   (pull + plugins + rebuild + deploy)"

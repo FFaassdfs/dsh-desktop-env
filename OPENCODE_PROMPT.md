@@ -14,7 +14,7 @@
    - 若已存在：`cd D:\dsh\dsh-desktop-env` 后 `git pull`
 2. 阅读 `D:\dsh\dsh-desktop-env\DEPLOY.md`，严格按其中 §0–§6 执行：
    - 逐项检查工具链（Git / Node.js / PowerShell / 可选 Go+Wails），缺失的按 §3 用 winget 或 go install 安装
-   - 依赖就绪后运行：`pwsh -File D:\dsh\dsh-desktop-env\deploy.ps1 -HarnessVersion 0.1.5-rc.1`
+   - 依赖就绪后运行：`pwsh -File D:\dsh\dsh-desktop-env\deploy.ps1 -HarnessVersion 0.1.5-rc.2`
      （没有 pwsh 就用 `powershell -File ...`；本机不想装桌面壳就加 `-SkipDesktopBuild` 并在汇报中说明）
 3. 约束：
    - 全程使用 PowerShell；命令失败先查 DEPLOY.md §7 故障排查，同一问题最多重试 2 次，仍失败就停下向我汇报，不要擅自改方案
@@ -35,10 +35,11 @@
 
 ## 预期结果（自检）
 
-- `dsh --version` = `0.1.5-rc.1`
+- `dsh --version` = `0.1.5-rc.2`
 - **4 个**自定义插件已装入 `%USERPROFILE%\.dsh\profiles\node_modules`，且 `cordis.patch.yml` 含 `plugin-explainer`、`plugin-project-explorer`、`plugin-model-capabilities`、`plugin-core-version` 四个条目（可运行 `node D:\dsh\dsh-desktop-env\scripts\setup-plugins.mjs --check-only` 验证，末尾应输出 `CHECK ONLY — nothing written. Looks good.`）
 - 全局预设已安装：`Test-Path $env:USERPROFILE\.dsh\AGENTS.md` 为 True（部署时自动安装，含通用避坑经验）
-- （可选）`D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe` 可启动
+- 桌面壳已构建并部署到**唯一启动入口**：`D:\dsh\app\current\dsh-desktop.exe`（`Test-Path` 应为 True；`build\bin\` 里那份只是中间产物）
 
-> 文档版本：v1.2（2026-09-15 更新）— 新增第 5 步「以后每次更新用 `update.ps1`」；说明壳源码在本仓库、fork `desktop/` 已废弃。
+> 文档版本：v1.3（2026-09-20 更新）— 锁版 `0.1.5-rc.1` → `0.1.5-rc.2`；启动入口统一为应用区 exe（首装与更新同一落点，`scripts\deploy-shell.ps1`）。
+> v1.2（2026-09-15）— 新增第 5 步「以后每次更新用 `update.ps1`」；说明壳源码在本仓库、fork `desktop/` 已废弃。
 > v1.1（2026-09-14）— 路径统一为 `D:\dsh\dsh-desktop-env`、锁版改 `0.1.5-rc.1`、插件数 2→4（4 个 patch 条目）。

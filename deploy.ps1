@@ -6,14 +6,16 @@
 #
 # Usage:
 #   pwsh -File deploy.ps1                                  # check + full deploy
-#   pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.1       # pin dsh version
+#   pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2       # pin dsh version
+#   pwsh -File deploy.ps1 -AppDir D:\dsh\app\current       # where the shell exe lands
 #   pwsh -File deploy.ps1 -SkipDesktopBuild                # plugins only
 #   pwsh -File deploy.ps1 -CheckOnly                       # dry run, no writes
 #
 # NOTE: ASCII-only output on purpose (Windows PowerShell 5.1 misreads
 # BOM-less UTF-8 and garbles CJK in scripts).
 param(
-  [string]$HarnessVersion = "0.1.5-rc.1",
+  [string]$HarnessVersion = "0.1.5-rc.2",
+  [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipDesktopBuild,
   [switch]$CheckOnly
 )
@@ -80,6 +82,7 @@ if ((Test-Path (Join-Path $goBin "wails.exe")) -and -not ($env:Path -split ';' |
 Step "handing off to setup.ps1"
 $setupArgs = @{}
 if ($HarnessVersion) { $setupArgs.HarnessVersion = $HarnessVersion }
+if ($AppDir) { $setupArgs.AppDir = $AppDir }
 if ($SkipDesktopBuild) { $setupArgs.SkipDesktopBuild = $true }
 if ($CheckOnly) { $setupArgs.CheckOnly = $true }
 & (Join-Path $repoRoot "setup.ps1") @setupArgs

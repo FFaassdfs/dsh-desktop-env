@@ -4,8 +4,6 @@
 >
 > ⚠️ **本文件是「全局预设」的权威副本**（本仓库 `global/AGENTS.md`）。部署机上的 `~/.dsh/AGENTS.md` 是安装副本：首次部署时由 `setup.ps1` 拷贝；更新全局预设 = 改本文件 + 在需要更新的机器上重装（删除 `~/.dsh/AGENTS.md` 后重跑 setup，或手动拷贝）。
 > **🔴 维护纪律**：改本文件后必须同步安装副本（`Copy-Item` 覆盖 `~/.dsh/AGENTS.md`），否则会出现「权威副本落后于安装副本」——2026-08-19 已发生过一次（图片/PDF 策略与正式文件版本化约定只在安装副本里）。
->
-> **文档版本：v2.17**（2026-09-18 更新；上一版标记 v2.16 = 2026-08-19 图片/PDF 策略）——本次仅补充「环境常见坑」条目：沙箱 `curl.exe` 走 HTTPS 失效与 Node fetch 绕法、给 5.1 用的 `.ps1` 必须带 BOM、`~/.dsh/settings.yaml` 必须保持无 BOM、本机 PowerShell 7 侧载现状与乱码回归风险。
 
 ## 基本规则
 
@@ -55,7 +53,6 @@ python D:\opencode\001\pdf_pipeline.py <文件路径>
 ## 环境常见坑（本机通用；项目专属坑见该项目的 HANDOVER）
 
 - **沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`**（schannel 凭据库被拒）→ 首选：`git config http.sslBackend openssl`（仓库级）后带 token URL 直接 push，**免提权**（2026-08-18 实测；新 clone 的仓库要重设该配置）；次选：`danger-full-access` 重试。
-- **沙箱里 `curl.exe` 走 HTTPS 一律失败**（`schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`，`https://` 全部返回 `000`）——**别误判成断网**：DNS 解析与 TCP 连接都正常，只是 schannel 拿不到凭据。→ 下载/探测改用 **`node -e "fetch(...)"`**（Node 自带 OpenSSL 与 CA，实测 HTTPS 正常）；GitHub 直连实测仅 ~56KB/s，加镜像前缀 `https://ghfast.top/<原始URL>` 可达 ~2.7MB/s（2026-09-18 实测，用于侧载 PowerShell 7）。
 - **探测本地服务别用 `Get-NetTCPConnection`/`netstat`**（沙箱假阴性「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`（返回 200 即正常）。
 - **不要提交凭据/API Key/.env 到任何 git 仓库**；文档（如 HANDOVER）里的明文凭据入库前先移到 gitignore 文件并改引用。
 - **Go 1.21+ 的 telemetry 写 `%APPDATA%\go\telemetry`**：沙箱内 `go version`/`go build` 等报 Access denied → 命令前设 `$env:GOTELEMETRY="off"`（免提权规避）。
@@ -63,12 +60,5 @@ python D:\opencode\001\pdf_pipeline.py <文件路径>
 - **PowerShell 数组 splatting 传的是位置参数**：`& script.ps1 @array` **不解析** `-Name value` 对（会把 `-Name` 当值传）→ 转交命名参数用**哈希表 splatting** `@{Name=$v}`。
 - **git push 的进度/结果输出走 stderr**：pwsh `$ErrorActionPreference='Stop'` 会把它当 NativeCommandError 误报（exit 1 ≠ 失败）→ 以 `git status -sb`（无 ahead）或远端 HEAD 为准。
 - **curl.exe 在 pwsh 传 JSON body**：`-d '{"..."}'` 可能报 `Problems parsing JSON`（400）→ 写临时文件 + `curl.exe --data-binary "@file"` 传参。
-- **给 Windows PowerShell 5.1 用的 `.ps1` 必须存成 UTF-8 带 BOM**（2026-09-18 实测踩到）：5.1 会把无 BOM 脚本按 ANSI(GBK) 解码，脚本里的中文变成 `灏嗘妸` 之类甚至直接报语法错（`Array index expression is missing or not valid`）。agent 的写文件工具默认写无 BOM → 写完必须补 BOM：`[IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($true)))`；`.md`/`.mjs` 无此要求。
-  - **补充（同日二次实测）：`edit` 工具改完会把文件里已有的 BOM 吃掉** → 任何一次编辑之后都要复查首 3 字节是否 `EF BB BF`，不是就补回；否则脚本又按 ANSI 解码（本次两个 `.ps1` 都中过）。
-- **改 `~/.dsh/settings.yaml` 必须保持 UTF-8 无 BOM**（原文件无 BOM）→ 别用 5.1 的 `Set-Content -Encoding UTF8`（会加 BOM），用 `[IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($false)))`。设置层是 `schema(mergeLayers(base, section))` 深合并，**只写 `shell.pwshPath` 不会丢 `cwd` 等 base 字段，且热生效、无需重启 DSH**。
-- **解压大 zip 用系统自带 `tar.exe`（bsdtar）**，不要用 5.1 的 `Expand-Archive`（同一个 101MB / 320 文件的包，tar 快一个数量级）。
-- **🔴 本机 PowerShell 现状与乱码回归风险（2026-09-18 起）**：PS7 7.6.6 已免管理员侧载到 `C:\Users\veken\PowerShell\7`，并在 `~/.dsh/settings.yaml` 用 `shell.pwshPath` 指定。DSH 的 `pwsh` 工具解析顺序为 `%ProgramFiles%\PowerShell\7\pwsh.exe` → `PATH` 里的 `pwsh.exe` → **5.1 兜底**；且它以 **`-NoProfile`** 启动，所以 **profile 类编码修复对 agent 命令无效，只能换底层**。若侧载目录被删或 `settings.yaml` 被整体覆盖，agent 会静默退回 5.1 → 乱码回归（`Get-Content` 读 UTF-8 无 BOM 得 `涓枃…`、`Out-File` 默认写 UTF-16LE `FF FE`）。恢复：跑 `D:\dsh\001\tools\ps7-setup\install-pwsh7.ps1`（v1.0；离线包与验证步骤见同目录 `README.md` v1.0）。
 - **推送 `.github/workflows/*`**：内置 `GITHUB_TOKEN` 推不了 workflow 文件，需带 `workflow` scope 的 PAT（存 secret 使用）。
 - **DSH 模态枚举只有 `text`/`image`**：`dsh-llm-pi-ai` 的 `MODALITIES = {text, image}`，在 provider profile 写 `video`/`audio` 会以 `settings-rejected` 写入失败；模态写在**条目级 `input`**（优先级：条目级 → provider 级 → 路由级 `defaultInput`）。
-- **双引号 here-string 里生成 PowerShell 代码时，`$false` 必须转义成 `` `$false ``**（2026-09-18 实测踩到）：不转义会被内插成字面量 `False`，生成 `New-Object ...UTF8Encoding(False)` 这类非法调用，运行时报「False 不是 cmdlet」而**静默失效**（本次导致生成的 profile 里三行编码设置全废）→ 生成器里写 `` `$false ``，或用单引号 here-string `@'...'@`；推荐 `[System.Text.UTF8Encoding]::new($false)`。
-- **Windows 上别生成以「.」结尾的文件名**（2026-09-18 实测踩到）：用 `new Date().toISOString().replace(/[-:T]/g,'')` 做时间戳时，`slice(0,15)` 会截到毫秒前的小数点，生成 `xxx.bak-20260918085529.`；这种名字 `Get-ChildItem` **列得出来**，但 `Test-Path`/`Get-Item`/`Copy-Item` 因 Win32 剥掉结尾点而**报「不存在」**（备份等于取不回来）→ 时间戳只取到秒（`slice(0,14)`）；已经生成了的只能走 `\\?\` 前缀改名：`[IO.File]::Move("\\?\$p.", $p)`。
