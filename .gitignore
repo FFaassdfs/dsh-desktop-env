@@ -10,3 +10,4 @@ Thumbs.db
 secrets.local.md
 .work/deepseek-harness/
 .work/*.log
+global/*.bak-*
