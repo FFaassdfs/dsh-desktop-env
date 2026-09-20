@@ -1390,5 +1390,11 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 - 更新走 npm，需要能访问 registry.npmjs.org。
 - 自更新只换 harness；**壳自身**仍随发行包更新（未来可加"下载新 zip"）。
 
+**🔴 同一模式的第二次事故（同日，已修）**：`desktop-v0.1.1` 首次构建又是"绿灯但缺东西" —— 资产仍是 **104.9 MB**，与 0.1.0 完全相同，而包内多 11.3 MB 的 npm（压缩 ≈4.4 MB）本应让包变大。核对工作流：**CI 只把 `node.exe` 与 `LICENSE` 拷进 staging，没拷 `node_modules\npm`**；打包器从"node.exe 所在目录"取 npm → 探测失败后**只 Warn 跳过** → 于是又出了一个不能自更新的包。修复两处：
+1. **工作流**：解压 node dist 后把 `node_modules\npm` 一并拷进 staging，并**立即断言** `staging\node_modules\npm\bin\npm-cli.js` 存在（否则一步失败）。
+2. **打包器**：npm 缺失（未显式 `-NoNpm`）从 Warn 改成 **throw** —— 发版承诺了自更新，不许静默丢能力。
+重推 tag 后 **run #4 = success，资产 109.3 MB**（+4.4 MB ≈ npm 压缩增量）→ npm 确实进包了。
+> **教训（与 §27.7 同源）**：凡是"包内应包含某物"的承诺，都要在**打包时**有断言并**失败**；用"事后比对体积"发现问题虽然有效，但不该是主防线。
+
 
 
