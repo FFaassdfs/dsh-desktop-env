@@ -1475,5 +1475,7 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 - **本地包与 CI 包哈希不同属正常**：本地用**全局安装树**（嵌套依赖 → `dsh-tree` 模式、Node v24.16.0），CI 用 `npm install --prefix` 的暂存前缀（**提升**依赖 → `full-node-modules` 模式、Node v24.20.0）；两者 **harness 版本相同（0.1.5-rc.2）且都已验证可运行**，不要拿两者比哈希。
 - 本次本地留存：`dsh-desktop-0.1.4-dsh0.1.5-rc.2-win-x64.zip`（97.9 MB），SHA256 `EA6A1FEF4BC4C919A627FA64EFB505D3EC52937BF0A92B9EB74A7F954394C14F`。
 
+**0.1.4 发布资产端到端验证（2026-09-21，全部通过）**：下载 98.5 MB（**镜像 95 秒**）；SHA256 `ed71c8e924b9a567c434b722b4b9acc31eb541e059bbd3e4fb42b51b170a9fc1` 与线上 `SHA256SUMS.txt` **MATCH**；外层包 **50 条目、`runtime.zip` 在且无散开的 `runtime/`**；解压后**仅 8 个顶层条目**；`dsh-desktop.exe --extract-runtime` → **runtime ready in 40s** → 解压出 **dsh `0.1.5-rc.2` + npm `11.19.0`** 均可运行；`VERSION.txt` 内容正确。⇒ **0.1.3/0.1.4 两个发布包都做过"真实下载 → 哈希 → 结构 → 解压 → 实跑"的完整验证。**
+
 
 
