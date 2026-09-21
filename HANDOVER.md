@@ -1451,5 +1451,18 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 
 **代价/注意**：首次启动多 ~40 秒（一次性，面板有进度）；`runtime.zip` 保留 103 MB 在包里（不删可随时整体搬走；删掉也不影响已解压的运行）。源码安装路径（`update.ps1`/`setup.ps1`）**不受影响**——它们只部署裸 exe 到应用区，那里没有 `runtime.zip`，便携逻辑不触发。
 
+**0.1.3 发布资产端到端验证（2026-09-21，全部通过）**——从 GitHub Release 下载后实测：
+
+| 步骤 | 结果 |
+|---|---|
+| 下载 | 98.5 MB（链路恶化：直连一度掉到 **5 KiB/s**、镜像 12–28 KiB/s；改用**镜像前缀 `https://ghfast.top/` + 每段连接 5 分钟上限 + Range 断点续传**后才跑通，最后 211s 完成） |
+| **SHA256** | 线上 `c78e88d86ac8924f80762806fbbb621cf6311ebb38f6be5149c50e65699eb5bd` = 本地实测，**MATCH** ✅ |
+| **外层包结构** | 共 **50 条目**；**`runtime.zip` 在、散开的 `runtime/` 文件不在** ✅（本次改动的目标） |
+| 解压后形态 | 包内**仅 8 个顶层条目**：`dsh-desktop.exe`、`install-offline.cmd/.ps1`、`plugins\`、`README.txt`、**`runtime.zip`**、`scripts\`、`VERSION.txt` |
+| **首次启动路径** | `dsh-desktop.exe --extract-runtime` → **`runtime ready in 35s`** → 解压出的 **dsh = `0.1.5-rc.2`**、**npm = `11.19.0`** ✅ |
+| `VERSION.txt` | 含 `runtime.zip (unpacked on first start)`、`npm: bundled (enables in-package self-update)`、`node: v24.20.0` ✅ |
+
+> 验证脚本 `.cache\verify-013.mjs`（scratch，未入库）。**本机验证脚本经验**（与 §27.7 一起看）：① Release 资产要**先试镜像前缀**再回退直连（本沙箱直连会掉到 5 KiB/s 甚至静默挂起）；② `fetch` **必须设超时**（`AbortSignal.timeout(5min)`）否则会永久挂住；③ 分段落盘 + Range 续传让慢链路也能最终完成；④ `execFileSync("tar.exe", ["-tf", zip])` 对 2.5 万条目会撞 `ENOBUFS`（要调大 `maxBuffer`）。
+
 
 
