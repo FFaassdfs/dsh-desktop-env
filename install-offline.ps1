@@ -34,7 +34,9 @@ function Warn($m) { Write-Host "    [!!] $m" -ForegroundColor Yellow }
 
 $pkgRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $pkgRoot "dsh-desktop.exe"
-$bundledNode = Join-Path $pkgRoot "runtime\node.exe"
+$runtimeDir = Join-Path $pkgRoot "runtime"
+$runtimeArchive = Join-Path $pkgRoot "runtime.zip"
+$bundledNode = Join-Path $runtimeDir "node.exe"
 $pluginsDir = Join-Path $pkgRoot "plugins"
 $pluginScript = Join-Path $pkgRoot "scripts\setup-plugins.mjs"
 
@@ -99,10 +101,31 @@ foreach ($p in @($exe, $pluginScript)) {
   if (-not (Test-Path $p)) { throw "package is incomplete, missing: $p" }
 }
 Ok "dsh-desktop.exe present"
+
+# The runtime ships as one file (runtime.zip) and is normally unpacked by the
+# shell on first start. This script needs it NOW (to run the plugin installer
+# with the bundled node), so unpack it via the shell's own CLI mode.
+if (-not (Test-Path $bundledNode) -and (Test-Path $runtimeArchive)) {
+  Ok "runtime.zip found - unpacking it first (same code the shell uses)"
+  if ($CheckOnly) {
+    Warn "would run: dsh-desktop.exe --extract-runtime"
+  } else {
+    $proc = Start-Process -FilePath $exe -ArgumentList "--extract-runtime" -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0 -or -not (Test-Path $bundledNode)) {
+      Warn "shell extraction failed (exit $($proc.ExitCode)) - falling back to tar.exe"
+      if (Test-Path $runtimeDir) { Remove-Item $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue }
+      New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+      & tar.exe -xf $runtimeArchive -C $runtimeDir
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path $bundledNode)) { throw "cannot unpack $runtimeArchive" }
+    }
+    Ok "runtime unpacked -> $runtimeDir"
+  }
+}
+
 if (Test-Path $bundledNode) {
   $nodeVersion = (& $bundledNode --version) 2>$null
   Ok "bundled runtime node $nodeVersion"
-  $runtimeRoot = Join-Path $pkgRoot "runtime"
+  $runtimeRoot = $runtimeDir
 } else {
   Warn "no bundled runtime next to the exe - the shell will fall back to the global dsh install"
   $runtimeRoot = ""
@@ -139,17 +162,21 @@ if ($SkipPlugins) {
 if ($AppDir) {
   Step "optional: deploying exe + runtime to $AppDir"
   if ($CheckOnly) {
-    Warn "would copy dsh-desktop.exe and runtime\ to $AppDir"
+    Warn "would copy dsh-desktop.exe (+ runtime.zip or runtime\) to $AppDir"
   } else {
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
     Copy-Item $exe (Join-Path $AppDir "dsh-desktop.exe") -Force
     Ok "exe copied -> $AppDir\dsh-desktop.exe"
-    if ($runtimeRoot) {
+    if (Test-Path $runtimeArchive) {
+      # Preferred: one file, and the shell unpacks it in the app dir on first start.
+      Copy-Item $runtimeArchive (Join-Path $AppDir "runtime.zip") -Force
+      Ok "runtime.zip copied -> $AppDir\runtime.zip (unpacked on first start)"
+    } elseif ($runtimeRoot) {
       $dstRuntime = Join-Path $AppDir "runtime"
       New-Item -ItemType Directory -Force -Path $dstRuntime | Out-Null
-      $rc = Start-Process -FilePath "robocopy" -ArgumentList @($runtimeRoot, $dstRuntime, "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1") -Wait -PassThru -NoNewWindow
+      $rc = Start-Process -FilePath "robocopy" -ArgumentList @($runtimeRoot, $dstRuntime, "/MIR", "/MT:16", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:1", "/W:1") -Wait -PassThru -NoNewWindow
       if ($rc.ExitCode -ge 8) { throw "robocopy failed with exit code $($rc.ExitCode)" }
-      Ok "runtime copied -> $dstRuntime"
+      Ok "runtime copied (multithreaded) -> $dstRuntime"
     }
   }
 }

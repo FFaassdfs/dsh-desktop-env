@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -350,5 +351,164 @@ func TestFirstLine(t *testing.T) {
 		if got := firstLine(tc.in); got != tc.want {
 			t.Errorf("firstLine(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// ---- single-file runtime archive --------------------------------------------
+
+// makeRuntimeZip writes a zip holding a minimal runtime plus (optionally) a
+// zip-slip entry, returning its path.
+func makeRuntimeZip(t *testing.T, dir, nodeName string, withSlip bool) string {
+	t.Helper()
+	zipPath := filepath.Join(dir, runtimeArchiveName)
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	add := func(name, content string) {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("./"+nodeName, "fake node")
+	add("./LICENSE", "node license")
+	add("./node_modules/@deepseek-ai/dsh/package.json", `{"name":"@deepseek-ai/dsh","version":"9.9.9"}`)
+	add("./node_modules/@deepseek-ai/dsh/lib/bin.js", "// entry")
+	add("./node_modules/commander/package.json", `{"name":"commander"}`)
+	if withSlip {
+		add("../evil.txt", "should never be written")
+		add("nested/../../evil2.txt", "neither should this")
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return zipPath
+}
+
+func TestNeedsRuntimeExtraction(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+
+	if _, ok := needsRuntimeExtraction(pkg, node); ok {
+		t.Errorf("empty package must not claim a pending extraction")
+	}
+	archive := makeRuntimeZip(t, pkg, node, false)
+	got, ok := needsRuntimeExtraction(pkg, node)
+	if !ok || got != archive {
+		t.Errorf("archive without runtime dir should need extraction, got %q %v", got, ok)
+	}
+	makeRuntime(t, filepath.Join(pkg, "runtime"), node, true, true)
+	if _, ok := needsRuntimeExtraction(pkg, node); ok {
+		t.Errorf("an extracted runtime must win over the archive")
+	}
+}
+
+func TestExtractZipRejectsZipSlip(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := makeRuntimeZip(t, dir, "node.exe", true)
+	dest := filepath.Join(dir, "out")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := extractZip(zipPath, dest, nil); err == nil {
+		t.Fatalf("extraction should refuse an archive containing ../ entries")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("zip-slip file escaped the destination")
+	}
+	if _, statErr := os.Stat(filepath.Join(filepath.Dir(dir), "evil2.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("zip-slip file escaped one level up")
+	}
+
+	// A clean archive extracts fine, with progress reported.
+	cleanDir := t.TempDir()
+	clean := makeRuntimeZip(t, cleanDir, "node.exe", false)
+	dest2 := filepath.Join(cleanDir, "out2")
+	if err := os.MkdirAll(dest2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	if err := extractZip(clean, dest2, func(done, total int) { seen = done }); err != nil {
+		t.Fatalf("clean archive failed: %v", err)
+	}
+	if seen == 0 {
+		t.Errorf("progress callback never fired")
+	}
+	for _, rel := range []string{"node.exe", "LICENSE", filepath.Join("node_modules", "commander", "package.json")} {
+		if _, err := os.Stat(filepath.Join(dest2, rel)); err != nil {
+			t.Errorf("expected %s after extraction: %v", rel, err)
+		}
+	}
+}
+
+func TestInstallRuntimeFromArchive(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+	makeRuntimeZip(t, pkg, node, false)
+
+	if err := installRuntimeFromArchive(pkg, node, nil); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+	rt, ok := portableRuntimeIn(filepath.Join(pkg, "runtime"), node)
+	if !ok {
+		t.Fatalf("runtime should be usable after extraction")
+	}
+	if v := versionFromPackageJSON(rt.Package); v != "9.9.9" {
+		t.Errorf("extracted version = %q", v)
+	}
+	if _, err := os.Stat(filepath.Join(pkg, ".runtime-extract")); !os.IsNotExist(err) {
+		t.Errorf("temporary extraction directory must be cleaned up")
+	}
+	if err := installRuntimeFromArchive(pkg, node, nil); err != nil {
+		t.Errorf("second install should be a no-op, got %v", err)
+	}
+	if _, needed := needsRuntimeExtraction(pkg, node); needed {
+		t.Errorf("extraction should no longer be needed")
+	}
+}
+
+func TestInstallRuntimeFromArchive_EmptyArchiveFails(t *testing.T) {
+	pkg := t.TempDir()
+	zipPath := filepath.Join(pkg, runtimeArchiveName)
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	if _, err := zw.Create("README.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := installRuntimeFromArchive(pkg, "node.exe", nil); err == nil {
+		t.Errorf("an archive without a runtime must fail loudly")
+	}
+	if _, err := os.Stat(filepath.Join(pkg, ".runtime-extract")); !os.IsNotExist(err) {
+		t.Errorf("failed extraction must clean up its temp directory")
+	}
+}
+
+func TestExtractRuntimeRequested(t *testing.T) {
+	if !extractRuntimeRequested([]string{"--extract-runtime"}) {
+		t.Errorf("flag should be detected")
+	}
+	if !extractRuntimeRequested([]string{"--profile", "web", "--extract-runtime"}) {
+		t.Errorf("flag should be detected among other args")
+	}
+	if extractRuntimeRequested([]string{"--other"}) || extractRuntimeRequested(nil) {
+		t.Errorf("unrelated args must not trigger extraction")
 	}
 }

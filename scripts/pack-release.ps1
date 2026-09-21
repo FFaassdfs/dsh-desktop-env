@@ -5,11 +5,11 @@
 #
 #   dsh-desktop-<shell>-dsh<dshver>-win-x64\
 #     dsh-desktop.exe              the launcher (resolves .\runtime next to itself)
-#     runtime\node.exe             portable Node.js (with its LICENSE)
-#     runtime\node_modules\@deepseek-ai\dsh\...   the harness + all its deps
+#     runtime.zip                  ONE file: node.exe + npm + the harness tree;
+#                                  the shell unpacks it to runtime\ on first start
 #     plugins\<4 packages>         the custom plugins
 #     scripts\setup-plugins.mjs    installer used by install-offline.ps1
-#     install-offline.ps1          installs plugins into $DSH_HOME (+ optional app dir)
+#     install-offline.ps1 (+ .cmd) installs plugins into $DSH_HOME (+ optional app dir)
 #     VERSION.txt / README.txt
 #
 # Verified on 2026-09-20: dsh keeps ALL of its dependencies nested inside its own
@@ -22,6 +22,7 @@
 #   pwsh -File scripts\pack-release.ps1 -NoNode                # without the bundled Node (needs Node on target)
 #   pwsh -File scripts\pack-release.ps1 -RuntimeMode full-node-modules   # force copying the whole node_modules
 #   pwsh -File scripts\pack-release.ps1 -SkipZip               # stage only
+#   pwsh -File scripts\pack-release.ps1 -NoRuntimeArchive      # keep runtime\ as loose files
 #   pwsh -File scripts\pack-release.ps1 -CheckOnly             # plan only
 #
 # -RuntimeMode: auto (default) | dsh-tree | full-node-modules
@@ -42,6 +43,7 @@ param(
   [string]$DshVersion = "",
   [switch]$NoNode,
   [switch]$NoNpm,
+  [switch]$NoRuntimeArchive,
   [switch]$SkipZip,
   [switch]$KeepStaging,
   [switch]$CheckOnly
@@ -201,6 +203,30 @@ if (-not $NoNode) {
   } else {
     Warn "npm not bundled (-NoNpm): the portable shell will not self-update"
   }
+
+  # Ship the whole runtime as ONE file. Copying an unpacked package means copying
+  # ~27k tiny files (89% under 8 KB), which on Windows costs ~89 s with a
+  # single-threaded copy vs ~14 s multithreaded - and much more over USB/network.
+  # runtime.zip is extracted by the shell on first start (see HANDOVER §27.11).
+  if (-not $NoRuntimeArchive) {
+    $rtArchive = Join-Path $pkgDir "runtime.zip"
+    if (Test-Path $rtArchive) { Remove-Item $rtArchive -Force }
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    & tar.exe -a -cf $rtArchive -C $rt .
+    if ($LASTEXITCODE -ne 0) { throw "tar (runtime.zip) failed with exit code $LASTEXITCODE" }
+    $entries = @(& tar.exe -tf $rtArchive)
+    if (-not ($entries | Where-Object { $_ -match 'node_modules[/\\]@deepseek-ai[/\\]dsh[/\\]lib[/\\]bin\.js$' })) {
+      throw "runtime.zip does not contain the dsh entry - refusing to ship it"
+    }
+    if (-not $NoNpm -and -not ($entries | Where-Object { $_ -match 'node_modules[/\\]npm[/\\]bin[/\\]npm-cli\.js$' })) {
+      throw "runtime.zip does not contain npm - refusing to ship it"
+    }
+    Ok "runtime.zip written in $([math]::Round($sw.Elapsed.TotalSeconds,1))s ($([math]::Round((Get-Item $rtArchive).Length/1MB,1)) MB, $($entries.Count) entries)"
+    Remove-Item $rt -Recurse -Force
+    Ok "runtime directory replaced by the single-file archive (first start unpacks it)"
+  } else {
+    Warn "runtime kept as a directory (-NoRuntimeArchive): slow to copy, shell extracts nothing"
+  }
 }
 
 $pluginsSrc = Join-Path $repoRoot "plugins"
@@ -230,7 +256,7 @@ node:      $(if ($NoNode) { 'not bundled' } else { "$nodeVersion (bundled)" })
 npm:       $(if ($NoNode -or $NoNpm) { 'not bundled (no self-update)' } else { 'bundled (enables in-package self-update)' })
 plugins:   $pluginCount package(s)
 port:      43080 (fixed; bare URL answers 401 until the token URL is opened)
-contents:  dsh-desktop.exe, runtime\, plugins\, scripts\, install-offline.ps1 (+ .cmd wrapper)
+contents:  dsh-desktop.exe, runtime.zip (unpacked on first start), plugins\, scripts\, install-offline.ps1 (+ .cmd wrapper)
 "@
 Set-Content -Path (Join-Path $pkgDir "VERSION.txt") -Value $versionText -Encoding utf8
 
@@ -245,7 +271,20 @@ Quick start
 -----------
 1. Unzip anywhere (for example D:\dsh-desktop-portable).
 2. Run dsh-desktop.exe in that folder.
-   It starts (or reuses) the harness and opens the Web UI in your browser.
+   The FIRST start unpacks the bundled runtime (runtime.zip -> runtime\, ~30-60 s,
+   one time only; the status panel shows the progress). After that it starts fast.
+   It then opens the Web UI in your browser.
+
+Copying this package around
+---------------------------
+The runtime is a single file (runtime.zip) on purpose: an unpacked runtime is
+~27,000 mostly tiny files and copying that on Windows costs minutes. So:
+  * move the ZIP, not the unpacked folder; or
+  * if you must copy the folder, use multithreaded robocopy, which is several
+    times faster for many small files:
+      robocopy <src> <dst> /E /MT:16 /NFL /NDL /NJH /NJS /NP /R:1 /W:1
+  * extract with `tar -xf <pkg>.zip -C <dir>` (built into Windows 10+) or 7-Zip;
+    Explorer's "Extract All" is the slowest option.
 
 Optional: install the 4 custom plugins into your DSH home
 --------------------------------------------------------
@@ -265,7 +304,9 @@ Requirements
 
 Notes
 -----
-* Keep the folder layout intact - the shell resolves runtime\ next to the exe.
+* Keep the folder layout intact - the shell resolves runtime\ (or runtime.zip) next
+  to the exe. Deleting runtime.zip after the first start is safe (runtime\ exists
+  by then), but keep it if you want a copyable single-file package.
 * The shell is SINGLE-INSTANCE per user: if another dsh-desktop (installed or
   older portable copy) is already running, this one exits and just shows that
   window. Close it first when trying the portable build next to an install.
@@ -275,6 +316,8 @@ Notes
 * Plugin changes need a full shell restart to take effect.
 * Port 43080 is fixed; a bare http://127.0.0.1:43080/ answers 401 by design.
 * Logs: %APPDATA%\dsh-desktop\ (dsh.log, debug.log; rotated at 5 MiB / 1 MiB).
+* First start only: `dsh-desktop.exe --extract-runtime` unpacks the runtime
+  without opening the window (useful for scripts/installs).
 
 Update
 ------

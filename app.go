@@ -48,20 +48,21 @@ const (
 )
 
 type App struct {
-	ctx       context.Context
-	winCtx    context.Context
-	cmd       *exec.Cmd
-	owns      bool
-	mu        sync.Mutex
-	booting   bool
-	booted    bool
-	bootedAt  time.Time
-	webURL    string
-	update    string
-	exited    bool
-	exitErr   error
-	restarts  int
-	monitorOn bool
+	ctx          context.Context
+	winCtx       context.Context
+	cmd          *exec.Cmd
+	owns         bool
+	mu           sync.Mutex
+	booting      bool
+	booted       bool
+	bootedAt     time.Time
+	webURL       string
+	update       string
+	exited       bool
+	exitErr      error
+	restarts     int
+	monitorOn    bool
+	runtimeReady chan struct{}
 }
 
 func NewApp() *App {
@@ -70,7 +71,42 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// A portable package may still carry its runtime as the single file
+	// runtime.zip (fast to download/copy). Unpack it before anything tries to
+	// resolve or update the harness.
+	a.runtimeReady = make(chan struct{})
+	go func() {
+		defer close(a.runtimeReady)
+		a.ensureRuntimeExtracted()
+	}()
 	go a.checkUpdatesLoop()
+}
+
+// ensureRuntimeExtracted unpacks the package runtime archive on first start.
+func (a *App) ensureRuntimeExtracted() {
+	pkgRoot := executableDir()
+	if pkgRoot == "" {
+		return
+	}
+	archive, needed := needsRuntimeExtraction(pkgRoot, runtimeNodeName())
+	if !needed {
+		return
+	}
+	debugLog("ensureRuntimeExtracted: unpacking %s", archive)
+	a.emitUpdate("首次启动：正在解压内置运行时…")
+	start := time.Now()
+	err := installRuntimeFromArchive(pkgRoot, runtimeNodeName(), func(done, total int) {
+		if total > 0 && done%2000 == 0 {
+			a.emitUpdate(fmt.Sprintf("首次启动：正在解压内置运行时… %d/%d", done, total))
+		}
+	})
+	if err != nil {
+		debugLog("ensureRuntimeExtracted: failed: %v", err)
+		a.emitUpdate("内置运行时解压失败：" + err.Error())
+		return
+	}
+	debugLog("ensureRuntimeExtracted: ready in %s", time.Since(start).Round(time.Second))
+	a.emitUpdate(fmt.Sprintf("内置运行时已就绪（首次解压耗时 %s）", time.Since(start).Round(time.Second)))
 }
 
 func (a *App) domReady(ctx context.Context) {
@@ -116,6 +152,11 @@ func (a *App) bootstrap(ctx context.Context) {
 		a.booting = false
 		a.mu.Unlock()
 	}()
+
+	// First start may have to unpack the bundled runtime archive.
+	if a.runtimeReady != nil {
+		<-a.runtimeReady
+	}
 
 	// A staged portable self-update is applied here, before anything runs.
 	a.applyPendingRuntimeUpdate()
@@ -717,7 +758,13 @@ func firstLine(s string) string {
 	return ""
 }
 
-func (a *App) checkUpdatesLoop() {	a.checkUpdates()
+func (a *App) checkUpdatesLoop() {
+	// Wait until the runtime is in place: a portable package that has not been
+	// unpacked yet must not take the "global npm" update path.
+	if a.runtimeReady != nil {
+		<-a.runtimeReady
+	}
+	a.checkUpdates()
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 	for range ticker.C {

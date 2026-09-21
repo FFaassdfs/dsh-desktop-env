@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +14,13 @@ import (
 var assets embed.FS
 
 func main() {
+	// Portable packages ship their runtime as a single runtime.zip: unpacking it
+	// is also exposed as a CLI mode (used by install-offline.ps1 and by the
+	// release verification, and it avoids starting the GUI/single-instance lock).
+	if extractRuntimeRequested(os.Args[1:]) {
+		os.Exit(RunExtractRuntime())
+	}
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Portable ("offline") release support.
@@ -267,4 +270,158 @@ func splitVersion(v string) ([]int, string) {
 		nums = append(nums, 0)
 	}
 	return nums, pre
+}
+
+// ---- single-file runtime archive --------------------------------------------
+//
+// Copying an unpacked portable package means copying ~27k tiny files, which is
+// slow on Windows (per-file overhead + antivirus). The release therefore ships
+// the runtime as ONE file, runtime.zip, and the shell unpacks it on first start
+// (once, ~30 s). See HANDOVER §27.11.
+
+// runtimeArchiveName is the single-file runtime inside a portable package.
+const runtimeArchiveName = "runtime.zip"
+
+// runtimeArchivePath returns where the runtime archive lives for a package root.
+func runtimeArchivePath(pkgRoot string) string {
+	return filepath.Join(pkgRoot, runtimeArchiveName)
+}
+
+// needsRuntimeExtraction reports the archive path when a package still has to be
+// unpacked: no usable runtime\ directory, but runtime.zip present.
+func needsRuntimeExtraction(pkgRoot, nodeName string) (string, bool) {
+	if _, ok := portableRuntimeIn(filepath.Join(pkgRoot, "runtime"), nodeName); ok {
+		return "", false
+	}
+	archive := runtimeArchivePath(pkgRoot)
+	if !fileExists(archive) {
+		return "", false
+	}
+	return archive, true
+}
+
+// extractZip unpacks zipPath into destDir. Entry paths are validated so a
+// malicious archive cannot write outside destDir (zip-slip). onProgress may be nil.
+func extractZip(zipPath, destDir string, onProgress func(done, total int)) error {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	total := len(reader.File)
+	for i, entry := range reader.File {
+		if err := extractZipEntry(entry, destDir); err != nil {
+			return fmt.Errorf("%s: %w", entry.Name, err)
+		}
+		if onProgress != nil {
+			onProgress(i+1, total)
+		}
+	}
+	return nil
+}
+
+func extractZipEntry(entry *zip.File, destDir string) error {
+	name := strings.TrimPrefix(strings.ReplaceAll(entry.Name, "\\", "/"), "./")
+	clean := filepath.Clean(filepath.FromSlash(name))
+	if clean == "." || clean == "" {
+		return nil
+	}
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("unsafe path in archive")
+	}
+	target := filepath.Join(destDir, clean)
+	if rel, err := filepath.Rel(destDir, target); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("entry escapes the destination directory")
+	}
+	if entry.FileInfo().IsDir() {
+		return os.MkdirAll(target, 0o755)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	in, err := entry.Open()
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// installRuntimeFromArchive unpacks the package runtime archive into runtime\.
+// The archive is unpacked into a temporary sibling first and only renamed into
+// place when it is complete and usable, so an interrupted first start never
+// leaves a half-extracted runtime behind.
+func installRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, total int)) error {
+	archive, needed := needsRuntimeExtraction(pkgRoot, nodeName)
+	if !needed {
+		return nil
+	}
+	live := filepath.Join(pkgRoot, "runtime")
+	tmp := filepath.Join(pkgRoot, ".runtime-extract")
+	_ = os.RemoveAll(tmp)
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		return err
+	}
+	if err := extractZip(archive, tmp, onProgress); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+	if _, ok := portableRuntimeIn(tmp, nodeName); !ok {
+		_ = os.RemoveAll(tmp)
+		return fmt.Errorf("archive holds no usable runtime (missing %s or %s)", nodeName, runtimeEntryRel)
+	}
+	if dirExists(live) {
+		_ = os.RemoveAll(live)
+	}
+	if err := os.Rename(tmp, live); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+	return nil
+}
+
+// extractRuntimeRequested reports whether the CLI was asked to only unpack the
+// runtime (used by install-offline.ps1 and by the release verification).
+func extractRuntimeRequested(args []string) bool {
+	for _, a := range args {
+		if a == "--extract-runtime" {
+			return true
+		}
+	}
+	return false
+}
+
+// RunExtractRuntime unpacks the runtime next to the executable and returns an
+// exit code. It does not start the GUI.
+func RunExtractRuntime() int {
+	pkgRoot := executableDir()
+	if pkgRoot == "" {
+		fmt.Println("cannot determine the executable directory")
+		return 1
+	}
+	archive, needed := needsRuntimeExtraction(pkgRoot, runtimeNodeName())
+	if !needed {
+		if _, ok := portableRuntimeIn(filepath.Join(pkgRoot, "runtime"), runtimeNodeName()); ok {
+			fmt.Println("runtime already extracted")
+			return 0
+		}
+		fmt.Println("no " + runtimeArchiveName + " next to the executable (and no runtime directory)")
+		return 1
+	}
+	fmt.Printf("extracting %s ...\n", archive)
+	start := time.Now()
+	if err := installRuntimeFromArchive(pkgRoot, runtimeNodeName(), nil); err != nil {
+		fmt.Println("extraction failed:", err)
+		return 1
+	}
+	fmt.Printf("runtime ready in %s\n", time.Since(start).Round(time.Second))
+	return 0
 }

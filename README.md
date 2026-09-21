@@ -25,14 +25,17 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
 
 不想装 Go/Wails/Node、也不想联网装 harness 时，用**便携发行包**：解压即用。
 
-- **产物**：`dsh-desktop-<壳commit>-dsh<harness版本>-win-x64.zip`（实测 **106 MB**）+ `SHA256SUMS.txt`
-  - 内含：壳 `dsh-desktop.exe`、**便携 Node**（`runtime\node.exe`）、**离线 harness 树**（`runtime\node_modules\@deepseek-ai\dsh`，含全部依赖）、4 个插件、`install-offline.ps1`
+- **产物**：`dsh-desktop-<壳commit>-dsh<harness版本>-win-x64.zip`（实测 **109 MB**）+ `SHA256SUMS.txt`
+  - 内含：壳 `dsh-desktop.exe`、**`runtime.zip`（单文件运行时：便携 Node + npm + 离线 harness，首次启动自动解压 ~40 秒，仅一次）**、4 个插件、`install-offline.cmd/.ps1`
+  - **为什么运行时是单个 zip**：解压开是 **2.7 万个碎文件**（89% 小于 8 KB），Windows 上拷贝它们要按文件数交税（实测：单线程 88.8s vs `robocopy /MT:16` 15.9s）；打包成单文件后，**下载/拷贝只需搬 1 个文件**（整个包 35 个文件）
+- **拷贝/分发的正确姿势**：① **搬 zip，别搬解压后的目录**；② 若必须拷目录，用 `robocopy <源> <目标> /E /MT:16 /NFL /NDL /NJH /NJS /NP`；③ 解压用 `tar -xf 包.zip -C 目标` 或 7-Zip，**别用资源管理器的"全部解压缩"**（最慢）
 - **目标机用法（没有"安装"步骤，解压即用）**：
   ```
   1) 把 zip 解压到任意目录（例如 D:\dsh-desktop-portable）
-  2) 双击 dsh-desktop.exe          ← 就这样，壳自己认同目录的 runtime\
+  2) 双击 dsh-desktop.exe   ← 首次启动会先解压内置运行时（~40 秒，状态面板显示进度），之后就快了
   3) （可选）想让 4 个插件也进 DSH_HOME：双击 install-offline.cmd
   ```
+  - 想跳过 GUI 先解压（脚本化）：`dsh-desktop.exe --extract-runtime`
   - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**问你要装哪些插件**。命令行同样支持选择：
     ```powershell
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins all              # 全装（默认）
