@@ -306,6 +306,39 @@ func TestSwapRuntimeModules_AndRollback(t *testing.T) {
 	}
 }
 
+func TestCompareDshVersions(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"0.1.5-rc.2", "0.1.5-rc.2", 0},
+		{"0.1.5-rc.2", "0.1.5-rc.1", 1},
+		{"0.1.5-rc.1", "0.1.5-rc.2", -1},
+		{"0.1.5", "0.1.5-rc.2", 1},  // a release outranks its prerelease
+		{"0.1.5-rc.2", "0.1.5", -1}, // and the reverse
+		{"0.1.6-alpha.2", "0.1.5-rc.2", 1},
+		{"0.1.6-alpha.2", "0.1.6-alpha.10", -1},
+		{"0.2", "0.1.9", 1},
+		{"v0.1.5-rc.2", "0.1.5-rc.2", 0}, // leading v is tolerated
+		{"1.0.0+build.5", "1.0.0", 0},    // build metadata is ignored
+	}
+	for _, tc := range cases {
+		if got := compareDshVersions(tc.a, tc.b); got != tc.want {
+			t.Errorf("compareDshVersions(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+		if got := compareDshVersions(tc.b, tc.a); got != -tc.want {
+			t.Errorf("compareDshVersions(%q, %q) = %d, want %d (symmetry)", tc.b, tc.a, got, -tc.want)
+		}
+	}
+	// Unparseable input must not panic and must be deterministic.
+	for _, bad := range []string{"", "dev", "main", "0.1.x"} {
+		first := compareDshVersions(bad, "0.1.5-rc.2")
+		if second := compareDshVersions(bad, "0.1.5-rc.2"); first != second {
+			t.Errorf("compare of %q is not deterministic", bad)
+		}
+	}
+}
+
 func TestFirstLine(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"1.2.3\n", "1.2.3"},

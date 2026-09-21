@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -181,4 +182,89 @@ func swapRuntimeModules(runtimeRoot, stagingRoot string) (func(), error) {
 // cleanupRuntimeBackup drops the rollback copy once the new runtime is known good.
 func cleanupRuntimeBackup(runtimeRoot string) {
 	_ = os.RemoveAll(runtimeBackupDir(runtimeRoot))
+}
+
+// compareDshVersions compares dsh version strings such as "0.1.5-rc.2" or
+// "0.1.6-alpha.2" and returns -1, 0 or +1. A release outranks a prerelease of the
+// same numeric triple (0.1.5 > 0.1.5-rc.2). Shapes that do not parse fall back to
+// a plain string comparison so callers never have to handle an error.
+func compareDshVersions(a, b string) int {
+	an, ap := splitVersion(a)
+	bn, bp := splitVersion(b)
+	if an == nil || bn == nil {
+		return strings.Compare(a, b)
+	}
+	for i := 0; i < 3; i++ {
+		if an[i] != bn[i] {
+			if an[i] < bn[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	// Same numbers: no prerelease wins.
+	if ap == "" && bp == "" {
+		return 0
+	}
+	if ap == "" {
+		return 1
+	}
+	if bp == "" {
+		return -1
+	}
+	at, bt := strings.Split(ap, "."), strings.Split(bp, ".")
+	for i := 0; i < len(at) && i < len(bt); i++ {
+		ai, aErr := strconv.Atoi(at[i])
+		bi, bErr := strconv.Atoi(bt[i])
+		if aErr == nil && bErr == nil {
+			if ai != bi {
+				if ai < bi {
+					return -1
+				}
+				return 1
+			}
+			continue
+		}
+		if c := strings.Compare(at[i], bt[i]); c != 0 {
+			return c
+		}
+	}
+	switch {
+	case len(at) < len(bt):
+		return -1
+	case len(at) > len(bt):
+		return 1
+	}
+	return 0
+}
+
+// splitVersion returns the numeric triple and the prerelease part ("" when none).
+// A nil slice means the string does not look like a version at all.
+func splitVersion(v string) ([]int, string) {
+	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "v"))
+	if v == "" {
+		return nil, ""
+	}
+	core, pre := v, ""
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		core, pre = v[:i], v[i+1:]
+	} else if i := strings.IndexByte(v, '+'); i >= 0 {
+		core = v[:i]
+	}
+	parts := strings.Split(core, ".")
+	nums := make([]int, 0, 3)
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, ""
+		}
+		nums = append(nums, n)
+	}
+	if len(nums) == 0 || len(nums) > 3 {
+		return nil, ""
+	}
+	for len(nums) < 3 {
+		nums = append(nums, 0)
+	}
+	return nums, pre
 }

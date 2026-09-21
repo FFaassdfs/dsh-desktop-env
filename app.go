@@ -582,6 +582,12 @@ func (a *App) checkBundledUpdate(rt harnessRuntime) {
 		return
 	}
 	if current == latest {
+		// Drop any stale staged tree (e.g. left over from a folder that was later
+		// replaced by hand) so it cannot be applied on a future start.
+		if _, ok := stagedRuntimeIn(updateStagingDir(rt.Root)); ok {
+			debugLog("checkBundledUpdate: discarding stale staged runtime (already on %s)", latest)
+			_ = os.RemoveAll(updateStagingDir(rt.Root))
+		}
 		a.emitUpdate("已是最新版本 " + latest)
 		return
 	}
@@ -661,6 +667,15 @@ func (a *App) applyPendingRuntimeUpdate() {
 	want := versionFromPackageJSON(staged.Package)
 	if got := probeRuntimeVersion(rt.NodeExe, staged.Entry); want == "" || got != want {
 		debugLog("applyPendingRuntimeUpdate: staged runtime failed its probe, discarding")
+		_ = os.RemoveAll(staging)
+		return
+	}
+	// Never let a stale staged tree win over what is on disk: after someone
+	// unzips a newer package over this folder, an older pending update may still
+	// be lying around (it is not shipped in the zip, so it survives the copy).
+	current := versionFromPackageJSON(rt.Package)
+	if current != "" && compareDshVersions(want, current) <= 0 {
+		debugLog("applyPendingRuntimeUpdate: staged %s is not newer than the runtime in place (%s), discarding", want, current)
 		_ = os.RemoveAll(staging)
 		return
 	}
