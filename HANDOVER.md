@@ -1464,5 +1464,16 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 
 > 验证脚本 `.cache\verify-013.mjs`（scratch，未入库）。**本机验证脚本经验**（与 §27.7 一起看）：① Release 资产要**先试镜像前缀**再回退直连（本沙箱直连会掉到 5 KiB/s 甚至静默挂起）；② `fetch` **必须设超时**（`AbortSignal.timeout(5min)`）否则会永久挂住；③ 分段落盘 + Range 续传让慢链路也能最终完成；④ `execFileSync("tar.exe", ["-tf", zip])` 对 2.5 万条目会撞 `ENOBUFS`（要调大 `maxBuffer`）。
 
+### 27.12 发行包本地留存位置 + `0.1.4`（2026-09-21）
+
+- **本地留存目录约定**：**`D:\dsh\app\packages\`**（与 `app\current`、`app\versions` 并列），放**可直接拷走的发行包**：
+  ```powershell
+  pwsh -File scripts\pack-release.ps1 -ShellVersion 0.1.4 -OutDir D:\dsh\app\packages
+  # -> dsh-desktop-0.1.4-dsh0.1.5-rc.2-win-x64.zip (35 文件 / 97.9 MB) + SHA256SUMS.txt
+  ```
+- **`0.1.4`（CI run #7 = success，2026-09-21）**：内容 = 0.1.3 的**单文件运行时**设计 + **`f34e761`**（覆盖安装时"包内 `runtime.zip` 严格更新才替换"，防静默沿用旧运行时）。发布资产 **98.5 MB**，digest 与 `SHA256SUMS.txt` 一致（`ed71c8e9…9fc1`）。
+- **本地包与 CI 包哈希不同属正常**：本地用**全局安装树**（嵌套依赖 → `dsh-tree` 模式、Node v24.16.0），CI 用 `npm install --prefix` 的暂存前缀（**提升**依赖 → `full-node-modules` 模式、Node v24.20.0）；两者 **harness 版本相同（0.1.5-rc.2）且都已验证可运行**，不要拿两者比哈希。
+- 本次本地留存：`dsh-desktop-0.1.4-dsh0.1.5-rc.2-win-x64.zip`（97.9 MB），SHA256 `EA6A1FEF4BC4C919A627FA64EFB505D3EC52937BF0A92B9EB74A7F954394C14F`。
+
 
 
