@@ -360,6 +360,11 @@ func TestFirstLine(t *testing.T) {
 // zip-slip entry, returning its path.
 func makeRuntimeZip(t *testing.T, dir, nodeName string, withSlip bool) string {
 	t.Helper()
+	return makeRuntimeZipVersioned(t, dir, nodeName, "9.9.9", withSlip)
+}
+
+func makeRuntimeZipVersioned(t *testing.T, dir, nodeName, version string, withSlip bool) string {
+	t.Helper()
 	zipPath := filepath.Join(dir, runtimeArchiveName)
 	f, err := os.Create(zipPath)
 	if err != nil {
@@ -377,7 +382,7 @@ func makeRuntimeZip(t *testing.T, dir, nodeName string, withSlip bool) string {
 	}
 	add("./"+nodeName, "fake node")
 	add("./LICENSE", "node license")
-	add("./node_modules/@deepseek-ai/dsh/package.json", `{"name":"@deepseek-ai/dsh","version":"9.9.9"}`)
+	add("./node_modules/@deepseek-ai/dsh/package.json", `{"name":"@deepseek-ai/dsh","version":"`+version+`"}`)
 	add("./node_modules/@deepseek-ai/dsh/lib/bin.js", "// entry")
 	add("./node_modules/commander/package.json", `{"name":"commander"}`)
 	if withSlip {
@@ -391,6 +396,25 @@ func makeRuntimeZip(t *testing.T, dir, nodeName string, withSlip bool) string {
 		t.Fatal(err)
 	}
 	return zipPath
+}
+
+// writeRuntimeWithVersion lays out an unpacked runtime reporting the given version.
+func writeRuntimeWithVersion(t *testing.T, root, nodeName, version string) {
+	t.Helper()
+	entryDir := filepath.Join(root, "node_modules", "@deepseek-ai", "dsh", "lib")
+	if err := os.MkdirAll(entryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(entryDir, "bin.js"), []byte("// entry"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "node_modules", "@deepseek-ai", "dsh", "package.json"),
+		[]byte(`{"name":"@deepseek-ai/dsh","version":"`+version+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, nodeName), []byte("fake node"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestNeedsRuntimeExtraction(t *testing.T) {
@@ -498,6 +522,82 @@ func TestInstallRuntimeFromArchive_EmptyArchiveFails(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(pkg, ".runtime-extract")); !os.IsNotExist(err) {
 		t.Errorf("failed extraction must clean up its temp directory")
+	}
+}
+
+func TestSyncRuntimeFromArchive_KeepsEqualOrNewer(t *testing.T) {
+	const node = "node.exe"
+
+	// Same version: keep the unpacked tree (unzipping a newer package over a
+	// folder does not delete the old runtime\, so this path matters).
+	pkg := t.TempDir()
+	makeRuntimeZip(t, pkg, node, false)
+	writeRuntimeWithVersion(t, filepath.Join(pkg, "runtime"), node, "9.9.9")
+	marker := filepath.Join(pkg, "runtime", "marker.txt")
+	if err := os.WriteFile(marker, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := syncRuntimeFromArchive(pkg, node, nil)
+	if err != nil || res != runtimeSyncKept {
+		t.Fatalf("expected the unpacked runtime to be kept, got %v %v", res, err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("a kept runtime must not be replaced: %v", err)
+	}
+
+	// Newer unpacked runtime (e.g. after a self-update): keep it as well.
+	pkg2 := t.TempDir()
+	makeRuntimeZip(t, pkg2, node, false)
+	writeRuntimeWithVersion(t, filepath.Join(pkg2, "runtime"), node, "10.0.0")
+	res, err = syncRuntimeFromArchive(pkg2, node, nil)
+	if err != nil || res != runtimeSyncKept {
+		t.Fatalf("expected the newer unpacked runtime to be kept, got %v %v", res, err)
+	}
+	got := versionFromPackageJSON(filepath.Join(pkg2, "runtime", "node_modules", "@deepseek-ai", "dsh", "package.json"))
+	if got != "10.0.0" {
+		t.Errorf("kept runtime version = %q, want 10.0.0", got)
+	}
+}
+
+func TestSyncRuntimeFromArchive_UpgradesOlderRuntime(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false)
+	writeRuntimeWithVersion(t, filepath.Join(pkg, "runtime"), node, "1.0.0")
+
+	res, err := syncRuntimeFromArchive(pkg, node, nil)
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if res != runtimeSyncUpgraded {
+		t.Fatalf("expected an upgrade, got %v", res)
+	}
+	got := versionFromPackageJSON(filepath.Join(pkg, "runtime", "node_modules", "@deepseek-ai", "dsh", "package.json"))
+	if got != "9.9.9" {
+		t.Errorf("runtime version = %q, want the packaged 9.9.9", got)
+	}
+	if _, err := os.Stat(filepath.Join(pkg, "runtime.old")); !os.IsNotExist(err) {
+		t.Errorf("the replaced runtime's backup must be cleaned up")
+	}
+	if _, err := os.Stat(filepath.Join(pkg, ".runtime-extract")); !os.IsNotExist(err) {
+		t.Errorf("temporary extraction directory must be cleaned up")
+	}
+}
+
+func TestSyncRuntimeFromArchive_NoArchive(t *testing.T) {
+	pkg := t.TempDir()
+	res, err := syncRuntimeFromArchive(pkg, "node.exe", nil)
+	if err != nil || res != runtimeSyncNone {
+		t.Errorf("no archive should be a no-op, got %v %v", res, err)
+	}
+	// An archive holding a different version than the live tree is compared by
+	// reading its manifest, not by unpacking it.
+	archive := makeRuntimeZipVersioned(t, pkg, "node.exe", "0.1.5-rc.2", false)
+	if v := archiveHarnessVersion(archive); v != "0.1.5-rc.2" {
+		t.Errorf("archiveHarnessVersion = %q", v)
+	}
+	if v := archiveHarnessVersion(filepath.Join(pkg, "nope.zip")); v != "" {
+		t.Errorf("missing archive should yield an empty version, got %q", v)
 	}
 }
 

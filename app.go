@@ -82,22 +82,19 @@ func (a *App) startup(ctx context.Context) {
 	go a.checkUpdatesLoop()
 }
 
-// ensureRuntimeExtracted unpacks the package runtime archive on first start.
+// ensureRuntimeExtracted unpacks (or refreshes) the package runtime on start.
 func (a *App) ensureRuntimeExtracted() {
 	pkgRoot := executableDir()
 	if pkgRoot == "" {
 		return
 	}
-	archive, needed := needsRuntimeExtraction(pkgRoot, runtimeNodeName())
-	if !needed {
+	if !fileExists(runtimeArchivePath(pkgRoot)) {
 		return
 	}
-	debugLog("ensureRuntimeExtracted: unpacking %s", archive)
-	a.emitUpdate("首次启动：正在解压内置运行时…")
 	start := time.Now()
-	err := installRuntimeFromArchive(pkgRoot, runtimeNodeName(), func(done, total int) {
+	result, err := syncRuntimeFromArchive(pkgRoot, runtimeNodeName(), func(done, total int) {
 		if total > 0 && done%2000 == 0 {
-			a.emitUpdate(fmt.Sprintf("首次启动：正在解压内置运行时… %d/%d", done, total))
+			a.emitUpdate(fmt.Sprintf("正在解压内置运行时… %d/%d", done, total))
 		}
 	})
 	if err != nil {
@@ -105,8 +102,17 @@ func (a *App) ensureRuntimeExtracted() {
 		a.emitUpdate("内置运行时解压失败：" + err.Error())
 		return
 	}
-	debugLog("ensureRuntimeExtracted: ready in %s", time.Since(start).Round(time.Second))
-	a.emitUpdate(fmt.Sprintf("内置运行时已就绪（首次解压耗时 %s）", time.Since(start).Round(time.Second)))
+	elapsed := time.Since(start).Round(time.Second)
+	switch result {
+	case runtimeSyncExtracted:
+		debugLog("ensureRuntimeExtracted: unpacked in %s", elapsed)
+		a.emitUpdate(fmt.Sprintf("内置运行时已就绪（首次解压耗时 %s）", elapsed))
+	case runtimeSyncUpgraded:
+		debugLog("ensureRuntimeExtracted: refreshed from the package in %s", elapsed)
+		a.emitUpdate(fmt.Sprintf("内置运行时已按发行包更新（耗时 %s）", elapsed))
+	default:
+		debugLog("ensureRuntimeExtracted: unpacked runtime is current")
+	}
 }
 
 func (a *App) domReady(ctx context.Context) {

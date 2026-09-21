@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -356,36 +357,126 @@ func extractZipEntry(entry *zip.File, destDir string) error {
 }
 
 // installRuntimeFromArchive unpacks the package runtime archive into runtime\.
-// The archive is unpacked into a temporary sibling first and only renamed into
-// place when it is complete and usable, so an interrupted first start never
-// leaves a half-extracted runtime behind.
+// Thin wrapper kept for callers/tests that only need the extraction.
 func installRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, total int)) error {
-	archive, needed := needsRuntimeExtraction(pkgRoot, nodeName)
-	if !needed {
-		return nil
+	_, err := syncRuntimeFromArchive(pkgRoot, nodeName, onProgress)
+	return err
+}
+
+// runtimeSyncResult reports what syncing the archive with runtime\ did.
+type runtimeSyncResult int
+
+const (
+	runtimeSyncNone      runtimeSyncResult = iota // no archive next to the exe
+	runtimeSyncKept                               // unpacked runtime is the same or newer
+	runtimeSyncExtracted                          // first start: archive unpacked
+	runtimeSyncUpgraded                           // archive was strictly newer: replaced
+)
+
+// zipEntryString returns the content of a single archive entry ("" if absent).
+// Used to read the harness manifest out of runtime.zip without unpacking it.
+func zipEntryString(zipPath, entryName string) string {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return ""
+	}
+	defer reader.Close()
+	want := strings.TrimPrefix(strings.ReplaceAll(entryName, "\\", "/"), "./")
+	for _, f := range reader.File {
+		if strings.TrimPrefix(strings.ReplaceAll(f.Name, "\\", "/"), "./") != want {
+			continue
+		}
+		if f.UncompressedSize64 > 4<<20 {
+			return ""
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return ""
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(io.LimitReader(rc, 4<<20))
+		if err != nil {
+			return ""
+		}
+		return string(data)
+	}
+	return ""
+}
+
+// archiveHarnessVersion reads the harness version packaged inside an archive.
+func archiveHarnessVersion(archive string) string {
+	raw := zipEntryString(archive, filepath.ToSlash(runtimePackageRel))
+	if raw == "" {
+		return ""
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return ""
+	}
+	return m.Version
+}
+
+// syncRuntimeFromArchive makes runtime\ agree with the packaged runtime archive.
+// It unpacks when nothing is unpacked yet, and replaces an older unpacked runtime
+// when the archive is strictly newer. When the unpacked runtime is the same or
+// newer (for example after a self-update) it is kept - important because unzipping
+// a newer package over an existing folder does NOT delete the old runtime\.
+//
+// The archive is always unpacked into a temporary sibling first and only renamed
+// into place once it is complete and usable, so an interrupted run never leaves a
+// half-extracted runtime behind.
+func syncRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, total int)) (runtimeSyncResult, error) {
+	archive := runtimeArchivePath(pkgRoot)
+	if !fileExists(archive) {
+		return runtimeSyncNone, nil
 	}
 	live := filepath.Join(pkgRoot, "runtime")
+	liveRuntime, haveRuntime := portableRuntimeIn(live, nodeName)
+	if haveRuntime {
+		want := archiveHarnessVersion(archive)
+		have := versionFromPackageJSON(liveRuntime.Package)
+		if want == "" || have == "" || compareDshVersions(want, have) <= 0 {
+			debugLog("syncRuntimeFromArchive: keeping unpacked runtime %s (archive has %s)", have, want)
+			return runtimeSyncKept, nil
+		}
+	}
+
 	tmp := filepath.Join(pkgRoot, ".runtime-extract")
 	_ = os.RemoveAll(tmp)
 	if err := os.MkdirAll(tmp, 0o755); err != nil {
-		return err
+		return runtimeSyncNone, err
 	}
 	if err := extractZip(archive, tmp, onProgress); err != nil {
 		_ = os.RemoveAll(tmp)
-		return err
+		return runtimeSyncNone, err
 	}
 	if _, ok := portableRuntimeIn(tmp, nodeName); !ok {
 		_ = os.RemoveAll(tmp)
-		return fmt.Errorf("archive holds no usable runtime (missing %s or %s)", nodeName, runtimeEntryRel)
+		return runtimeSyncNone, fmt.Errorf("archive holds no usable runtime (missing %s or %s)", nodeName, runtimeEntryRel)
 	}
-	if dirExists(live) {
-		_ = os.RemoveAll(live)
+
+	backup := live + ".old"
+	_ = os.RemoveAll(backup)
+	if haveRuntime {
+		if err := os.Rename(live, backup); err != nil {
+			_ = os.RemoveAll(tmp)
+			return runtimeSyncNone, err
+		}
 	}
 	if err := os.Rename(tmp, live); err != nil {
+		if dirExists(backup) {
+			_ = os.Rename(backup, live)
+		}
 		_ = os.RemoveAll(tmp)
-		return err
+		return runtimeSyncNone, err
 	}
-	return nil
+	if haveRuntime {
+		_ = os.RemoveAll(backup)
+		return runtimeSyncUpgraded, nil
+	}
+	return runtimeSyncExtracted, nil
 }
 
 // extractRuntimeRequested reports whether the CLI was asked to only unpack the
@@ -399,29 +490,35 @@ func extractRuntimeRequested(args []string) bool {
 	return false
 }
 
-// RunExtractRuntime unpacks the runtime next to the executable and returns an
-// exit code. It does not start the GUI.
+// RunExtractRuntime unpacks (or refreshes) the runtime next to the executable and
+// returns an exit code. It does not start the GUI.
 func RunExtractRuntime() int {
 	pkgRoot := executableDir()
 	if pkgRoot == "" {
 		fmt.Println("cannot determine the executable directory")
 		return 1
 	}
-	archive, needed := needsRuntimeExtraction(pkgRoot, runtimeNodeName())
-	if !needed {
+	if !fileExists(runtimeArchivePath(pkgRoot)) {
 		if _, ok := portableRuntimeIn(filepath.Join(pkgRoot, "runtime"), runtimeNodeName()); ok {
-			fmt.Println("runtime already extracted")
+			fmt.Println("runtime already extracted (no " + runtimeArchiveName + " present)")
 			return 0
 		}
-		fmt.Println("no " + runtimeArchiveName + " next to the executable (and no runtime directory)")
+		fmt.Println("no " + runtimeArchiveName + " next to the executable and no runtime directory")
 		return 1
 	}
-	fmt.Printf("extracting %s ...\n", archive)
 	start := time.Now()
-	if err := installRuntimeFromArchive(pkgRoot, runtimeNodeName(), nil); err != nil {
-		fmt.Println("extraction failed:", err)
+	result, err := syncRuntimeFromArchive(pkgRoot, runtimeNodeName(), nil)
+	if err != nil {
+		fmt.Println("runtime sync failed:", err)
 		return 1
 	}
-	fmt.Printf("runtime ready in %s\n", time.Since(start).Round(time.Second))
+	switch result {
+	case runtimeSyncKept:
+		fmt.Println("runtime already extracted (archive is not newer)")
+	case runtimeSyncUpgraded:
+		fmt.Printf("runtime replaced by the packaged one in %s\n", time.Since(start).Round(time.Second))
+	default:
+		fmt.Printf("runtime ready in %s\n", time.Since(start).Round(time.Second))
+	}
 	return 0
 }
