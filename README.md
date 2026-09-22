@@ -36,15 +36,30 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
   3) （可选）想让 4 个插件也进 DSH_HOME：双击 install-offline.cmd
   ```
   - 想跳过 GUI 先解压（脚本化）：`dsh-desktop.exe --extract-runtime`
-  - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**问你要装哪些插件**。命令行同样支持选择：
+  - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**列出每个插件的功能说明**并问你要装哪些。命令行同样支持选择：
     ```powershell
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins all              # 全装（默认）
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins none             # 不装（只跑壳）
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins ask              # 交互菜单
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins explainer,core-version
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -Plugins 2,4              # 按菜单编号选（多选用逗号）
+    powershell -ExecutionPolicy Bypass -File install-offline.ps1 -CheckOnly                # 只列清单/预演，不写东西
     powershell -ExecutionPolicy Bypass -File install-offline.ps1 -DSHome D:\dsh-home       # 指定 DSH_HOME
     ```
-    （可用简名：`explainer` / `project-explorer` / `model-capabilities` / `core-version`；无控制台调用时 `ask` 会自动退化为全装，不会挂住）
+    - **多选**：菜单里直接输编号、用**逗号隔开**（如 `2,4` = 只装第 2 和第 4 个）；`a`=全部、`n`=都不装、直接回车=全部。
+    - **输入无效时**（如 `9`、`2,x`）提示无效并**不安装任何插件**（不会猜、也不会退化为全装）。
+    - 编号也可写成简名/包名/patch id：`explainer` / `project-explorer` / `model-capabilities` / `core-version`。
+    - **安装器只加不减**：已装但这次没选的插件不会被移除；想关掉用「插件说明」面板的开关（或手工删包 + patch 条目）。
+    - 无控制台调用（agent/计划任务）时 `ask` 自动退化为全装、不会挂住；`DSH_INSTALL_FORCE_PROMPT=1` 可强制走菜单（便于喂答案：`echo 2,4 | install-offline.cmd`）。
+
+  **4 个插件分别是什么**（安装菜单里显示同一段文字；单一数据源 = `scripts/setup-plugins.mjs --describe`）：
+
+  | 编号 | 短名 | 功能 | 在哪看到 |
+  |---|---|---|---|
+  | 1 | core-version | **核心版本徽标**：显示当前核心版本号（如 `dsh v0.1.5-rc.2`）。只读展示，不挡点击 | 界面左下角 |
+  | 2 | explainer | **插件说明面板**：每个插件干什么用中文写清，显示已启用/已停用，可一键开关（重启壳生效） | 设置 →「插件」 |
+  | 3 | model-capabilities | **模型能力清单**：每个模型能否识图、上下文多长、有哪些推理档位。只读查询 | 设置 →「模型能力」 |
+  | 4 | project-explorer | **项目文件树**：右侧可折叠文件树；把文件拖进输入框即插入其路径，让 agent 自己去读。只给路径、不传内容 | 界面最右侧 |
   - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
 - **自动更新（与源码装一致）**：便携版启动时 + 每 24h 也会查 npm registry，发现新版就用**包内 npm** 自动下载，提示「重启服务」生效；重启时把新 harness 换入 `runtime\`（先暂存、验证能跑、失败自动回滚；`node.exe` 不动）。包内 npm 缺失（`-NoNpm` 构建）或解压到只读目录时会如实提示，可改用下载新版发行包。

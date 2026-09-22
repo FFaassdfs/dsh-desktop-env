@@ -1,4 +1,4 @@
-# verify-fresh-clone.ps1 - prove that a FRESH CLONE of this repo can build the shell.
+﻿# verify-fresh-clone.ps1 - prove that a FRESH CLONE of this repo can build the shell.
 #
 # Why: the shell source lives in this repository (app.go / frontend/ / build/).
 # Another machine only gets what git tracks, so this script simulates that

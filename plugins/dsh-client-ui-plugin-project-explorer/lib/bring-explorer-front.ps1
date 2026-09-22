@@ -1,4 +1,4 @@
-# Best-effort helper: raise the freshly opened File Explorer window to the
+﻿# Best-effort helper: raise the freshly opened File Explorer window to the
 # foreground. Windows keeps windows spawned by background processes behind the
 # current foreground app (foreground lock / focus-stealing prevention), so a
 # plain `explorer.exe <path>` opens in the background. This helper finds the

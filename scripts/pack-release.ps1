@@ -1,4 +1,4 @@
-# pack-release.ps1 - build the portable (offline) dsh-desktop release package.
+﻿# pack-release.ps1 - build the portable (offline) dsh-desktop release package.
 #
 # Produces one zip that needs NOTHING on the target machine (no Node, no npm,
 # no Go/Wails):
@@ -260,6 +260,24 @@ contents:  dsh-desktop.exe, runtime.zip (unpacked on first start), plugins\, scr
 "@
 Set-Content -Path (Join-Path $pkgDir "VERSION.txt") -Value $versionText -Encoding utf8
 
+# Plugin descriptions come from scripts/setup-plugins.mjs --describe (single
+# source of truth, shared with the installer menu and the repo README).
+$catalogueText = ""
+try {
+  $describeNode = if (Test-Path $NodeExe) { $NodeExe } else { "node" }
+  $rawCatalogue = (& $describeNode (Join-Path $repoRoot "scripts\setup-plugins.mjs") --describe 2>$null | Out-String)
+  if ($LASTEXITCODE -eq 0 -and $rawCatalogue.Trim()) {
+    $catalogue = @($rawCatalogue | ConvertFrom-Json)
+    $catalogueText = (($catalogue | ForEach-Object {
+      "  {0}) {1}" -f $_.index, $_.short
+      "       $($_.title) - $($_.summary)"
+      if ($_.where) { "       位置：$($_.where)" }
+    }) -join "`r`n")
+    $global:LASTEXITCODE = 0
+  }
+} catch { $catalogueText = "" }
+if (-not $catalogueText) { $catalogueText = "  (run: node scripts\setup-plugins.mjs --describe)" }
+
 $readmeText = @"
 dsh-desktop portable release ($pkgName)
 =======================================
@@ -286,15 +304,25 @@ The runtime is a single file (runtime.zip) on purpose: an unpacked runtime is
   * extract with `tar -xf <pkg>.zip -C <dir>` (built into Windows 10+) or 7-Zip;
     Explorer's "Extract All" is the slowest option.
 
-Optional: install the 4 custom plugins into your DSH home
---------------------------------------------------------
-Double-click install-offline.cmd      (recommended; it asks which plugins)
-   or:  powershell -ExecutionPolicy Bypass -File install-offline.ps1
-        add -Plugins all | none | ask | explainer,core-version to choose.
+Optional: install the custom plugins into your DSH home
+-------------------------------------------------------
+The package ships these plugins (all are optional UI enhancements):
 
-This copies the bundled plugins into %USERPROFILE%\.dsh and adds their entries
-to the profile patch. Use -DSHome <dir> to target another home, and
--AppDir <dir> to also copy the shell into an app directory.
+$catalogueText
+
+Double-click install-offline.cmd      (recommended; it lists the descriptions above
+                                       and asks which ones you want)
+   or:  powershell -ExecutionPolicy Bypass -File install-offline.ps1
+        add -Plugins all | none | ask | 2,4 | explainer,project-explorer
+        Numbers are the ones listed above; separate several with commas (2,4).
+        An invalid answer installs nothing (nothing is guessed).
+        -CheckOnly lists the plugins and what would happen, without changing anything.
+        -SkipPlugins skips this step entirely.
+
+This copies the chosen plugins into %USERPROFILE%\.dsh and adds their entries
+to the profile patch. Plugins that are already installed are never removed here -
+the installer only adds/updates what you pick. Use -DSHome <dir> to target
+another home, and -AppDir <dir> to also copy the shell into an app directory.
 
 Requirements
 ------------

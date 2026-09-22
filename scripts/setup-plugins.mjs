@@ -17,49 +17,75 @@
 //      (resolvable package, dsh.client declaration, exports["./client"],
 //      host main exists) + patch YAML still parses.
 //
-// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>]
+// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>] [--describe]
 //   --check-only: verify only, write nothing.
+//   --describe:   print the plugin catalogue as JSON (number, short name, Chinese
+//                 title/summary/where/writes) and exit — used by the offline
+//                 installer menu and to keep README in sync. Nothing is installed.
 //   --plugins:    which plugins to install. "all" (default), "none", or a
-//                 comma-separated list of short names / package names / patch
-//                 ids, e.g. --plugins explainer,core-version
+//                 comma-separated list of numbers / short names / package names /
+//                 patch ids, e.g. --plugins 2,4  ==  --plugins explainer,project-explorer
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const checkOnly = process.argv.includes("--check-only");
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
-const DSH_HOME = process.env.DSH_HOME || join(homedir(), ".dsh");
+// resolve() on purpose: verify() uses createRequire(), which rejects a relative
+// path — a relative DSH_HOME used to abort the install after the first plugin.
+const DSH_HOME = resolve(process.env.DSH_HOME || join(homedir(), ".dsh"));
 const PROFILE_DIR = join(DSH_HOME, "profiles", "web");
 const PATCH_PATH = join(PROFILE_DIR, "cordis.patch.yml");
 const PACKAGES_DIR = join(DSH_HOME, "profiles", "node_modules");
 
+// Canonical plugin catalogue. The ORDER is the numbering used by the installer
+// menu and by --plugins/--describe, so keep it alphabetical by short name.
+// `title` / `summary` / `where` / `writes` are the user-facing description shown
+// at install time (single source of truth: install-offline.ps1 asks for it with
+// `--describe`, and README.md mirrors it).
 const PLUGINS = [
+  {
+    name: "dsh-client-ui-plugin-core-version",
+    patchId: "plugin-core-version",
+    title: "核心版本徽标",
+    summary: "界面左下角显示当前核心版本号（如 dsh v0.1.5-rc.2），一眼确认用的是哪一版。只读展示，不挡点击。",
+    where: "界面左下角",
+    writes: "",
+    comment: "# dsh-client-ui-plugin-core-version: top-of-GUI core version badge (HANDOVER §21).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-core-version"),
+  },
   {
     name: "dsh-client-ui-plugin-explainer",
     patchId: "plugin-explainer",
+    title: "插件说明面板",
+    summary: "设置 →「插件」多一个「插件说明」页：每个插件是干什么的用中文写清，并显示已启用/已停用，还能一键开关（重启壳生效）。",
+    where: "设置 →「插件」",
+    writes: "只在你点开关时写 profiles/web/cordis.patch.yml",
     comment: "# dsh-client-ui-plugin-explainer: Settings > Plugins \"plugin explainer\" tab (HANDOVER path A).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-explainer"),
   },
   {
-    name: "dsh-client-ui-plugin-project-explorer",
-    patchId: "plugin-project-explorer",
-    comment: "# dsh-client-ui-plugin-project-explorer: right-side project file tree (HANDOVER path C).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
-    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-project-explorer"),
-  },
-  {
     name: "dsh-client-ui-plugin-model-capabilities",
     patchId: "plugin-model-capabilities",
+    title: "模型能力清单",
+    summary: "设置里多一个「模型能力」：逐个列出每个模型能否识图、上下文多长、有哪些推理档位。只读查询，不改任何配置。",
+    where: "设置 →「模型能力」",
+    writes: "",
     comment: "# dsh-client-ui-plugin-model-capabilities: Settings > \"模型能力\" per-model capabilities (HANDOVER path E).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-model-capabilities"),
   },
   {
-    name: "dsh-client-ui-plugin-core-version",
-    patchId: "plugin-core-version",
-    comment: "# dsh-client-ui-plugin-core-version: top-of-GUI core version badge (HANDOVER §21).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
-    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-core-version"),
+    name: "dsh-client-ui-plugin-project-explorer",
+    patchId: "plugin-project-explorer",
+    title: "项目文件树",
+    summary: "界面最右侧的可折叠文件树（显示当前会话目录）；把文件拖进输入框即插入它的路径，让 agent 自己去读。只给路径，不传文件内容。",
+    where: "界面最右侧",
+    writes: "",
+    comment: "# dsh-client-ui-plugin-project-explorer: right-side project file tree (HANDOVER path C).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-project-explorer"),
   },
 ];
 
@@ -69,8 +95,9 @@ function fail(message) {
 }
 
 // --- plugin selection (--plugins) ---------------------------------------------
-// Tokens may be the short name (explainer), the package name
-// (dsh-client-ui-plugin-explainer) or the patch id (plugin-explainer).
+// Tokens may be the number from the installer menu (1, 2, …), the short name
+// (explainer), the package name (dsh-client-ui-plugin-explainer) or the patch id
+// (plugin-explainer).
 function pluginShortName(plugin) {
   return plugin.name.replace(/^dsh-client-ui-plugin-/, "");
 }
@@ -96,7 +123,13 @@ function selectPlugins(arg) {
   const selected = [];
   const unknown = [];
   for (const token of tokens) {
-    const hit = PLUGINS.find((p) => matchesToken(p, token));
+    let hit = null;
+    if (/^\d+$/.test(token)) {
+      const idx = Number(token) - 1;
+      if (idx >= 0 && idx < PLUGINS.length) hit = PLUGINS[idx];
+    } else {
+      hit = PLUGINS.find((p) => matchesToken(p, token)) ?? null;
+    }
     if (!hit) {
       unknown.push(token);
       continue;
@@ -105,11 +138,31 @@ function selectPlugins(arg) {
   }
   if (unknown.length > 0) {
     fail(
-      `unknown plugin(s): ${unknown.join(", ")} — known: ` +
-      PLUGINS.map(pluginShortName).join(", ")
+      `unknown plugin(s): ${unknown.join(", ")} — use numbers (1-${PLUGINS.length}) or names: ` +
+      PLUGINS.map((p, i) => `${i + 1}=${pluginShortName(p)}`).join(", ")
     );
   }
   return { selected, skipped: PLUGINS.filter((p) => !selected.includes(p)) };
+}
+
+// The installer menu and README are generated from this, so the description
+// lives in exactly one place.
+if (process.argv.includes("--describe")) {
+  console.log(JSON.stringify(
+    PLUGINS.map((p, i) => ({
+      index: i + 1,
+      short: pluginShortName(p),
+      name: p.name,
+      patchId: p.patchId,
+      title: p.title,
+      summary: p.summary,
+      where: p.where,
+      writes: p.writes,
+    })),
+    null,
+    2
+  ));
+  process.exit(0);
 }
 
 const pluginsArgIndex = process.argv.indexOf("--plugins");
@@ -239,7 +292,7 @@ async function verifyPatch() {
 console.log(`repoRoot : ${repoRoot}`);
 console.log(`DSH_HOME : ${DSH_HOME}`);
 console.log(`checkOnly: ${checkOnly}`);
-console.log(`plugins  : ${SELECTED.length === 0 ? "none" : SELECTED.map(pluginShortName).join(", ")}` +
+console.log(`plugins  : ${SELECTED.length === 0 ? "none" : SELECTED.map((p) => `${pluginShortName(p)} (${p.title})`).join(", ")}` +
   (SKIPPED.length > 0 && SELECTED.length > 0
     ? ` (skipped: ${SKIPPED.map(pluginShortName).join(", ")})`
     : ""));

@@ -1,4 +1,4 @@
-# Restart the dsh-desktop shell so the host half of the project-explorer plugin
+﻿# Restart the dsh-desktop shell so the host half of the project-explorer plugin
 # re-applies (the running instance hot-loads NEW plugins but does not re-read
 # files of already-active host modules — /open needs a fresh dsh web). Runs as
 # a one-shot Scheduled Task so it survives the harness dying when the shell

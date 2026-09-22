@@ -1,4 +1,4 @@
-# Rebuild the dsh-desktop shell from the fork source (menu feature, commit ed06b47)
+﻿# Rebuild the dsh-desktop shell from the fork source (menu feature, commit ed06b47)
 # and relaunch it. Runs as a one-shot Scheduled Task so it survives the harness
 # process dying when the shell closes (the shell owns the dsh web process).
 #

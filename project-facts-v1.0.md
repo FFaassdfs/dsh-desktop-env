@@ -1,6 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.11**（2026-09-21 更新）
+> **文档版本：v1.12**（2026-09-21 更新）
+> 变更记录：
+> - v1.12 — **F9 插件清单**升级为"单一数据源 + 编号 + 中文说明"：`setup-plugins.mjs --describe` 同时供给安装菜单与包内 README；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28）。
 > 变更记录：
 > - v1.11 — F15 补充**单文件运行时**：包内 `runtime\` 改为 `runtime.zip`（首次启动自动解压，含 CLI `--extract-runtime`），包从 **27,413 个文件降到 35 个**（拷贝 88.8s → 15.9s），详见 `HANDOVER.md` §27.11。
 > - v1.10 — F15 补充首发事故要点：`npm i -g`（嵌套）与 `npm install --prefix`（提升）布局不同 → 打包器加 `-RuntimeMode auto` + **运行时自检闸门**；发布资产 104.9 MB（详见 `HANDOVER.md` §27.7）。
@@ -37,7 +39,7 @@
 | F6 | **源码区（唯一权威）** | 本仓库 | `D:\dsh\dsh-desktop-env` | 各处 |
 | F7 | **应用区（exe）与启动路径** | 部署逻辑 = `scripts/deploy-shell.ps1`（被 `setup.ps1` / `update.ps1` 共用） | **唯一启动入口** `D:\dsh\app\current\dsh-desktop.exe`；`build\bin\dsh-desktop.exe` 只是中间产物。历史版本 `D:\dsh\app\versions\<日期>\` + `VERSION.txt`。⚠️ ①运行中的壳**持有该文件的锁** → 换 exe 必须先关壳（部署脚本会自动暂存 `.new.exe`；也可用 `.work\swap-desktop-exe.ps1`）②**启动入口必须指向应用区**：桌面快捷方式已于 2026-09-15 改指应用区；换壳后核对 `Get-Process dsh-desktop \| Select Id,Path`（§23.4） | `AGENTS.md`、`README.md`、`DEPLOY.md` §6、`HANDOVER.md` §20/§23/§25/§26 |
 | F8 | **DSH_HOME / profile** | 环境变量 `DSH_HOME`（默认 `~/.dsh`） | `C:\Users\veken\.dsh`；profile = `profiles/web`；插件包 = `profiles/node_modules` | `HANDOVER.md` §2.1、§20.4 |
-| F9 | **插件清单（4 个 + patch id）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组 | `plugin-explainer`、`plugin-project-explorer`、`plugin-model-capabilities`、`plugin-core-version` | `HANDOVER.md` §3/§11/§15/§21 |
+| F9 | **插件清单（4 个 + patch id + 编号 + 中文说明）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组（**单一数据源**：`title`/`summary`/`where`/`writes`；数组按短名字母序 = 安装菜单编号） | `1=plugin-core-version`(核心版本徽标)、`2=plugin-explainer`(插件说明面板)、`3=plugin-model-capabilities`(模型能力清单)、`4=plugin-project-explorer`(项目文件树)；安装器菜单与包内 README 均由 `node scripts/setup-plugins.mjs --describe` 生成；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28） | `HANDOVER.md` §3/§11/§15/§21/§28 |
 | F10 | **跨机锁定的 dsh 版本** | `deploy.ps1` 的 `-HarnessVersion` 默认值（+ `DEPLOY.md`/`OPENCODE_PROMPT.md`/`README.md`/`setup.ps1` 注释引用） | **`0.1.5-rc.2`**（2026-09-20 起；历史值 `0.1.5-rc.1` → `0.1.0-rc.7` 均已过时） | `DEPLOY.md`、`OPENCODE_PROMPT.md`、`README.md` |
 | F11 | **测试入口** | 仓库 `.work/`（套件 + `lib/react-source.mjs`） | 7 个套件：explainer 冒烟 + 开关路由、文件树 host/冒烟、core-version、model-capabilities host/冒烟 | `HANDOVER.md` §21 |
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |

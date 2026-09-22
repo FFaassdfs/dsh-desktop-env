@@ -1,4 +1,4 @@
-# install-offline.ps1 - set up a portable (offline) dsh-desktop release.
+﻿# install-offline.ps1 - set up a portable (offline) dsh-desktop release.
 #
 # Shipped inside the release zip next to dsh-desktop.exe. The package is
 # PORTABLE: unzipping and running dsh-desktop.exe already works. This script is
@@ -45,6 +45,13 @@ Write-Host "package  : $pkgRoot"
 Write-Host "checkOnly: $CheckOnly"
 
 if (-not $DSHome) { $DSHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" } }
+# Normalise to an absolute path: the plugin installer resolves packages with
+# createRequire(), which rejects relative paths - and that used to abort the
+# install after the first plugin. Also expand a leading ~.
+if ($DSHome.StartsWith("~")) { $DSHome = $env:USERPROFILE + $DSHome.Substring(1) }
+if (-not [System.IO.Path]::IsPathRooted($DSHome)) {
+  $DSHome = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $DSHome))
+}
 
 # --- plugin selection ---------------------------------------------------------
 function Get-BundledPluginNames {
@@ -53,46 +60,139 @@ function Get-BundledPluginNames {
     ForEach-Object { $_.Name -replace '^dsh-client-ui-plugin-', '' })
 }
 
+$nodeCmd = if (Test-Path $bundledNode) { $bundledNode } else { "node" }
+$script:PluginCatalogue = $null
+
+# The catalogue (number, short name, Chinese title/summary) comes from
+# scripts/setup-plugins.mjs --describe - single source of truth, so the menu and
+# README can never drift apart. Falls back to plain names if node is unavailable.
+function Get-PluginCatalogue {
+  if ($null -ne $script:PluginCatalogue) { return $script:PluginCatalogue }
+  $bundled = @(Get-BundledPluginNames)
+  $catalogue = @()
+  try {
+    $raw = (& $nodeCmd $pluginScript --describe 2>$null | Out-String)
+    if ($LASTEXITCODE -eq 0 -and $raw.Trim()) {
+      $parsed = @($raw | ConvertFrom-Json)
+      $catalogue = @($parsed | Where-Object { $bundled -contains $_.short })
+    }
+  } catch { $catalogue = @() }
+  if ($catalogue.Count -eq 0) {
+    $i = 0
+    $catalogue = @($bundled | ForEach-Object {
+      $i++
+      [pscustomobject]@{ index = $i; short = $_; name = "dsh-client-ui-plugin-$_"; title = ""; summary = ""; where = ""; writes = "" }
+    })
+  }
+  $script:PluginCatalogue = $catalogue
+  return $catalogue
+}
+
+function Show-PluginCatalogue {
+  $catalogue = @(Get-PluginCatalogue)
+  if ($catalogue.Count -eq 0) { Warn "no plugins bundled in this package"; return }
+  Write-Host ""
+  Write-Host "Plugins bundled in this package:" -ForegroundColor Cyan
+  foreach ($p in $catalogue) {
+    $title = if ($p.title) { "  $($p.title)" } else { "" }
+    Write-Host ("  {0,2}) {1,-18}{2}" -f $p.index, $p.short, $title)
+    if ($p.summary) { Write-Host ("        $($p.summary)") -ForegroundColor DarkGray }
+    if ($p.where)  { Write-Host ("        在哪看：$($p.where)") -ForegroundColor DarkGray }
+  }
+}
+
+# Pure parser (unit-tested by .work\plugin-selection.test.ps1).
+# Numbers are the catalogue indexes; names/patch ids/package names also work.
+# ANY invalid token -> Selection "none" plus a message (never a silent fallback).
+function ConvertFrom-PluginAnswer {
+  param([string]$Answer, $Catalogue)
+  $result = [pscustomobject]@{ Selection = "none"; Error = "" }
+  $catalogue = @($Catalogue)
+  if ($catalogue.Count -eq 0) { return $result }
+
+  $a = if ($null -eq $Answer) { "" } else { $Answer.Trim() }
+  if ($a -eq "" -or $a -ieq "a" -or $a -ieq "all") {
+    $result.Selection = ($catalogue | ForEach-Object { $_.short }) -join ","
+    return $result
+  }
+  if ($a -ieq "n" -or $a -ieq "none") { return $result }   # Selection stays "none"
+
+  $picked = @()
+  $invalid = @()
+  foreach ($token in ($a -split ",")) {
+    $t = $token.Trim()
+    if ($t -eq "") { continue }
+    $hit = $null
+    if ($t -match '^\d+$') {
+      $hit = $catalogue | Where-Object { $_.index -eq [int]$t } | Select-Object -First 1
+    } else {
+      $hit = $catalogue | Where-Object {
+        $_.short -ieq $t -or $_.name -ieq $t -or $_.patchId -ieq $t -or
+        $_.name -imatch ("-" + [regex]::Escape($t) + "$")
+      } | Select-Object -First 1
+    }
+    if ($null -eq $hit) { $invalid += $t; continue }
+    if ($picked -notcontains $hit.short) { $picked += $hit.short }
+  }
+  if ($invalid.Count -gt 0) {
+    $result.Error = ("invalid choice: " + ($invalid -join ", ") +
+      " -- valid numbers are " + (($catalogue | ForEach-Object { $_.index }) -join "/") +
+      ", or names: " + (($catalogue | ForEach-Object { $_.short }) -join ", "))
+    return $result
+  }
+  if ($picked.Count -eq 0) {
+    $result.Error = "nothing picked"
+    return $result
+  }
+  $result.Selection = ($picked -join ",")
+  return $result
+}
+
 # Resolves -Plugins into a comma-separated short-name list for setup-plugins.mjs.
 function Resolve-PluginSelection {
   param([string]$Value)
   $v = if ($null -eq $Value) { "all" } else { $Value.Trim() }
   if ($v -eq "" -or $v -ieq "all") { return "all" }
   if ($v -ieq "none") { return "none" }
-  if ($v -ine "ask") { return $v }
+  if ($v -ine "ask") {
+    # Numbers or names straight from the command line; fail loudly on typos.
+    $auto = ConvertFrom-PluginAnswer -Answer $v -Catalogue (Get-PluginCatalogue)
+    if ($auto.Error) { throw "-Plugins $v : $($auto.Error)" }
+    return $auto.Selection
+  }
 
-  $names = @(Get-BundledPluginNames)
-  if ($names.Count -eq 0) { return "none" }
-  # Never block a non-interactive caller (agent / scheduled task / redirected stdin).
-  if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
-    Warn "no interactive console available - installing all plugins"
+  $catalogue = @(Get-PluginCatalogue)
+  if ($catalogue.Count -eq 0) { return "none" }
+  # Never block a non-interactive caller (agent / scheduled task / redirected
+  # stdin) - unless the caller explicitly forces the prompt (tests, or piping an
+  # answer in, e.g. `echo 2,4 | install-offline.cmd`).
+  $forcePrompt = ($env:DSH_INSTALL_FORCE_PROMPT -eq "1")
+  if (-not $forcePrompt -and (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected)) {
+    Warn "no interactive console available - installing all plugins (pass -Plugins <list> to choose)"
     return "all"
   }
 
   Write-Host ""
   Write-Host "Which plugins should be installed into $DSHome ?" -ForegroundColor Cyan
-  for ($i = 0; $i -lt $names.Count; $i++) {
-    Write-Host ("  {0,2}) {1}" -f ($i + 1), $names[$i])
+  Write-Host "  多选请用逗号隔开（multi-select: separate numbers with commas, e.g. 2,4）" -ForegroundColor DarkGray
+  Write-Host ""
+  foreach ($p in $catalogue) {
+    $title = if ($p.title) { "  $($p.title)" } else { "" }
+    Write-Host ("  {0,2}) {1,-18}{2}" -f $p.index, $p.short, $title)
+    if ($p.summary) { Write-Host ("        $($p.summary)") -ForegroundColor DarkGray }
   }
-  Write-Host "   a) all of them"
-  Write-Host "   n) none (run the shell only)"
-  $answer = Read-Host "Enter numbers separated by commas, or a / n [a]"
-  if ([string]::IsNullOrWhiteSpace($answer) -or $answer -ieq "a") { return "all" }
-  if ($answer -ieq "n") { return "none" }
+  Write-Host ""
+  Write-Host "   a) all of them (全部安装)"
+  Write-Host "   n) none - run the shell only (都不装)"
+  $answer = Read-Host "Numbers, comma-separated (e.g. 2,4), or a / n   [default a]"
 
-  $picked = @()
-  foreach ($token in ($answer -split ",")) {
-    $t = $token.Trim()
-    if ($t -eq "") { continue }
-    $n = 0
-    if ([int]::TryParse($t, [ref]$n) -and $n -ge 1 -and $n -le $names.Count) {
-      if ($picked -notcontains $names[$n - 1]) { $picked += $names[$n - 1] }
-    } else {
-      Warn "ignoring invalid choice '$t'"
-    }
+  $parsed = ConvertFrom-PluginAnswer -Answer $answer -Catalogue $catalogue
+  if ($parsed.Error) {
+    Warn "invalid input '$answer' -> $($parsed.Error)"
+    Warn "nothing will be installed (re-run the installer to try again)"
+    return "none"
   }
-  if ($picked.Count -eq 0) { Warn "nothing valid picked - installing all"; return "all" }
-  return ($picked -join ",")
+  return $parsed.Selection
 }
 
 # --- 1. layout ----------------------------------------------------------------
@@ -149,13 +249,25 @@ if ($SkipPlugins) {
 } elseif ($selection -eq "none") {
   Warn "no plugins selected - the shell will run without them"
 } else {
-  $nodeCmd = if (Test-Path $bundledNode) { $bundledNode } else { "node" }
+  if ($CheckOnly) {
+    Show-PluginCatalogue
+    Write-Host ("    would install : " + $selection)
+  }
   $nodeArgs = @($pluginScript, "--plugins", $selection)
   if ($CheckOnly) { $nodeArgs += "--check-only" }
   Write-Host "    running : $nodeCmd $($nodeArgs -join ' ')"
   $env:DSH_HOME = $DSHome
   & $nodeCmd @nodeArgs
-  if ($LASTEXITCODE -ne 0) { throw "plugin installation failed (see output above)" }
+  $pluginExit = $LASTEXITCODE
+  if ($pluginExit -ne 0) {
+    if ($CheckOnly) {
+      # A dry run verifies the CURRENT state; on a fresh machine nothing is
+      # installed yet, so this is expected - never fail a dry run over it.
+      Warn "dry run: the current installation does not verify (exit $pluginExit) - normal on a fresh machine"
+    } else {
+      throw "plugin installation failed (see output above)"
+    }
+  }
 }
 
 # --- optional app-area deploy -------------------------------------------------
@@ -192,4 +304,8 @@ Write-Host "  * The shell is single-instance per user: close any other dsh-deskt
 Write-Host "  * API keys / .env are NOT part of this package - configure them per machine."
 Write-Host "  * This build is unsigned: Windows SmartScreen may warn on first run."
 Write-Host "  * Plugin changes take effect after a full shell restart."
-Write-Host "  * Re-run with -Plugins <list> to change which plugins are installed."
+Write-Host "  * Re-run with -Plugins <list> to change which plugins are installed,"
+Write-Host "    e.g. -Plugins 2,4  (numbers as listed above) or -Plugins explainer,project-explorer"
+Write-Host "  * Already-installed plugins are never removed by this installer: it only"
+Write-Host "    adds/updates the ones you pick. Use the 插件说明 panel (explainer plugin)"
+Write-Host "    to disable one, or delete its package + cordis.patch.yml entry."
