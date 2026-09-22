@@ -1716,6 +1716,16 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h     # 指定 DSH_HOME（会�
 
 ### 31.5 后续
 
-- 重推 `desktop-v0.1.7` 标签（工作流取自标签所在提交，故**先提交修复再重推**）→ 见本节末尾的 run 结果。
-- **本地留存包不受影响**：`pwsh -File scripts\pack-release.ps1` 用的是本机**已装好的全局 rc.2 树**，与注册表当前状态无关（`dsh-desktop-0.1.7-…zip`，SHA256 `33C3BD22…D444`）。
+- 重推 `desktop-v0.1.7` 标签后 **CI run #13 = success**（工作流取自标签所在提交，故**先提交修复再重推**；head_sha `698fdd9`）。
+- **本地留存包不受影响**：`pwsh -File scripts\pack-release.ps1` 用的是本机**已装好的全局 rc.2 树**，与注册表当前状态无关（`dsh-desktop-0.1.7-…zip`，SHA256 `2918E29F…05FD`）。
+- **🔴 同日 23:5x 复核：上游已把 rc.3 家族补全**（`@deepseek-ai/dsh-client-ui-sidebar-documentpreview` 现在有 `0.1.5-rc.3`）→ 早上的 `ETARGET` **已自愈**：实测**不带** `--before` 也能装成功。
+- **但闸门仍必须保留**，理由从"避免失败"变成**确定性**：
+
+  | 方式 | 解析出的 dsh 家族版本集合 |
+  |---|---|
+  | 不带 `--before`（现状） | `0.1.5-rc.2` **+ `0.1.5-rc.3`**（caret 让子包升到 rc.3 → **混装**） |
+  | 带 `--before=2026-09-22T05:00:00.000Z` | **只有 `0.1.5-rc.2`**（我们验证过的那棵树） |
+
+  ⇒ **闸门 = "发布纯 rc.2 且可复现"**；要整体升级时再同步改日期（§31.3 纪律）。
+- **当前版本快照（2026-09-22 23:5x）**：npm `latest` = `0.1.5-rc.2`（= 我们锁定的版本）、`next` = `0.1.5-rc.3`、`alpha` = `0.1.7-alpha.2`（当日 16:08 发布）；桌面壳最新发布 = **`desktop-v0.1.7`**。
 
