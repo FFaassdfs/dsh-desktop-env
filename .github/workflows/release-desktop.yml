@@ -68,14 +68,27 @@ jobs:
       - name: Stage the harness runtime (offline dependency tree)
         shell: pwsh
         run: |
+          # The version is PINNED on purpose (project-facts F10): "npm latest"
+          # would silently change what we ship. HARNESS_BEFORE guards against an
+          # upstream PARTIAL prerelease family: on 2026-09-22 upstream published
+          # dsh@0.1.5-rc.3 for most packages but NOT for
+          # @deepseek-ai/dsh-client-ui-sidebar-documentpreview; since rc.2 declares
+          # caret ranges (^0.1.5-rc.2), a plain install of rc.2 now resolves rc.3
+          # sub-packages -> ETARGET (this broke release run #11). --before keeps
+          # resolution at the rc.2-era registry state.
+          $before = "2026-09-22T05:00:00.000Z"
+          $pinned = "0.1.5-rc.2"
           $dsh = "${{ inputs.dsh_version }}"
-          if (-not $dsh) { $dsh = (npm view @deepseek-ai/dsh version).Trim() }
-          Write-Host "bundling @deepseek-ai/dsh@$dsh"
+          if (-not $dsh) { $dsh = $pinned }
+          Write-Host "bundling @deepseek-ai/dsh@$dsh (registry state before $before)"
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          npm install --prefix staging --no-audit --no-fund "@deepseek-ai/dsh@$dsh"
+          npm install --prefix staging --no-audit --no-fund --before="$before" "@deepseek-ai/dsh@$dsh"
           if (-not (Test-Path staging\node_modules\@deepseek-ai\dsh\lib\bin.js)) {
             throw "harness tree incomplete: staging\node_modules\@deepseek-ai\dsh\lib\bin.js missing"
           }
+          $probe = (& node staging\node_modules\@deepseek-ai\dsh\lib\bin.js --version 2>$null)
+          Write-Host "bundled runtime reports: $probe"
+          if ("$probe".Trim() -ne $dsh) { throw "bundled runtime reports '$probe', want '$dsh'" }
           "DSH_VERSION=$dsh" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Download portable Node.js (bundled runtime)

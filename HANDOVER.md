@@ -1670,3 +1670,42 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h     # 指定 DSH_HOME（会�
 2. **空 `.backup-*` 目录**：原先无条件创建备份根目录，导致"全新安装"也在 `profiles\node_modules` 里留垃圾 → 改为**只在实际有旧副本时惰性创建**。
 3. **失败注入要真的让校验失败**：把 `lib/index.js` 内容改成注释**不会**失败（校验只看"host main 是否存在"）→ 测试改为**删除**该文件，才真的走到回滚分支。
 
+## §31 上游发布不完整的 `0.1.5-rc.3` 家族 → 安装 rc.2 会 ETARGET（2026-09-22）
+
+> **文档版本：v1.0**（2026-09-22 新建）。这是**上游注册表状态问题**，不是本仓库改动引起的；但它同时打断了 CI 打包与新机安装。
+
+### 31.1 现象
+
+- CI **run #11**（`desktop-v0.1.7` 首发）失败在 **"Stage the harness runtime (offline dependency tree)"** 这一步（后续 "Pack the portable release" / "Publish the release" 被跳过）。
+- 本地**原样复现**同一条命令 → `npm error code ETARGET`：
+  `No matching version found for @deepseek-ai/dsh-client-ui-sidebar-documentpreview@^0.1.5-rc.3`。
+
+### 31.2 根因
+
+1. `@deepseek-ai/dsh@0.1.5-rc.2` 对家族包声明 **caret 范围** `^0.1.5-rc.2`（实测：69 个 `@deepseek-ai` 直接依赖里大量 `^0.1.5-rc.2`）。
+2. 上游于 **2026-09-22 05:55Z** 发布了 `dsh@0.1.5-rc.3`（家族包**多数**也发了 rc.3），但 **`@deepseek-ai/dsh-client-ui-sidebar-documentpreview` 没有 rc.3**（它的 0.1.5 线最新只有 rc.2，之后直接跳到 `0.1.6-alpha.*` / `0.1.7-alpha.1`）。
+3. npm 解析 rc.2 时，caret 使它取"匹配范围内的最新"= **rc.3 子包**；而 rc.3 子包又要求 `^0.1.5-rc.3` → 撞上那个**不存在**的包 → ETARGET。
+4. **影响面**：**任何新装/重装**的机器（`setup.ps1` / `deploy.ps1` 的 `npm i -g @deepseek-ai/dsh@0.1.5-rc.2`）与 **CI 打包**都会失败；**已装好的机器不受影响**（本地全局树早就在）。
+
+### 31.3 修复（两处 + 一条纪律）
+
+1. **CI（`.github/workflows/release-desktop.yml`）** 的 `Stage the harness runtime` 步骤：
+   - **显式钉版本**：不再 `npm view @deepseek-ai/dsh version` 取 latest，改为内置 `0.1.5-rc.2`（手工 `workflow_dispatch` 仍可用 `dsh_version` 覆盖）——避免上游漂移**悄悄改变我们发布的内容**；
+   - `npm install --prefix staging --no-audit --no-fund --before="2026-09-22T05:00:00.000Z" ...`：把解析**闸**在 rc.3 发布之前；
+   - 新增**运行时自检**：打包前 `node staging\...\lib\bin.js --version` 必须等于目标版本，否则这一步直接失败（而不是把错的版本带进包）。
+2. **新机安装（`setup.ps1`）**：新增参数 `-HarnessBefore`（默认同一时刻），两处 `npm install -g` 都追加 `--before=`；`-CheckOnly` 也会打印将要执行的完整命令。`deploy.ps1` 无需改（`setup.ps1` 的默认值生效）。
+3. **🔴 纪律**：`--before` 是**注册表时间闸门**——**将来升级 harness 版本时必须同步更新这个日期**，否则新版本会被闸门挡住；临时关闭用 `-HarnessBefore ""`（setup.ps1）或把工作流里的 `$before` 清空。
+
+### 31.4 实测（本地，2026-09-22）
+
+| 命令 | 结果 |
+|---|---|
+| `npm install --prefix staging --before=2026-09-22T05:00:00.000Z @deepseek-ai/dsh@0.1.5-rc.2` | **exit 0 / 518 包 / 190 顶层目录**；家族抽样（`dsh-base`、`dsh-client-ui-sidebar-documentpreview`、`dsh-api-session-controller`）全部 **0.1.5-rc.2**；运行时自检 **0.1.5-rc.2** |
+| 同命令**不带** `--before` | **ETARGET**（稳定复现） |
+| `setup.ps1 -CheckOnly` | 正常（ASCII-only 保持、语法 OK、不触发安装） |
+
+### 31.5 后续
+
+- 重推 `desktop-v0.1.7` 标签（工作流取自标签所在提交，故**先提交修复再重推**）→ 见本节末尾的 run 结果。
+- **本地留存包不受影响**：`pwsh -File scripts\pack-release.ps1` 用的是本机**已装好的全局 rc.2 树**，与注册表当前状态无关（`dsh-desktop-0.1.7-…zip`，SHA256 `33C3BD22…D444`）。
+

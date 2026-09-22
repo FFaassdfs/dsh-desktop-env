@@ -1,6 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.15**（2026-09-22 更新）
+> **文档版本：v1.16**（2026-09-22 更新）
+> 变更记录：
+> - v1.16 — 新增 **F17：harness 安装的 `--before` 时间闸门**（上游 2026-09-22 发布不完整的 `0.1.5-rc.3` 家族 → 直接安装 rc.2 会 ETARGET；CI 与新机安装均已加闸门；`HANDOVER.md` §31）。
 > 变更记录：
 > - v1.15 — 新增 **F16：插件更新入口 `scripts/update-plugins.ps1`**（只更新已装插件；内容哈希判定；失败回滚；`-CheckOnly` 不写；随包发布）；F11 → **11 个套件**（新增 `update-plugins.test.ps1` 26 项）；F15 包内文件数 42（含更新器）；`HANDOVER.md` §30。
 > 变更记录：
@@ -47,6 +49,7 @@
 | F9 | **插件清单（5 个 + patch id + 编号 + 中文说明）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组（**单一数据源**：`title`/`summary`/`where`/`writes`；数组按短名字母序 = 安装菜单编号） | `1=plugin-core-version`(核心版本徽标)、`2=plugin-explainer`(插件说明面板)、`3=plugin-model-capabilities`(模型能力清单)、`4=plugin-model-sync`(模型同步)、`5=plugin-project-explorer`(项目文件树)；安装器菜单与包内 README 均由 `node scripts/setup-plugins.mjs --describe` 生成；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28） | `HANDOVER.md` §3/§11/§15/§21/§28 |
 | F10 | **跨机锁定的 dsh 版本** | `deploy.ps1` 的 `-HarnessVersion` 默认值（+ `DEPLOY.md`/`OPENCODE_PROMPT.md`/`README.md`/`setup.ps1` 注释引用） | **`0.1.5-rc.2`**（2026-09-20 起；历史值 `0.1.5-rc.1` → `0.1.0-rc.7` 均已过时） | `DEPLOY.md`、`OPENCODE_PROMPT.md`、`README.md` |
 | F16 | **插件更新入口（只更新插件）** | `scripts/update-plugins.ps1`（+ `.cmd` 双击包装；随发行包发布到包根） | 默认 `-Plugins installed`（只更新**已装**的）；`-CheckOnly` 只报告不写；**内容哈希**判定 `missing/outdated/current`（`setup-plugins.mjs --status`）；**失败自动回滚**（`.backup-<ts>`）；测试 `.work/update-plugins.test.ps1` 26 项 | `HANDOVER.md` §30、`README.md` |
+| F17 | **harness 安装的时间闸门（`--before`）** | CI 工作流 `Stage the harness runtime` 步骤的内置 `$before` = `2026-09-22T05:00:00.000Z`；`setup.ps1 -HarnessBefore`（同默认值） | 上游 2026-09-22 发布**不完整**的 `0.1.5-rc.3` 家族（`@deepseek-ai/dsh-client-ui-sidebar-documentpreview` 缺 rc.3）→ 因 rc.2 声明 caret `^0.1.5-rc.2`，直接装 rc.2 会解析到 rc.3 子包并 **ETARGET**。闸门把解析停在该时刻前；**升级 harness 版本时必须同步更新该日期**；`-HarnessBefore ""` 可关闭 | `HANDOVER.md` §31 |
 | F11 | **测试入口** | 仓库 `.work/`（套件 + `lib/react-source.mjs`） | **11 个套件**（10 个 node + 1 个 pwsh）：explainer 冒烟 `smoke-test.mjs` + 开关路由 `host-toggle-test.mjs`、文件树 host/冒烟、core-version、model-capabilities host/冒烟、**model-sync 单测 `model-sync.test.mjs`（64 断言）+ 真实数据端到端 `model-sync-live.mjs`**、**`plugin-selection.test.ps1`（安装器选择逻辑；期望值由 `--describe` 推导）**、**`update-plugins.test.ps1`（更新器：过期检测/回滚；26 项）** | `HANDOVER.md` §21/§28/§29/§30 |
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |
 | F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 5 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |

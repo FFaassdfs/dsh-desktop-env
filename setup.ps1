@@ -23,6 +23,10 @@
 # to stay safe on Windows PowerShell 5.1, which misreads BOM-less UTF-8.
 param(
   [string]$HarnessVersion = "",
+  # Registry cutoff for resolving the harness: upstream's incomplete 0.1.5-rc.3
+  # family (2026-09-22) breaks a plain install of rc.2 -> ETARGET. See HANDOVER
+  # section 31. Pass "" to install whatever the registry currently offers.
+  [string]$HarnessBefore = "2026-09-22T05:00:00.000Z",
   [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipHarnessInstall,
   [switch]$SkipDesktopBuild,
@@ -51,13 +55,20 @@ Ok("npm $npm")
 
 # --- 2. global dsh -------------------------------------------------------------
 Step "2/5 checking global dsh"
+# Upstream published an INCOMPLETE 0.1.5-rc.3 family on 2026-09-22 (most packages
+# got rc.3, @deepseek-ai/dsh-client-ui-sidebar-documentpreview did not). Because
+# rc.2 declares caret ranges (^0.1.5-rc.2), a plain install of rc.2 now resolves
+# rc.3 sub-packages and fails with ETARGET. --before pins resolution to the
+# rc.2-era registry state (see HANDOVER section 31). Override with
+# -HarnessBefore "" to install whatever the registry currently offers.
+$beforeArgs = if ($HarnessBefore) { @("--before=$HarnessBefore") } else { @() }
 $dsh = (& cmd /c "dsh --version 2>nul") 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $dsh) {
   if ($CheckOnly) {
-    Warn "dsh not installed (would run: npm i -g @deepseek-ai/dsh@<version>)"
+    Warn "dsh not installed (would run: npm i -g @deepseek-ai/dsh@<version> $($beforeArgs -join ' '))"
   } else {
     $target = if ($HarnessVersion) { "@deepseek-ai/dsh@$HarnessVersion" } else { "@deepseek-ai/dsh" }
-    npm install -g $target
+    npm install -g $target @beforeArgs
     if ($LASTEXITCODE -ne 0) { throw "npm install -g $target failed" }
     Ok("dsh installed ($target)")
   }
@@ -67,7 +78,7 @@ if ($LASTEXITCODE -ne 0 -or -not $dsh) {
     if ($SkipHarnessInstall -or $CheckOnly) {
       Warn "dsh version is '$dsh', target is '$HarnessVersion' (install skipped)"
     } else {
-      npm install -g "@deepseek-ai/dsh@$HarnessVersion"
+      npm install -g "@deepseek-ai/dsh@$HarnessVersion" @beforeArgs
       if ($LASTEXITCODE -ne 0) { throw "npm install -g @deepseek-ai/dsh@$HarnessVersion failed" }
       Ok("dsh updated to $HarnessVersion")
     }
