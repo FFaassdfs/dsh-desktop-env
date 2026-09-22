@@ -10,6 +10,7 @@
 #     plugins\<all bundled>        the custom plugins (listed by --describe / README.txt)
 #     scripts\setup-plugins.mjs    installer used by install-offline.ps1
 #     install-offline.ps1 (+ .cmd) installs plugins into $DSH_HOME (+ optional app dir)
+#     update-plugins.ps1 (+ .cmd)  refreshes ONLY the plugins already installed
 #     VERSION.txt / README.txt
 #
 # Verified on 2026-09-20: dsh keeps ALL of its dependencies nested inside its own
@@ -242,7 +243,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir "scripts") | Out-Nu
 Copy-Item (Join-Path $repoRoot "scripts\setup-plugins.mjs") (Join-Path $pkgDir "scripts\setup-plugins.mjs") -Force
 Copy-Item (Join-Path $repoRoot "install-offline.ps1") (Join-Path $pkgDir "install-offline.ps1") -Force
 Copy-Item (Join-Path $repoRoot "install-offline.cmd") (Join-Path $pkgDir "install-offline.cmd") -Force
-Ok "installer (install-offline.ps1 + .cmd wrapper) + setup-plugins.mjs staged"
+# The standalone updater: refresh the plugins ALREADY installed in a DSH home
+# (content-hash based, with backup + rollback) without running the full installer.
+Copy-Item (Join-Path $repoRoot "scripts\update-plugins.ps1") (Join-Path $pkgDir "update-plugins.ps1") -Force
+Copy-Item (Join-Path $repoRoot "scripts\update-plugins.cmd") (Join-Path $pkgDir "update-plugins.cmd") -Force
+Ok "installer (install-offline.ps1 + .cmd wrapper) + update-plugins.ps1/.cmd + setup-plugins.mjs staged"
 
 # --- metadata -----------------------------------------------------------------
 Step "2/4 writing VERSION.txt / README.txt"
@@ -323,6 +328,22 @@ This copies the chosen plugins into %USERPROFILE%\.dsh and adds their entries
 to the profile patch. Plugins that are already installed are never removed here -
 the installer only adds/updates what you pick. Use -DSHome <dir> to target
 another home, and -AppDir <dir> to also copy the shell into an app directory.
+
+Updating plugins later (already-installed machines)
+---------------------------------------------------
+Double-click update-plugins.cmd    (or: powershell -ExecutionPolicy Bypass -File update-plugins.ps1)
+It compares the bundled copies with what is installed (content hash, not version
+numbers) and only rewrites what actually changed:
+
+    update-plugins.cmd                     # update the plugins already installed
+    update-plugins.cmd -CheckOnly           # just report 已是最新 / 待更新 / 未安装
+    update-plugins.cmd -Plugins all         # also install any that are missing
+    update-plugins.cmd -Plugins 2,4         # numbered multi-select (same numbers as above)
+    update-plugins.cmd -DSHome <dir>        # a different DSH home
+
+Before overwriting it keeps a backup of the old copies; if the new copy fails its
+verification the previous one is restored automatically (the backup folder is
+kept for inspection in that case). Restart the shell afterwards to load changes.
 
 Requirements
 ------------

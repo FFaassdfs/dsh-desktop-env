@@ -125,6 +125,25 @@ pwsh -File update.ps1 -CheckOnly         # 干跑，什么都不写
 
 - **换壳后必须重启壳**才生效（运行中的壳 owns GUI 会话的 dsh web，重启会中断该会话）。
 - 应用区 exe 被运行中的壳锁住时，脚本会自动暂存为 `dsh-desktop.new.exe` 并提示换法（或改用 `.work\swap-desktop-exe.ps1`）。
+
+## 只更新插件（不重建壳）—— `scripts\update-plugins.ps1`
+
+不想 `git pull` 整个流程、只是要把已装插件刷新到最新时用它。**仓库里直接跑，发行包内也随包附带**（`update-plugins.cmd` 双击即可）：
+
+```powershell
+pwsh -File scripts\update-plugins.ps1                  # 更新"已经装了"的插件（默认）
+pwsh -File scripts\update-plugins.ps1 -CheckOnly        # 只报告：已是最新 / 待更新 / 未安装
+pwsh -File scripts\update-plugins.ps1 -Plugins all      # 连没装的也一起装齐
+pwsh -File scripts\update-plugins.ps1 -Plugins 2,4      # 编号多选（编号同安装菜单）
+pwsh -File scripts\update-plugins.ps1 -Force            # 即使内容一致也重拷
+pwsh -File scripts\update-plugins.ps1 -DSHome D:\h      # 指定 DSH_HOME
+```
+
+- **判定"是否最新"用内容哈希**（`package.json` + `lib/**`，由 `setup-plugins.mjs --status` 计算）——插件版本号都是 `0.1.0`，光看版本号没有意义。
+- **先备份再覆盖**：失败（校验不过）会**自动回滚**到旧副本，并把 `profiles\node_modules\.backup-<时间戳>\` 留给你检查；成功则删除备份（`-NoBackup` 可关闭备份）。
+- `-CheckOnly` **不写任何东西**（连备份都不建）。
+- **只加不减**：不选/未装的插件不会被删除；跑完仍需**重启壳**才生效。
+- 测试：`.work/update-plugins.test.ps1`（26 项，含"源变更→检出待更新→更新"与"源损坏→回滚"两条真实路径）。
 - 验证"新克隆能否构建"：`pwsh -File .work\verify-fresh-clone.ps1`（克隆 HEAD 到临时目录并跑完整构建）。
 
 > ⚠️ 旧流程（clone `FFaassdfs/deepseek-harness` fork 再构建其 `desktop/`）**已废弃**：该目录已于 2026-09-15 从 fork 删除（见 `HANDOVER.md` §24）。

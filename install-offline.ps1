@@ -312,3 +312,7 @@ Write-Host "    e.g. -Plugins 2,4  (numbers as listed above) or -Plugins explain
 Write-Host "  * Already-installed plugins are never removed by this installer: it only"
 Write-Host "    adds/updates the ones you pick. Use the 插件说明 panel (explainer plugin)"
 Write-Host "    to disable one, or delete its package + cordis.patch.yml entry."
+Write-Host "  * To refresh plugins on a machine that already has them, use the dedicated"
+Write-Host "    updater (content-hash based, with backup + rollback):"
+Write-Host "      update-plugins.cmd             (update what is already installed)"
+Write-Host "      update-plugins.cmd -CheckOnly   (only report, write nothing)"

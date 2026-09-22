@@ -26,7 +26,11 @@
 //   --plugins:    which plugins to install. "all" (default), "none", or a
 //                 comma-separated list of numbers / short names / package names /
 //                 patch ids, e.g. --plugins 2,4  ==  --plugins explainer,project-explorer
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+//   --status:     print what is installed vs what this source tree carries
+//                 (content hashes) as JSON and exit — used by update-plugins.ps1
+//                 so "已是最新 / 待更新 / 未安装" is decided in exactly one place.
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -172,6 +176,75 @@ if (process.argv.includes("--describe")) {
       where: p.where,
       writes: p.writes,
     })),
+    null,
+    2
+  ));
+  process.exit(0);
+}
+
+// --- installed vs source state (--status) -------------------------------------
+// The install payload is package.json + lib/**; hashing exactly those files lets
+// the updater say "已是最新" without relying on version numbers (all plugins are
+// 0.1.0 today, so versions alone would be useless).
+function payloadFiles(dir) {
+  const files = [];
+  if (existsSync(join(dir, "package.json"))) files.push("package.json");
+  const libDir = join(dir, "lib");
+  const walk = (base, rel) => {
+    for (const entry of readdirSync(base, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const next = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(base, entry.name), next);
+      else if (entry.isFile()) files.push(`lib/${next}`);
+    }
+  };
+  if (existsSync(libDir)) walk(libDir, "");
+  return files.sort();
+}
+
+function payloadHash(dir) {
+  if (!existsSync(dir)) return "";
+  const hash = createHash("sha256");
+  for (const rel of payloadFiles(dir)) {
+    hash.update(rel);
+    hash.update("\0");
+    hash.update(readFileSync(join(dir, rel)));
+    hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 12);
+}
+
+function sourceVersion(dir) {
+  try {
+    return JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version ?? "";
+  } catch {
+    return "";
+  }
+}
+
+if (process.argv.includes("--status")) {
+  const patchText = existsSync(PATCH_PATH) ? readFileSync(PATCH_PATH, "utf8") : "";
+  console.log(JSON.stringify(
+    PLUGINS.map((p, i) => {
+      const sourceHash = payloadHash(p.src);
+      const installedDir = join(PACKAGES_DIR, p.name);
+      const installed = existsSync(installedDir);
+      const installedHash = payloadHash(installedDir);
+      let state = "missing";
+      if (installed) state = sourceHash && installedHash === sourceHash ? "current" : "outdated";
+      return {
+        index: i + 1,
+        short: pluginShortName(p),
+        name: p.name,
+        patchId: p.patchId,
+        title: p.title,
+        version: sourceVersion(p.src),
+        sourceHash,
+        installedHash,
+        installed,
+        patchEntry: patchText.includes("id: " + p.patchId),
+        state,
+      };
+    }),
     null,
     2
   ));
