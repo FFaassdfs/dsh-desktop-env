@@ -1526,11 +1526,12 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 
 ### 28.6 发布与验证（0.1.5）
 
-- `desktop-v0.1.5`：CI run #8 = success，资产 98.5 MB（含新安装菜单）。
-- **本地留存**：`D:\dsh\app\packages\dsh-desktop-0.1.5-dsh0.1.5-rc.2-win-x64.zip`（98.0 MB / 35 文件，SHA256 `3DA0DABE…5223`；旧的 0.1.4 包已删）。抽验确认包内 `install-offline.ps1` 含多选提示与"无效即不装"文案、`README.txt` 含插件说明表。
-- **发布资产验证（`.cache\verify-015.mjs`）抓到一个健壮性缺口**：验证脚本最初用 `pwsh -Command "& install-offline.ps1 -Plugins 2,4"` 调用，PowerShell 在 `-Command` 模式下把 `2,4` 当**数组字面量** → 传进 `[string]` 参数变成 `"2 4"` → 被判"无效输入"（安全，但令人困惑）。用户实际路径（`.cmd` → `-File`）不受影响，但**脚本化安装很常见**，故让解析**同时接受逗号与空白**（`-split '[,\s]+'`，mjs 同样 `split(/[,\s]+/)`），并加了 `-Plugins "2 4"` 用例（测试 44 项全通过）。**随后重推 `desktop-v0.1.5` 标签**（下载数仍为 0）让发布包带上该修复，而不是再占一个版本号。
+- `desktop-v0.1.5`：**重推后 CI run #9 = success**，资产 98.5 MB，SHA256 `b266e60537c670f269867e30a9a62a2e7c65994dc009bc6241d0d3b1e58abbd5`。
+- **本地留存**：`D:\dsh\app\packages\dsh-desktop-0.1.5-dsh0.1.5-rc.2-win-x64.zip`（98.0 MB / 35 文件，SHA256 `E2CFAEE16C97BE3F200E05C97D9ADFFAFE7E0F35C27C8C55ED9F4BD0FACE2F0D`；旧的 0.1.4 包已删）。抽验：包内 `install-offline.ps1` 含多选提示与"无效即不装"文案；`README.txt` 含 4 插件说明表与编号/多选规则。
+- **发布资产端到端验证（`.cache\verify-015.mjs`，全通过）**：SHA256 匹配；外层 8 个顶层条目；**包内自带安装器** 干跑（`-CheckOnly -Plugins 2,4`）显示中文说明 + `would install : explainer,project-explorer` + 不写任何文件 + exit 0；**包内安装器的交互菜单**（强制提示 + 喂答案 `2,4`）渲染出多选提示/编号行/中文说明/a·n 行，且 `2,4` 精确选中两个；`pwsh -Command "… -Plugins 2,4"` 的数组分裂形式（`"2 4"`）也被容忍；`--extract-runtime` 解压后 dsh `0.1.5-rc.2` + npm `11.19.0` 可运行。
+- **验证过程中的两个脚本教训**：① 发布验证最初用 `-Command "& install-offline.ps1 -Plugins 2,4"` 调用，PowerShell 在 `-Command` 模式下把 `2,4` 当**数组字面量** → 传进 `[string]` 参数变成 `"2 4"` → 被判无效（用户实际路径 `.cmd`→`-File` 不受影响，但**脚本化安装很常见**）→ 故让解析**同时接受逗号与空白**（`-split '[,\s]+'`，mjs 同步 `split(/[,\s]+/)`），并加 `-Plugins "2 4"` 用例（测试 **44 项全通过**）；随后**重推 `desktop-v0.1.5` 标签**（下载数仍为 0）让发布包带上该修复，而不是再占一个版本号。② **重推标签会生成不同构建**：本地旧包哈希与新的 `SHA256SUMS.txt` 不符时，"断点续传"会撞 **HTTP 416**（旧文件更长）→ 验证脚本改为**先取哈希、对不上就删掉重下**。
 
-> 教训（与 §27.7/§27.9 同源）：**"发布后再验证"能抓到"文档路径能用、脚本路径不能用"这类缺口**；凡是有两种调用方式的入口，两种都要验证。
+> 教训（与 §27.7/§27.9 同源）：**"发布后再验证"能抓到"文档路径能用、脚本路径不能用"这类缺口**；凡是有两种调用方式的入口（`-File` 与 `-Command`、命令行与交互菜单），两种都要验证。
 
 
 
