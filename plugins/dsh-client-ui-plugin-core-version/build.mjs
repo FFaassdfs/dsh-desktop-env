@@ -10,4 +10,4 @@ if (!template.includes("window.__ModuleLoader__.load")) {
 	throw new Error("template is not a ModuleLoader bundle");
 }
 writeFileSync(join(here, "lib", "client.js"), template);
-console.log("built lib/client.js (" + template.length + " bytes)");
+console.log("built lib/client.js (" + Buffer.byteLength(template, "utf8") + " bytes)");

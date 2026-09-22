@@ -1589,7 +1589,7 @@ plugins/dsh-client-ui-plugin-model-sync/
 ├── build.mjs             # config.json -> lib/client.js
 ├── src/bundle.template.js# client bundle 模板（纯函数 + provider-card 组件）
 ├── lib/index.js          # host：空 apply（仅供 loader 激活）
-├── lib/client.js         # 构建产物（33,926 字节）
+├── lib/client.js         # 构建产物（34,560 字节 = UTF-8 字节数）
 └── README.md             # 设计说明 + 已知限制
 .work/
 ├── model-sync.test.mjs       # 64 断言（纯函数 + 插件契约）
@@ -1598,7 +1598,8 @@ plugins/dsh-client-ui-plugin-model-sync/
 
 ### 29.7 验证项
 
-- [x] `node build.mjs` → `lib/client.js` 33,926 字节；`node --check` 通过
+- [x] `node build.mjs` → `lib/client.js` **34,560 字节**（UTF-8 字节数）；`node --check` 通过
+  > 注：原先 5 个插件的 `build.mjs` 都打印 `bundle.length`（**UTF-16 字符数** 33,926），与落盘字节数不符（中文每字符 3 字节）→ 已统一改为 `Buffer.byteLength(bundle, "utf8")`（**bundle 内容零变化**，仅数字变准）。
 - [x] `.work\model-sync.test.mjs` → **64 断言全过**（归一化/模态过滤/reasoning 映射/源投影/provider 匹配/候选优先级/全局兜底与 borrowed/diff/组合/写入形状/view 读取/插件契约/config 注入）
 - [x] `.work\model-sync-live.mjs` → 真实 models.dev（222 providers / 2397 distinct ids）跑通；`auto` 被正确标为 borrowed
 - [x] `scripts\setup-plugins.mjs` 安装 → 4 项 loader 发现条件全过；`--check-only` 全过；patch YAML 含 **5 个 id**

@@ -27,4 +27,4 @@ const bundle = template.replace(placeholder, injected);
 const outPath = join(here, "lib", "client.js");
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, bundle, "utf8");
-console.log(`built ${outPath} (${bundle.length} bytes, ${Object.keys(dictionary).length} dictionary entries)`);
+console.log(`built ${outPath} (${Buffer.byteLength(bundle, "utf8")} bytes, ${Object.keys(dictionary).length} dictionary entries)`);

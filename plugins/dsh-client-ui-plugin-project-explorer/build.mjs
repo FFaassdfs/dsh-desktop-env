@@ -23,4 +23,4 @@ const bundle = template.replace(placeholder, JSON.stringify(config));
 const outPath = join(here, "lib", "client.js");
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, bundle, "utf8");
-console.log(`built ${outPath} (${bundle.length} bytes, config keys: ${Object.keys(config).join(", ")})`);
+console.log(`built ${outPath} (${Buffer.byteLength(bundle, "utf8")} bytes, config keys: ${Object.keys(config).join(", ")})`);
