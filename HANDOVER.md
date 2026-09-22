@@ -1522,7 +1522,15 @@ pwsh -File update.ps1            # pull + 插件 + 构建 + 部署
 
 ### 28.5 涉及文件
 
-`scripts/setup-plugins.mjs`（catalogue + `--describe` + 编号选择 + 绝对化 DSH_HOME）、`install-offline.ps1`（菜单/解析/归一化/预演/只加不减提示 + **BOM**）、`scripts/pack-release.ps1`（README 从 `--describe` 生成 + BOM）、`README.md`（说明表 + 输入规则）、`.work/plugin-selection.test.ps1`（新增测试）。
+`scripts/setup-plugins.mjs`（catalogue + `--describe` + 编号选择 + 绝对化 DSH_HOME + tab/空格分词）、`install-offline.ps1`（菜单/解析/归一化/预演/只加不减提示 + **BOM**）、`scripts/pack-release.ps1`（README 从 `--describe` 生成 + BOM）、`README.md`（说明表 + 输入规则）、`.work/plugin-selection.test.ps1`（新增测试）。
+
+### 28.6 发布与验证（0.1.5）
+
+- `desktop-v0.1.5`：CI run #8 = success，资产 98.5 MB（含新安装菜单）。
+- **本地留存**：`D:\dsh\app\packages\dsh-desktop-0.1.5-dsh0.1.5-rc.2-win-x64.zip`（98.0 MB / 35 文件，SHA256 `3DA0DABE…5223`；旧的 0.1.4 包已删）。抽验确认包内 `install-offline.ps1` 含多选提示与"无效即不装"文案、`README.txt` 含插件说明表。
+- **发布资产验证（`.cache\verify-015.mjs`）抓到一个健壮性缺口**：验证脚本最初用 `pwsh -Command "& install-offline.ps1 -Plugins 2,4"` 调用，PowerShell 在 `-Command` 模式下把 `2,4` 当**数组字面量** → 传进 `[string]` 参数变成 `"2 4"` → 被判"无效输入"（安全，但令人困惑）。用户实际路径（`.cmd` → `-File`）不受影响，但**脚本化安装很常见**，故让解析**同时接受逗号与空白**（`-split '[,\s]+'`，mjs 同样 `split(/[,\s]+/)`），并加了 `-Plugins "2 4"` 用例（测试 44 项全通过）。**随后重推 `desktop-v0.1.5` 标签**（下载数仍为 0）让发布包带上该修复，而不是再占一个版本号。
+
+> 教训（与 §27.7/§27.9 同源）：**"发布后再验证"能抓到"文档路径能用、脚本路径不能用"这类缺口**；凡是有两种调用方式的入口，两种都要验证。
 
 
 

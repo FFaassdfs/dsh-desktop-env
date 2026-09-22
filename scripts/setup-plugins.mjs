@@ -119,7 +119,9 @@ function selectPlugins(arg) {
   if (raw.toLowerCase() === "none") {
     return { selected: [], skipped: PLUGINS.slice() };
   }
-  const tokens = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  // Accept commas and/or whitespace: PowerShell array-splits `-Plugins 2,4` in
+  // -Command mode, which arrives here as "2 4".
+  const tokens = raw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
   const selected = [];
   const unknown = [];
   for (const token of tokens) {

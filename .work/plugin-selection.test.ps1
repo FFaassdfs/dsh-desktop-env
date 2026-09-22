@@ -69,7 +69,7 @@ Check "relative -DSHome installs both" (((InstalledPlugins $hRel) -join ",") -eq
 Check "relative -DSHome exits 0" ($r.Exit -eq 0) "exit=$($r.Exit)"
 Remove-Item $hRel -Recurse -Force -ErrorAction SilentlyContinue
 
-foreach ($variant in @(@("-Plugins", "2, 4"), @("-Plugins", "4,2"), @("-Plugins", "2,2,4"), @("-Plugins", "explainer,project-explorer"), @("-Plugins", "plugin-explainer,plugin-project-explorer"))) {
+foreach ($variant in @(@("-Plugins", "2, 4"), @("-Plugins", "2 4"), @("-Plugins", "4,2"), @("-Plugins", "2,2,4"), @("-Plugins", "explainer,project-explorer"), @("-Plugins", "plugin-explainer,plugin-project-explorer"))) {
   $hv = New-Home
   $null = Invoke-Installer $hv $variant
   Check ("variant " + $variant[1] + " -> same two") (((InstalledPlugins $hv) -join ",") -eq "explainer,project-explorer") "got '$((InstalledPlugins $hv) -join ',')'"
@@ -162,6 +162,8 @@ $bad = & node "$repo\scripts\setup-plugins.mjs" --plugins 9 --check-only 2>&1 | 
 Check "mjs --plugins 9 fails with the number hint" (($LASTEXITCODE -ne 0) -and ($bad -match "use numbers \(1-4\)")) "exit=$LASTEXITCODE"
 $bad = & node "$repo\scripts\setup-plugins.mjs" --plugins 2,4 --check-only 2>&1 | Out-String
 Check "mjs accepts numbers (2,4)" ($bad -match "explainer \(插件说明面板\)" -and $bad -match "project-explorer \(项目文件树\)") ""
+$spaced = & node "$repo\scripts\setup-plugins.mjs" --plugins "2 4" --check-only 2>&1 | Out-String
+Check "mjs accepts space-separated numbers (2 4)" ($spaced -match "explainer \(插件说明面板\)" -and $spaced -match "project-explorer \(项目文件树\)") ""
 
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ""

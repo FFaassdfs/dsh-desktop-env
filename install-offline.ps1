@@ -119,7 +119,10 @@ function ConvertFrom-PluginAnswer {
 
   $picked = @()
   $invalid = @()
-  foreach ($token in ($a -split ",")) {
+  # Split on commas AND whitespace: `-Plugins 2,4` is the documented form, but
+  # PowerShell turns that into the array 2,4 in -Command mode (ending up as
+  # "2 4"), so accept both.
+  foreach ($token in ($a -split '[,\s]+')) {
     $t = $token.Trim()
     if ($t -eq "") { continue }
     $hit = $null
