@@ -1,7 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.13**（2026-09-22 更新）
+> **文档版本：v1.14**（2026-09-22 更新）
 > 变更记录：
+> - v1.14 — F15 更新：便携包内含 **5 插件 / 42 文件**；新增 `0.1.6`（`HANDOVER.md` §29.9）。⚠️ `0.1.5` 的包只含 4 个插件（tag 早于 `model-sync` 提交）。
 > - v1.13 — **F9 → 5 个插件**（新增 `model-sync`＝编号 4，`project-explorer` 顺延为 5；`HANDOVER.md` §29）；**F11 → 10 个套件**（9 个 node + 1 个 pwsh；新增 `model-sync.test.mjs`(64 断言)/`model-sync-live.mjs`/`plugin-selection.test.ps1`，且后者期望值由 `--describe` 推导）；F13/F14 的"4 个插件"同步为 5 个。
 > 变更记录：
 > - v1.12 — **F9 插件清单**升级为"单一数据源 + 编号 + 中文说明"：`setup-plugins.mjs --describe` 同时供给安装菜单与包内 README；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28）。
@@ -47,7 +48,7 @@
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |
 | F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 5 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |
 | F14 | **壳更新入口（多机同步）** | `update.ps1`（+ `setup.ps1` 首次、`scripts/deploy-shell.ps1` 部署、`.work/verify-fresh-clone.ps1` 回归验证） | `git pull` + `pwsh -File update.ps1` = pull → 刷新 4 插件 → `wails build`（**壳源码在本仓库**，fork 根级 `desktop/` 已废弃）→ 部署到应用区（dated 归档 + `VERSION.txt`）。实测（2026-09-15）：新克隆 HEAD → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节 | `README.md`「更新到最新壳」、`DEPLOY.md` §8、`OPENCODE_PROMPT.md` 第 5 步、`HANDOVER.md` §25/§26 |
-| F15 | **便携发行包（离线一键 + 自更新 + 单文件运行时）** | `scripts/pack-release.ps1`（`-RuntimeMode auto\|dsh-tree\|full-node-modules`、`-NoNpm`、`-NoRuntimeArchive` + **运行时/npm/归档内容三道闸门**）+ `.github/workflows/release-desktop.yml` + `install-offline.ps1`（`-Plugins all\|none\|ask\|列表`） | 资产 `dsh-desktop-<ver>-dsh<dshver>-win-x64.zip` + `SHA256SUMS.txt`；**包内 35 个文件**（壳 exe + **`runtime.zip` 单文件运行时** + 4 插件 + 安装器），首次启动自动解压（~35-42s，CLI `--extract-runtime`）；自带 npm → **自更新与源码装行为一致**。**本地留存目录 = `D:\dsh\app\packages\`**（`-OutDir` 指定）；本地包与 CI 包哈希不同属正常（嵌套 vs 提升布局、Node 24.16 vs 24.20）。⚠️ 壳**单实例**；⚠️ 拷贝请搬 zip / 用 `robocopy /MT:16`（§27.11 实测 27,413 → 35 文件、88.8s → 15.9s） | `README.md`「便携发行包」、`HANDOVER.md` §27 |
+| F15 | **便携发行包（离线一键 + 自更新 + 单文件运行时）** | `scripts/pack-release.ps1`（`-RuntimeMode auto\|dsh-tree\|full-node-modules`、`-NoNpm`、`-NoRuntimeArchive` + **运行时/npm/归档内容三道闸门**）+ `.github/workflows/release-desktop.yml` + `install-offline.ps1`（`-Plugins all\|none\|ask\|列表`） | 资产 `dsh-desktop-<ver>-dsh<dshver>-win-x64.zip` + `SHA256SUMS.txt`；**包内 42 个文件**（壳 exe + **`runtime.zip` 单文件运行时** + **5 插件** + 安装器），首次启动自动解压（~35-42s，CLI `--extract-runtime`）；自带 npm → **自更新与源码装行为一致**。**本地留存目录 = `D:\dsh\app\packages\`**（`-OutDir` 指定）；本地包与 CI 包哈希不同属正常（嵌套 vs 提升布局、Node 24.16 vs 24.20）。⚠️ 壳**单实例**；⚠️ 拷贝请搬 zip / 用 `robocopy /MT:16`（§27.11 实测 27,413 → 35 文件、88.8s → 15.9s） | `README.md`「便携发行包」、`HANDOVER.md` §27 |
 
 ## 使用示例
 
