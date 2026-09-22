@@ -7,6 +7,7 @@
 //   dsh-client-ui-plugin-project-explorer       -> patch id plugin-project-explorer
 //   dsh-client-ui-plugin-model-capabilities     -> patch id plugin-model-capabilities
 //   dsh-client-ui-plugin-core-version           -> patch id plugin-core-version
+//   dsh-client-ui-plugin-model-sync             -> patch id plugin-model-sync
 //
 // For each plugin:
 //   1. copies package.json + lib/ into $DSH_HOME/profiles/node_modules
@@ -76,6 +77,16 @@ const PLUGINS = [
     writes: "",
     comment: "# dsh-client-ui-plugin-model-capabilities: Settings > \"模型能力\" per-model capabilities (HANDOVER path E).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-model-capabilities"),
+  },
+  {
+    name: "dsh-client-ui-plugin-model-sync",
+    patchId: "plugin-model-sync",
+    title: "模型同步",
+    summary: "设置 →「模型」里每个提供商卡片上多一组同步控件：从 models.dev / OpenRouter / 该商自己的 /models 端点拉候选模型，逐字段对比后写入配置；你手工改过的值会被标出且默认不覆盖。",
+    where: "设置 →「模型」→ 提供商卡片",
+    writes: "只在你点「应用所选」时写 ~/.dsh/settings.yaml 的 llm-pi-ai.providers.<路由>.models",
+    comment: "# dsh-client-ui-plugin-model-sync: per-provider model list/parameter sync on the Models page (HANDOVER path P).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-model-sync"),
   },
   {
     name: "dsh-client-ui-plugin-project-explorer",

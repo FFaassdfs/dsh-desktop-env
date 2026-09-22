@@ -1,6 +1,8 @@
 # project-facts — dsh-desktop 单一事实源索引
 
-> **文档版本：v1.12**（2026-09-21 更新）
+> **文档版本：v1.13**（2026-09-22 更新）
+> 变更记录：
+> - v1.13 — **F9 → 5 个插件**（新增 `model-sync`＝编号 4，`project-explorer` 顺延为 5；`HANDOVER.md` §29）；**F11 → 10 个套件**（9 个 node + 1 个 pwsh；新增 `model-sync.test.mjs`(64 断言)/`model-sync-live.mjs`/`plugin-selection.test.ps1`，且后者期望值由 `--describe` 推导）；F13/F14 的"4 个插件"同步为 5 个。
 > 变更记录：
 > - v1.12 — **F9 插件清单**升级为"单一数据源 + 编号 + 中文说明"：`setup-plugins.mjs --describe` 同时供给安装菜单与包内 README；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28）。
 > 变更记录：
@@ -11,7 +13,7 @@
 > - v1.7 — 新增 **F14：壳更新入口 = `update.ps1`**（一条命令：pull + 插件 + 构建 + 部署；回归验证脚本 `.work/verify-fresh-clone.ps1`）；F7 补记「壳源码在本仓库、fork 根级 `desktop/` 已废弃（§24）」。
 > - v1.6 — **F5 转为健康**：`SYNC_TOKEN` 已换新并端到端验证（run #49 `success`，fork `behind_by = 0`）；新增巡检工具 `.work/sync-status.mjs`（`HANDOVER.md` §24.6）。
 > - v1.5 — F5 补记：fork 已按 `HANDOVER.md` §24 降级为**纯官方镜像**（fork 独有根级 `desktop/` 已于 `41aaec8` 删除）；`SYNC_TOKEN` 仍待换新。
-> - v1.4 — 新增 **F13：上游已有一方官方桌面端 `apps/desktop/`（Electron）**，及其「不提供 `webServer`」对我们 4 个插件的含义（`HANDOVER.md` §24.5）。
+> - v1.4 — 新增 **F13：上游已有一方官方桌面端 `apps/desktop/`（Electron）**，及其「不提供 `webServer`」对我们 5 个插件的含义（`HANDOVER.md` §24.5）。
 > - v1.3 — F7 补记 2026-09-15 实踩：桌面快捷方式曾指向冻结旧工作区 → 「启动的必须是应用区 exe，且要核对运行进程路径」。
 > - v1.2 — F1 标注「端口浮动避让已暂缓（用户决定）」，指向 `HANDOVER.md` §23.4 的触发条件。
 > - v1.1 — 新增 F12（壳日志上限/轮转，随 §23 壳加固落地）；F7 补充「替换 exe 需先关壳」的文件锁事实。
@@ -39,11 +41,11 @@
 | F6 | **源码区（唯一权威）** | 本仓库 | `D:\dsh\dsh-desktop-env` | 各处 |
 | F7 | **应用区（exe）与启动路径** | 部署逻辑 = `scripts/deploy-shell.ps1`（被 `setup.ps1` / `update.ps1` 共用） | **唯一启动入口** `D:\dsh\app\current\dsh-desktop.exe`；`build\bin\dsh-desktop.exe` 只是中间产物。历史版本 `D:\dsh\app\versions\<日期>\` + `VERSION.txt`。⚠️ ①运行中的壳**持有该文件的锁** → 换 exe 必须先关壳（部署脚本会自动暂存 `.new.exe`；也可用 `.work\swap-desktop-exe.ps1`）②**启动入口必须指向应用区**：桌面快捷方式已于 2026-09-15 改指应用区；换壳后核对 `Get-Process dsh-desktop \| Select Id,Path`（§23.4） | `AGENTS.md`、`README.md`、`DEPLOY.md` §6、`HANDOVER.md` §20/§23/§25/§26 |
 | F8 | **DSH_HOME / profile** | 环境变量 `DSH_HOME`（默认 `~/.dsh`） | `C:\Users\veken\.dsh`；profile = `profiles/web`；插件包 = `profiles/node_modules` | `HANDOVER.md` §2.1、§20.4 |
-| F9 | **插件清单（4 个 + patch id + 编号 + 中文说明）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组（**单一数据源**：`title`/`summary`/`where`/`writes`；数组按短名字母序 = 安装菜单编号） | `1=plugin-core-version`(核心版本徽标)、`2=plugin-explainer`(插件说明面板)、`3=plugin-model-capabilities`(模型能力清单)、`4=plugin-project-explorer`(项目文件树)；安装器菜单与包内 README 均由 `node scripts/setup-plugins.mjs --describe` 生成；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28） | `HANDOVER.md` §3/§11/§15/§21/§28 |
+| F9 | **插件清单（5 个 + patch id + 编号 + 中文说明）** | `scripts/setup-plugins.mjs` 的 `PLUGINS` 数组（**单一数据源**：`title`/`summary`/`where`/`writes`；数组按短名字母序 = 安装菜单编号） | `1=plugin-core-version`(核心版本徽标)、`2=plugin-explainer`(插件说明面板)、`3=plugin-model-capabilities`(模型能力清单)、`4=plugin-model-sync`(模型同步)、`5=plugin-project-explorer`(项目文件树)；安装器菜单与包内 README 均由 `node scripts/setup-plugins.mjs --describe` 生成；`-Plugins 2,4` 支持编号，**输入无效则不装任何插件**（`HANDOVER.md` §28） | `HANDOVER.md` §3/§11/§15/§21/§28 |
 | F10 | **跨机锁定的 dsh 版本** | `deploy.ps1` 的 `-HarnessVersion` 默认值（+ `DEPLOY.md`/`OPENCODE_PROMPT.md`/`README.md`/`setup.ps1` 注释引用） | **`0.1.5-rc.2`**（2026-09-20 起；历史值 `0.1.5-rc.1` → `0.1.0-rc.7` 均已过时） | `DEPLOY.md`、`OPENCODE_PROMPT.md`、`README.md` |
-| F11 | **测试入口** | 仓库 `.work/`（套件 + `lib/react-source.mjs`） | 7 个套件：explainer 冒烟 + 开关路由、文件树 host/冒烟、core-version、model-capabilities host/冒烟 | `HANDOVER.md` §21 |
+| F11 | **测试入口** | 仓库 `.work/`（套件 + `lib/react-source.mjs`） | **10 个套件**（9 个 node + 1 个 pwsh）：explainer 冒烟 `smoke-test.mjs` + 开关路由 `host-toggle-test.mjs`、文件树 host/冒烟、core-version、model-capabilities host/冒烟、**model-sync 单测 `model-sync.test.mjs`（64 断言）+ 真实数据端到端 `model-sync-live.mjs`**、**`plugin-selection.test.ps1`（安装器选择逻辑；期望值由 `--describe` 推导，插件数变化不用改测试）** | `HANDOVER.md` §21/§28/§29 |
 | F12 | **壳日志上限 / 自愈退避** | `app.go` 顶部常量（`maxDshLogBytes`、`maxDebugLogBytes`、`tailReadBytes`、`restartBackoffBase`、`restartBackoffMax`、`stableResetPeriod`、`maxRestarts`） | `dsh.log` 5 MiB、`debug.log` 1 MiB、报错只读尾部 64 KiB；退避 15s→45s→120s 封顶、连续 3 次、稳定 5 分钟重置 | `HANDOVER.md` §23 |
-| F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 4 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |
+| F13 | **上游已有一方官方桌面端** | 上游仓库 `deepseek-ai/deepseek-harness` 的 `apps/desktop/`（+ `.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md`） | **Electron 壳、不开监听端口、独占 `$DSH_HOME/profiles/desktop`**、自带 Node/pnpm 与 dsh 依赖树、签名+自动更新（2026-09 起 implemented）。⚠️ **不提供 `webServer`** → 我们 5 个插件的 host 自定义路由在该 profile 下不可用，需换传输层（`HANDOVER.md` §24.5） | `AGENTS.md`「权威源码位置」、`HANDOVER.md` §24.5 |
 | F14 | **壳更新入口（多机同步）** | `update.ps1`（+ `setup.ps1` 首次、`scripts/deploy-shell.ps1` 部署、`.work/verify-fresh-clone.ps1` 回归验证） | `git pull` + `pwsh -File update.ps1` = pull → 刷新 4 插件 → `wails build`（**壳源码在本仓库**，fork 根级 `desktop/` 已废弃）→ 部署到应用区（dated 归档 + `VERSION.txt`）。实测（2026-09-15）：新克隆 HEAD → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节 | `README.md`「更新到最新壳」、`DEPLOY.md` §8、`OPENCODE_PROMPT.md` 第 5 步、`HANDOVER.md` §25/§26 |
 | F15 | **便携发行包（离线一键 + 自更新 + 单文件运行时）** | `scripts/pack-release.ps1`（`-RuntimeMode auto\|dsh-tree\|full-node-modules`、`-NoNpm`、`-NoRuntimeArchive` + **运行时/npm/归档内容三道闸门**）+ `.github/workflows/release-desktop.yml` + `install-offline.ps1`（`-Plugins all\|none\|ask\|列表`） | 资产 `dsh-desktop-<ver>-dsh<dshver>-win-x64.zip` + `SHA256SUMS.txt`；**包内 35 个文件**（壳 exe + **`runtime.zip` 单文件运行时** + 4 插件 + 安装器），首次启动自动解压（~35-42s，CLI `--extract-runtime`）；自带 npm → **自更新与源码装行为一致**。**本地留存目录 = `D:\dsh\app\packages\`**（`-OutDir` 指定）；本地包与 CI 包哈希不同属正常（嵌套 vs 提升布局、Node 24.16 vs 24.20）。⚠️ 壳**单实例**；⚠️ 拷贝请搬 zip / 用 `robocopy /MT:16`（§27.11 实测 27,413 → 35 文件、88.8s → 15.9s） | `README.md`「便携发行包」、`HANDOVER.md` §27 |
 

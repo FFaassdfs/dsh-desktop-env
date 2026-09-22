@@ -8,7 +8,7 @@ DeepSeek Harness 的桌面**启动器 + 版本自更新器 + 状态面板**（Wa
 
 ## 部署到新机器（家里电脑）
 
-本仓库同时是**环境同步仓库**：含 **4 个自定义插件**、一键部署脚本与文档。在新机器复刻本机环境：
+本仓库同时是**环境同步仓库**：含 **5 个自定义插件**、一键部署脚本与文档。在新机器复刻本机环境：
 
 - **用 opencode**：把 [`OPENCODE_PROMPT.md`](OPENCODE_PROMPT.md) 里的「部署指令」整段发给它即可（自包含：自动 clone、读 [`DEPLOY.md`](DEPLOY.md)、逐条执行并验收）
 - **手动**：按 [`DEPLOY.md`](DEPLOY.md) 逐条执行，核心一条：
@@ -26,14 +26,14 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
 不想装 Go/Wails/Node、也不想联网装 harness 时，用**便携发行包**：解压即用。
 
 - **产物**：`dsh-desktop-<壳commit>-dsh<harness版本>-win-x64.zip`（实测 **109 MB**）+ `SHA256SUMS.txt`
-  - 内含：壳 `dsh-desktop.exe`、**`runtime.zip`（单文件运行时：便携 Node + npm + 离线 harness，首次启动自动解压 ~40 秒，仅一次）**、4 个插件、`install-offline.cmd/.ps1`
+  - 内含：壳 `dsh-desktop.exe`、**`runtime.zip`（单文件运行时：便携 Node + npm + 离线 harness，首次启动自动解压 ~40 秒，仅一次）**、5 个插件、`install-offline.cmd/.ps1`
   - **为什么运行时是单个 zip**：解压开是 **2.7 万个碎文件**（89% 小于 8 KB），Windows 上拷贝它们要按文件数交税（实测：单线程 88.8s vs `robocopy /MT:16` 15.9s）；打包成单文件后，**下载/拷贝只需搬 1 个文件**（整个包 35 个文件）
 - **拷贝/分发的正确姿势**：① **搬 zip，别搬解压后的目录**；② 若必须拷目录，用 `robocopy <源> <目标> /E /MT:16 /NFL /NDL /NJH /NJS /NP`；③ 解压用 `tar -xf 包.zip -C 目标` 或 7-Zip，**别用资源管理器的"全部解压缩"**（最慢）
 - **目标机用法（没有"安装"步骤，解压即用）**：
   ```
   1) 把 zip 解压到任意目录（例如 D:\dsh-desktop-portable）
   2) 双击 dsh-desktop.exe   ← 首次启动会先解压内置运行时（~40 秒，状态面板显示进度），之后就快了
-  3) （可选）想让 4 个插件也进 DSH_HOME：双击 install-offline.cmd
+  3) （可选）想让 5 个插件也进 DSH_HOME：双击 install-offline.cmd
   ```
   - 想跳过 GUI 先解压（脚本化）：`dsh-desktop.exe --extract-runtime`
   - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**列出每个插件的功能说明**并问你要装哪些。命令行同样支持选择：
@@ -48,18 +48,19 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
     ```
     - **多选**：菜单里直接输编号、用**逗号隔开**（如 `2,4` = 只装第 2 和第 4 个）；`a`=全部、`n`=都不装、直接回车=全部。
     - **输入无效时**（如 `9`、`2,x`）提示无效并**不安装任何插件**（不会猜、也不会退化为全装）。
-    - 编号也可写成简名/包名/patch id：`explainer` / `project-explorer` / `model-capabilities` / `core-version`。
+    - 编号也可写成简名/包名/patch id：`explainer` / `project-explorer` / `model-sync` / `model-capabilities` / `core-version`。
     - **安装器只加不减**：已装但这次没选的插件不会被移除；想关掉用「插件说明」面板的开关（或手工删包 + patch 条目）。
     - 无控制台调用（agent/计划任务）时 `ask` 自动退化为全装、不会挂住；`DSH_INSTALL_FORCE_PROMPT=1` 可强制走菜单（便于喂答案：`echo 2,4 | install-offline.cmd`）。
 
-  **4 个插件分别是什么**（安装菜单里显示同一段文字；单一数据源 = `scripts/setup-plugins.mjs --describe`）：
+  **5 个插件分别是什么**（安装菜单里显示同一段文字；单一数据源 = `scripts/setup-plugins.mjs --describe`）：
 
   | 编号 | 短名 | 功能 | 在哪看到 |
   |---|---|---|---|
   | 1 | core-version | **核心版本徽标**：显示当前核心版本号（如 `dsh v0.1.5-rc.2`）。只读展示，不挡点击 | 界面左下角 |
   | 2 | explainer | **插件说明面板**：每个插件干什么用中文写清，显示已启用/已停用，可一键开关（重启壳生效） | 设置 →「插件」 |
   | 3 | model-capabilities | **模型能力清单**：每个模型能否识图、上下文多长、有哪些推理档位。只读查询 | 设置 →「模型能力」 |
-  | 4 | project-explorer | **项目文件树**：右侧可折叠文件树；把文件拖进输入框即插入其路径，让 agent 自己去读。只给路径、不传内容 | 界面最右侧 |
+  | 4 | model-sync | **模型同步**：从 models.dev / OpenRouter / 该商自己的 `/models` 端点拉候选，逐字段对比后写入配置；手工改过的值会被标出、默认不覆盖。**会写 `settings.yaml`**（有 revision 冲突保护） | 设置 →「模型」→ 提供商卡片 |
+  | 5 | project-explorer | **项目文件树**：右侧可折叠文件树；把文件拖进输入框即插入其路径，让 agent 自己去读。只给路径、不传内容 | 界面最右侧 |
   - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
 - **自动更新（与源码装一致）**：便携版启动时 + 每 24h 也会查 npm registry，发现新版就用**包内 npm** 自动下载，提示「重启服务」生效；重启时把新 harness 换入 `runtime\`（先暂存、验证能跑、失败自动回滚；`node.exe` 不动）。包内 npm 缺失（`-NoNpm` 构建）或解压到只读目录时会如实提示，可改用下载新版发行包。
@@ -112,7 +113,7 @@ git pull
 pwsh -File update.ps1          # pull + 刷新插件 + wails build + 部署到应用区（D:\dsh\app\current）
 ```
 
-`update.ps1` 会：① `git pull --ff-only` 并列出新提交 ② 重装 4 个自定义插件 ③ `wails build` ④ 把 exe 部署到应用区（附历史归档 + `VERSION.txt`）。常用开关：
+`update.ps1` 会：① `git pull --ff-only` 并列出新提交 ② 重装全部自定义插件 ③ `wails build` ④ 把 exe 部署到应用区（附历史归档 + `VERSION.txt`）。常用开关：
 
 ```powershell
 pwsh -File update.ps1 -SkipPull          # 用手头这份源码构建

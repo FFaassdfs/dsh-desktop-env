@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-20）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。旧记的 `0.1.2-rc.1`/`0.1.5-rc.1` 均为过时快照，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；4 个插件均已纳入 `scripts/setup-plugins.mjs`，host 与 client 半区均已验证可见（§21.3）。**P0 全部关闭**（§24：fork 降级为纯镜像 + `SYNC_TOKEN` 已换新验证）；**多机更新链已修好**（§25/§26：`update.ps1` 一条命令 + 首装/更新统一落点）。
+> **当前状态（2026-09-20）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。旧记的 `0.1.2-rc.1`/`0.1.5-rc.1` 均为过时快照，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；5 个插件均已纳入 `scripts/setup-plugins.mjs`，host 与 client 半区均已验证可见（§21.3）。**P0 全部关闭**（§24：fork 降级为纯镜像 + `SYNC_TOKEN` 已换新验证）；**多机更新链已修好**（§25/§26：`update.ps1` 一条命令 + 首装/更新统一落点）。
 
 ## 开工必做
 

@@ -1,0 +1,35 @@
+{
+  "name": "dsh-client-ui-plugin-model-sync",
+  "description": "Per-provider model sync for the dsh Web GUI: refreshes a provider's model list and parameters from models.dev / OpenRouter / the provider's own /models endpoint, shows a field-level diff, and writes the accepted result into settings.yaml through the official settings Remote (backup-free path-addressed mutation with revision fencing). UI mounts on the official settings.models.provider-card slot.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

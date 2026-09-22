@@ -7,7 +7,7 @@
 #     dsh-desktop.exe              the launcher (resolves .\runtime next to itself)
 #     runtime.zip                  ONE file: node.exe + npm + the harness tree;
 #                                  the shell unpacks it to runtime\ on first start
-#     plugins\<4 packages>         the custom plugins
+#     plugins\<all bundled>        the custom plugins (listed by --describe / README.txt)
 #     scripts\setup-plugins.mjs    installer used by install-offline.ps1
 #     install-offline.ps1 (+ .cmd) installs plugins into $DSH_HOME (+ optional app dir)
 #     VERSION.txt / README.txt

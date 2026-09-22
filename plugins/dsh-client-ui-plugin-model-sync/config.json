@@ -1,0 +1,9 @@
+{
+  "sources": {
+    "modelsDev": "https://models.dev/api.json",
+    "openRouter": "https://openrouter.ai/api/v1/models"
+  },
+  "settingsNamespaces": ["llm-pi-ai"],
+  "metadataTimeoutMs": 20000,
+  "maxCandidates": 2000
+}
