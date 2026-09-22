@@ -1669,6 +1669,7 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h     # 指定 DSH_HOME（会�
 1. **`DSH_HOME` 必须在查询状态之前设置**：第一版把 `--status` 跑在默认 `~/.dsh` 上，于是"**全新 home 也报'已是最新'**"——脚本要把 `$env:DSH_HOME` 提到 `Get-Status` 之前（安装那一步再设已经太晚）。
 2. **空 `.backup-*` 目录**：原先无条件创建备份根目录，导致"全新安装"也在 `profiles\node_modules` 里留垃圾 → 改为**只在实际有旧副本时惰性创建**。
 3. **失败注入要真的让校验失败**：把 `lib/index.js` 内容改成注释**不会**失败（校验只看"host main 是否存在"）→ 测试改为**删除**该文件，才真的走到回滚分支。
+4. **`-CheckOnly` 连目录都不许建**：第一版在 `-CheckOnly` 下仍会 `New-Item -Force profiles\node_modules`（与"只报告、不写任何东西"自相矛盾）→ 该分支改为只警告。抓到它的是**发布资产验证**里"全新 home 下连 `profiles\node_modules` 都不该出现"这条检查（本地测试当时只查了插件目录、没查父目录）——**验证脚本与单测要互相补位**。
 
 ## §31 上游发布不完整的 `0.1.5-rc.3` 家族 → 安装 rc.2 会 ETARGET（2026-09-22）
 

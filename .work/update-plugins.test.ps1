@@ -78,6 +78,7 @@ $h = New-Home
 $r = Invoke-Updater $h @("-Plugins", "all", "-CheckOnly")
 Check "-CheckOnly reports all as would-install" (($r.Exit -eq 0) -and ($r.Text -match "would update") -and (($shorts | Where-Object { $r.Text -match $_ }).Count -eq $total)) "exit=$($r.Exit)"
 Check "-CheckOnly writes nothing" (((InstalledPlugins $h).Count) -eq 0) "got '$(Sorted-List (InstalledPlugins $h))'"
+Check "-CheckOnly does not even create profiles\node_modules" (-not (Test-Path (Join-Path $h "profiles\node_modules"))) "directory was created"
 Check "-CheckOnly prints the state table" ($r.Text -match "未安装" -and $r.Text -match "源共 $total 个") ""
 
 Write-Host "`n==> 3. install two by number, then default is a no-op" -ForegroundColor Cyan

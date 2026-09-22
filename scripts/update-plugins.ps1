@@ -71,8 +71,13 @@ foreach ($p in @($pluginsDir, $pluginScript)) {
   if (-not (Test-Path $p)) { throw "not a plugin source tree, missing: $p" }
 }
 if (-not (Test-Path $packagesDir)) {
-  New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
-  Ok "created $packagesDir"
+  if ($CheckOnly) {
+    # -CheckOnly must not touch the disk at all, not even to create directories.
+    Warn "no plugins installed yet ($packagesDir does not exist) - would be created"
+  } else {
+    New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
+    Ok "created $packagesDir"
+  }
 }
 $nodeCmd = Resolve-Node
 if (-not $nodeCmd) {
