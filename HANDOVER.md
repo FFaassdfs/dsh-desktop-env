@@ -1664,12 +1664,21 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h     # 指定 DSH_HOME（会�
 - **源损坏（删掉 host main）→ 安装失败 → 自动回滚**：退出码非零、已装副本**哈希不变**且文件回来了、备份保留、输出含 `rolled back`
 - `-Force` / `-Plugins none` / 非法编号（`$total+1`）行为正确
 
-### 30.4 本次踩的三个坑（自用备忘）
+### 30.5 发布（0.1.7）
+
+### 30.4 本次踩的五个坑（自用备忘）
 
 1. **`DSH_HOME` 必须在查询状态之前设置**：第一版把 `--status` 跑在默认 `~/.dsh` 上，于是"**全新 home 也报'已是最新'**"——脚本要把 `$env:DSH_HOME` 提到 `Get-Status` 之前（安装那一步再设已经太晚）。
 2. **空 `.backup-*` 目录**：原先无条件创建备份根目录，导致"全新安装"也在 `profiles\node_modules` 里留垃圾 → 改为**只在实际有旧副本时惰性创建**。
 3. **失败注入要真的让校验失败**：把 `lib/index.js` 内容改成注释**不会**失败（校验只看"host main 是否存在"）→ 测试改为**删除**该文件，才真的走到回滚分支。
 4. **`-CheckOnly` 连目录都不许建**：第一版在 `-CheckOnly` 下仍会 `New-Item -Force profiles\node_modules`（与"只报告、不写任何东西"自相矛盾）→ 该分支改为只警告。抓到它的是**发布资产验证**里"全新 home 下连 `profiles\node_modules` 都不该出现"这条检查（本地测试当时只查了插件目录、没查父目录）——**验证脚本与单测要互相补位**。
+5. **验证脚本必须先清空自己的临时 home**：修好上面的问题后，发布验证仍报"写了东西"——因为**上一轮（旧版脚本）跑出来的 `updater-home\profiles\node_modules` 还在**，而新脚本只用 `mkdirSync` 没先删。加了 `rmSync(..., {force:true})` 后即为 PASS。**凡是断言"某目录不该存在"，断言前必须把该目录清掉**（否则断言的是历史，不是行为）。
+
+### 30.5 发布（0.1.7）
+
+- `desktop-v0.1.7`：**CI run #13 = success**，资产 98.5 MB。包内新增 `update-plugins.ps1/.cmd`（**44 个文件**）。
+- **本地留存**：`D:\dsh\app\packages\dsh-desktop-0.1.7-dsh0.1.5-rc.2-win-x64.zip`（98.0 MB / 44 文件 / 5 插件，SHA256 `2918E29F38F26CAD530D9FC6B566235D0709EA4222CF674973837D7383B505FD`）。
+- **首发（run #11）失败**、以及**第二次重推（run #12）后被发布验证抓到一个只读缺陷**，都已修复并重推标签——详见 §31（上游 `--before` 事故）与 §30.4 坑 4（`-CheckOnly` 不得创建目录）。
 
 ## §31 上游发布不完整的 `0.1.5-rc.3` 家族 → 安装 rc.2 会 ETARGET（2026-09-22）
 
