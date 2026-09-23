@@ -212,6 +212,32 @@ Check "mjs --check-only verifies the source payload when not installed" ($freshO
 Check "mjs --check-only says the patch file would be created" ($freshOut -match "cordis.patch.yml missing .* would be created with the plugin-") ""
 Check "mjs --check-only still writes nothing" ((InstalledPlugins $fresh).Count -eq 0) "count=$((InstalledPlugins $fresh).Count)"
 
+# A CRLF checkout must hash the same as an LF source tree. This repo has
+# core.autocrlf=true and no .gitattributes, so a plugin installed from a released
+# package (CRLF: CI checks it out that way) is byte-different-but-content-identical
+# to a locally built LF tree; a byte hash made the updater report "待更新" forever
+# and rewrite it on every run.
+$crlfHome = New-Home
+$crlfShort = $shorts[0]
+$crlfDst = Join-Path $crlfHome ("profiles\node_modules\dsh-client-ui-plugin-" + $crlfShort)
+New-Item -ItemType Directory -Force (Join-Path $crlfDst "lib") | Out-Null
+$crlfSrc = Join-Path $repo ("plugins\dsh-client-ui-plugin-" + $crlfShort)
+Copy-Item (Join-Path $crlfSrc "package.json") $crlfDst -Force
+Copy-Item (Join-Path $crlfSrc "lib\*") (Join-Path $crlfDst "lib") -Recurse -Force
+$latin1 = [Text.Encoding]::GetEncoding(28591)
+foreach ($f in @(Get-ChildItem $crlfDst -Recurse -File)) {
+  # byte-level LF -> CRLF (latin1 maps one byte to one code unit), BOM preserved
+  $t = $latin1.GetString([IO.File]::ReadAllBytes($f.FullName))
+  $t = $t.Replace("`r`n", "`n").Replace("`n", "`r`n")
+  [IO.File]::WriteAllBytes($f.FullName, $latin1.GetBytes($t))
+}
+$crlfBytes = (Get-ChildItem $crlfDst -Recurse -File | ForEach-Object { [IO.File]::ReadAllBytes($_.FullName) } | Where-Object { $_ -contains 13 }).Count
+$env:DSH_HOME = $crlfHome
+$crlfRow = @(((& node "$repo\scripts\setup-plugins.mjs" --status --ascii | Out-String) | ConvertFrom-Json) | Where-Object { $_.short -eq $crlfShort })
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+Check "the CRLF fixture really has CRLF bytes" ($crlfBytes -gt 0) "files containing CR: $crlfBytes"
+Check "a CRLF payload with identical content reads as current" ($crlfRow.state -eq "current") "state=$($crlfRow.state) sourceHash=$($crlfRow.sourceHash) installedHash=$($crlfRow.installedHash)"
+
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 $newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
 Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"

@@ -242,13 +242,31 @@ function payloadFiles(dir) {
   return files.sort();
 }
 
+/**
+ * A file's bytes with CRLF folded to LF, for hashing.
+ *
+ * Why: `core.autocrlf=true` (this repo has no .gitattributes) means a git
+ * checkout on Windows writes CRLF while a locally built file stays LF. The two
+ * are the same content, but a byte hash would call them different — so a plugin
+ * installed from a released package (CRLF, built by CI) reported "待更新"
+ * against an LF source tree forever, and the updater kept rewriting it. Hashing
+ * the LF-normalized bytes makes "已是最新" mean "same content" (HANDOVER §34).
+ * latin1 maps every byte to one code unit, so this replaces bytes, not
+ * characters, and cannot corrupt a non-UTF-8 payload.
+ * @param buffer - the raw file bytes.
+ * @returns the LF-normalized text to hash.
+ */
+function normalizeEol(buffer) {
+  return buffer.toString("latin1").replace(/\r\n/g, "\n");
+}
+
 function payloadHash(dir) {
   if (!existsSync(dir)) return "";
   const hash = createHash("sha256");
   for (const rel of payloadFiles(dir)) {
     hash.update(rel);
     hash.update("\0");
-    hash.update(readFileSync(join(dir, rel)));
+    hash.update(normalizeEol(readFileSync(join(dir, rel))));
     hash.update("\0");
   }
   return hash.digest("hex").slice(0, 12);
