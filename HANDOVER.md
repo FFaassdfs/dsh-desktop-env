@@ -2094,6 +2094,8 @@ function normalizeEol(buffer) {
    ```
    生效后读回：`["deepseek-harness","dsh","launcher","plugin","portable","wails","windows-desktop"]`（API 会按字母序返回）。
 
+3. **本地凭据文件已清理**（2026-09-23，用户确认"失效的话就清理掉"）：`.work/secrets.local.md`（gitignored、未被 git 跟踪）里那枚 **2026-09-14 就失效的 classic PAT 明文已清除**，改成「已失效 / 如何重新生成 / 不要再把明文写回」的历史记录；复核：该文件与全仓库扫描 `ghp_` 命中均为 **0**。另外本文件新增一条：2026-09-23 为改 About 临时用过的那枚 PAT 走的是 `.cache/gh-pat.txt`（用完即删）**且已要求用户撤销**。
+
 
 ---
 
