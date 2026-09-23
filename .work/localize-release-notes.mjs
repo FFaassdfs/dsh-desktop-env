@@ -165,27 +165,38 @@ console.log(`mode    : ${apply ? "APPLY" : "DRY RUN"}\n`);
 let changed = 0;
 let skipped = 0;
 for (const r of releases) {
-  if (hasCjk(r.body) && !force) {
-    console.log(`  ${r.tag_name.padEnd(14)} already Chinese — skipped`);
+  const version = /^desktop-v(.+)$/.exec(r.tag_name)?.[1] ?? "0.0.0";
+  const expectedName = chineseName(r.tag_name);
+  // Two INDEPENDENT reasons to touch a release: a body that is not Chinese yet, and
+  // a title that does not match the house form. The title case exists because the
+  // first release published from the Chinese template repeated the tag prefix
+  // (`dsh-desktop desktop-v0.1.10（便携包 · Windows x64）`) — repaired here rather
+  // than by hand, since this job already holds the right token.
+  const bodyNeedsFix = force || !hasCjk(r.body);
+  const nameNeedsFix = r.name !== expectedName;
+  if (!bodyNeedsFix && !nameNeedsFix) {
+    console.log(`  ${r.tag_name.padEnd(16)} up to date (Chinese body + canonical title) — skipped`);
     skipped += 1;
     continue;
   }
-  const version = /^desktop-v(.+)$/.exec(r.tag_name)?.[1] ?? "0.0.0";
   const info = releaseFacts(r.body, version);
-  const body = chineseBody(r, info);
-  const name = chineseName(r.tag_name);
-  console.log(`  ${r.tag_name.padEnd(14)} v${version} shell=${(info.sha || "?").slice(0, 8)} harness=${info.harness || "?"} node=${info.node || "?"}` +
-    ` npm=${info.hasNpmRow} updates=${info.hasUpdates} runtimeZip=${info.singleFileRuntime} menuZh=${info.menuWithDescriptions} -> ${body.length} chars`);
-  if (show && !apply) {
+  const body = bodyNeedsFix ? chineseBody(r, info) : r.body;
+  console.log(`  ${r.tag_name.padEnd(16)} v${version} body=${bodyNeedsFix ? "rewrite" : "keep"}` +
+    ` title=${nameNeedsFix ? JSON.stringify(r.name) + " -> " + JSON.stringify(expectedName) : "keep"}` +
+    (bodyNeedsFix ? ` shell=${(info.sha || "?").slice(0, 8)} harness=${info.harness || "?"} node=${info.node || "?"} npm=${info.hasNpmRow} updates=${info.hasUpdates} runtimeZip=${info.singleFileRuntime} menuZh=${info.menuWithDescriptions} -> ${body.length} chars` : ""));
+  if (show && !apply && bodyNeedsFix) {
     console.log("-".repeat(78));
     console.log(body);
     console.log("-".repeat(78));
   }
   if (!apply) continue;
-  await api(`/repos/${REPO}/releases/${r.id}`, { method: "PATCH", body: JSON.stringify({ body, name }) });
-  console.log(`  ${" ".repeat(14)} PATCHED (body + title)`);
+  await api(`/repos/${REPO}/releases/${r.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...(bodyNeedsFix ? { body } : {}), ...(nameNeedsFix ? { name: expectedName } : {}) })
+  });
+  console.log(`  ${" ".repeat(16)} PATCHED (${[bodyNeedsFix ? "body" : null, nameNeedsFix ? "title" : null].filter(Boolean).join(" + ")})`);
   changed += 1;
 }
 
-console.log(`\n${apply ? "applied" : "would apply"}: ${changed}   skipped (already Chinese): ${skipped}`);
+console.log(`\n${apply ? "applied" : "would apply"}: ${changed}   skipped (already canonical): ${skipped}`);
 if (!apply) console.log("re-run with --apply to write.");

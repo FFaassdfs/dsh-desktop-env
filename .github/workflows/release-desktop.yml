@@ -117,6 +117,9 @@ jobs:
           if (-not $tag) { $tag = $env:GITHUB_REF_NAME }
           $shellVersion = $tag -replace '^desktop-v', ''
           Write-Host "packing for tag $tag (shell version $shellVersion)"
+          # The release title wants the BARE version, and a GitHub expression cannot
+          # strip the tag prefix, so hand it to the publish step through the env.
+          "SHELL_VERSION=$shellVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           pwsh -File scripts/pack-release.ps1 `
             -RuntimeSource staging `
             -DshVersion "$env:DSH_VERSION" `
@@ -128,7 +131,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: dsh-desktop ${{ github.event.inputs.tag || github.ref_name }}（便携包 · Windows x64）
+          name: dsh-desktop ${{ env.SHELL_VERSION }}（便携包 · Windows x64）
           files: |
             dist/*.zip
             dist/SHA256SUMS.txt
