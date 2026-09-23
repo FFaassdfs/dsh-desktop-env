@@ -2231,6 +2231,17 @@ ctx.slots.register({ name: "settings.models.footer", id: "provider-presets" }, P
 - 能连上该内网后：用「模型同步」插件或直接 `GET /v1/models` 实测刷新（`参数以实测为准`）。
 - 已知限制：**只应启用所在网络的那一条**；同时启用不报错，但模型选择器会出现重复模型。
 
+### 39.5 发布（0.1.11）
+
+| 项 | 结果 |
+|---|---|
+| 提交 / tag | `863ffa5`（功能）→ `55feaf6`（状态行）→ tag `desktop-v0.1.11` |
+| CI | **run #17 = success**；资产端到端 `verify-release.mjs` **27/27** |
+| 发布资产专项核对 | 包内 `provider-presets/lib/client.js` **36010 字节**（本地 35334 + 676 行 CRLF），含 `vekenllm-tech` / `192.168.15.137` / `VEKENLLM_TECH_API_KEY` / `id: "provider-presets"` ✅ |
+| Release 页 | 标题 `dsh-desktop 0.1.11（便携包 · Windows x64）`（**裸版本号** —— 验证了 §38.5 那处 `env.SHELL_VERSION` 修复对真实发版生效）；正文中文（491 汉字） |
+| 本地留存 | `D:\dsh\app\packages\dsh-desktop-0.1.11-dsh0.1.5-rc.2-win-x64.zip`（98.03 MB，哈希与 `SHA256SUMS.txt` 一致；0.1.10 已剪除） |
+| 全套件 | 59 / 28 / 38 / **205** / 19 + 其余 node 套件全过 |
+
 
 
 
