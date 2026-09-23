@@ -369,8 +369,42 @@ eq(slotThunks.length, 1, "one registration thunk");
 eq(slotThunks[0].slot, "settings.models.footer", "registered into the official Models footer seat");
 const registration = slotThunks[0].thunk();
 eq(registration.options.name, "settings.models.footer", "registration names the seat");
-eq("key" in registration.options, false, "a list slot takes no key");
 ok(typeof registration.Component === "function", "component is a function");
+
+// The seat CONTRACT, read from the installed client registry itself. Its manifest
+// carries a machine-generated `registerOptions` list per seat, and registering
+// without a `requirement: "required"` option is REFUSED — which renders nothing at
+// all, silently, with no error on the page. That is exactly how `settings.models.footer`
+// (a LIST seat, needing `id`) shipped broken while `settings.models.provider-card`
+// (a key seat, needing only `key`) worked: see HANDOVER §38.
+{
+	const registryCandidates = [
+		join(process.env.DSH_HOME || join(homedir(), ".dsh"), "profiles", "node_modules", "@deepseek-ai", "dsh-cordis-client-runner", "lib", "client.js"),
+		process.env.APPDATA ? join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-cordis-client-runner", "lib", "client.js") : ""
+	].filter(Boolean);
+	const registry = registryCandidates.find((path) => existsSync(path));
+	if (!registry) {
+		console.log("SKIP seat-contract check: dsh-cordis-client-runner not found");
+	} else {
+		const manifest = readFileSync(registry, "utf8");
+		const seatIndex = manifest.indexOf('"' + registration.options.name + '"');
+		ok(seatIndex > 0, "the registry manifest describes the seat we register into");
+		const optionsStart = manifest.indexOf("registerOptions", seatIndex);
+		ok(optionsStart > 0, "the seat declares its registerOptions contract");
+		// the option list ends at the next "]" that closes registerOptions
+		const block = manifest.slice(optionsStart, manifest.indexOf("]", optionsStart) + 1);
+		const required = [...block.matchAll(/name:\s*"([^"]+)",\s*requirement:\s*"required"/g)].map((m) => m[1]);
+		ok(required.length > 0, "the seat marks at least one option required");
+		for (const field of required) {
+			ok(field in registration.options, `registration supplies the required "${field}" option`);
+		}
+		// a key seat is the one that wants `key`; ours must not confuse the two
+		if (!required.includes("key")) {
+			eq("key" in registration.options, false, "we do not pass a key to a seat that does not take one");
+		}
+		console.log(`seat contract OK (${registration.options.name} requires: ${required.join(", ")})`);
+	}
+}
 // the panel must close over the Remote faces (footer props are intentionally empty)
 const panel = P.makePanel("llm-pi-ai", zh, remoteFaces);
 ok(typeof panel === "function", "makePanel returns a component");

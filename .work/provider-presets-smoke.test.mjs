@@ -87,7 +87,10 @@ ok(localeDicts.providerPresets?.zh && localeDicts.providerPresets?.en, "zh + en 
 const thunk = slotRegistrations["settings.models.footer"];
 ok(typeof thunk === "function", "settings.models.footer slot registered");
 const registration = thunk();
-eq(registration.options, { name: "settings.models.footer" }, "registration options");
+// `settings.models.footer` is a LIST seat: the registry's contract marks `id` as
+// required, and a registration missing it is refused with nothing rendered at all
+// (HANDOVER §38). Assert the whole option set so the requirement cannot be dropped.
+eq(registration.options, { name: "settings.models.footer", id: "provider-presets" }, "registration options (list seat needs id)");
 ok(typeof registration.Component === "function", "registered component is a function");
 console.log("apply OK (locale registered, settings.models.footer registered)");
 

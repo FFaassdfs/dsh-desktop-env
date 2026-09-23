@@ -632,13 +632,21 @@ window.__ModuleLoader__.load({
 		const inject = ["slots", "locale", "remote", "remote.credentials", "remote.settings"];
 		/**
 		 * Contribute the preset panel to the bottom of the Models section.
+		 *
+		 * `settings.models.footer` is a LIST seat, and the registry's own contract
+		 * (its per-slot `registerOptions`) marks an `id` as REQUIRED for list seats —
+		 * it is the entry's cell key. Only key-seats such as
+		 * `settings.models.provider-card` are satisfied by `name` alone. Registering
+		 * without the required `id` is refused, and the panel then renders NOTHING,
+		 * silently and with no error on the page (real bug, HANDOVER §38).
 		 * @param ctx - client root context.
 		 */
 		function apply(ctx) {
 			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "provider-presets: dictionaries");
 			const t = ctx.locale.bind(NS);
 			ctx.slots.inject("settings.models.footer", () => ctx.slots.register({
-				name: "settings.models.footer"
+				name: "settings.models.footer",
+				id: "provider-presets"
 			}, makePanel(CONFIG.settingsNs, t, ctx.remote)));
 		}
 		//#endregion

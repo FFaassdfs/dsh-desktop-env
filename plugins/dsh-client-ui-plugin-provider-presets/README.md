@@ -1,7 +1,8 @@
 # dsh-client-ui-plugin-provider-presets
 
-> **文档版本：v1.0**（2026-09-23 创建）—— 路径 Q：把供应商（provider）**预制**出来，随插件分发；GUI 内一键启用/停用，密钥由用户就地输入。
-> 状态：Host 半区最小激活入口 + Client 半区（官方 `settings.models.footer` slot）；单测 **180 断言** + SSR 冒烟 **19 断言** 全通过；预置已通过**宿主自己的 pi-ai schema** 校验。
+> **文档版本：v1.1**（2026-09-23 更新）—— 修掉一个**真 bug**：`settings.models.footer` 是 **list** 座位，契约要求必填 `id`；首版只传 `{name}` → 注册被拒 → 面板**静默不渲染**（两台机器上都复现）。补「座位契约」一节与对应测试断言（§38）。
+> v1.0（2026-09-23 创建）—— 路径 Q：把供应商（provider）**预制**出来，随插件分发；GUI 内一键启用/停用，密钥由用户就地输入。
+> 状态：Host 半区最小激活入口 + Client 半区（官方 `settings.models.footer` slot）；单测 **184 断言** + SSR 冒烟 **19 断言** 全通过；预置已通过**宿主自己的 pi-ai schema** 校验。
 
 ## 它解决什么
 
@@ -46,6 +47,23 @@ Host 半区只保留一个空 `apply`：它的存在只是让 loader 激活该�
 - **密钥写入**受 `CredentialInfo.writable` 约束（凭据提供方是否可写），**与前者无关**：只读设置提供方不代表凭据不可写，反之亦然。
 
 首版把两者混为一谈（密钥控件漏判只读、又错用了设置的 writable），被 `.work/provider-presets.test.mjs` 的受控-hook 渲染断言当场抓住。现在 `keyWritable(preset, snapshot)` 单独判定；引用状态**未知**时返回 `true`，把拒绝权交给知道更多的 host。
+
+## 🔴 座位契约：list 座位必须带 `id`（v1.1 修的真 bug）
+
+官方客户端注册表（`dsh-cordis-client-runner`）自带**每个座位的 `registerOptions` 契约**，注册时**缺 required 字段会被拒绝**——而且**页面上不报错、什么都不渲染**，属于最难查的一类：
+
+| 座位 | kind | 必需字段 |
+|---|---|---|
+| `settings.models.provider-card`（「模型同步」插件用的） | **keyed** | `key` |
+| `settings.models.footer`（本插件用的） | **list** | **`id`**（`order`/`label` 可选） |
+
+首版只传了 `{ name }` → 注册被拒 → **面板在两台机器上都静默不出现**（而宿主侧一切正常：`dsh --profile web --dump-config` 能看到 `plugin-provider-presets` 条目、`update-plugins.ps1 -CheckOnly` 也显示"已是最新"）。修法：
+
+```js
+ctx.slots.register({ name: "settings.models.footer", id: "provider-presets" }, Panel)
+```
+
+> 教训：**注册前先从契约确认 required 字段**——契约可直接从注册表产物读出（`dsh-cordis-client-runner/lib/client.js` 里每个座位都有 `registerOptions: [{name, requirement, …}]`）。`.work/provider-presets.test.mjs` 已把这一步做成**断言**（读契约 → 断言我们提供了全部 required 字段），这类"静默不渲染"以后不会再靠肉眼发现。详见 `HANDOVER.md` §38。
 
 ## 防误伤的四个设计
 
