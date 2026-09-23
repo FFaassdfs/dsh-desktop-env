@@ -1,4 +1,4 @@
-# Tests for scripts\update-plugins.ps1 (the standalone plugin updater).
+﻿# Tests for scripts\update-plugins.ps1 (the standalone plugin updater).
 #
 # Runs the REAL script against a throwaway copy of the source tree (built by
 # pack-release.ps1 -NoNode) so plugin sources can be mutated to create the

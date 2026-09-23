@@ -5,7 +5,7 @@
 > ⚠️ **本文件是「全局预设」的权威副本**（本仓库 `global/AGENTS.md`）。部署机上的 `~/.dsh/AGENTS.md` 是安装副本：首次部署时由 `setup.ps1` 拷贝；更新全局预设 = 改本文件 + 在需要更新的机器上重装（删除 `~/.dsh/AGENTS.md` 后重跑 setup，或手动拷贝）。
 > **🔴 维护纪律**：改本文件后必须同步安装副本（`Copy-Item` 覆盖 `~/.dsh/AGENTS.md`），否则会出现「权威副本落后于安装副本」——2026-08-19 已发生过一次（图片/PDF 策略与正式文件版本化约定只在安装副本里）。
 >
-> **文档版本：v2.17**（2026-09-18 更新；上一版标记 v2.16 = 2026-08-19 图片/PDF 策略）——本次仅补充「环境常见坑」条目：沙箱 `curl.exe` 走 HTTPS 失效与 Node fetch 绕法、给 5.1 用的 `.ps1` 必须带 BOM、`~/.dsh/settings.yaml` 必须保持无 BOM、本机 PowerShell 7 侧载现状与乱码回归风险。
+> **文档版本：v2.18**（2026-09-23 更新；上一版 v2.17 = 2026-09-18）——本次补充「环境常见坑」两条 **Windows PowerShell 5.1 专有差异**（① 5.1 按**控制台代码页**解码子进程 stdout → 中文乱码可吞掉 JSON 收尾引号；② 5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作**一个对象**）。两者只在**干净 Windows**（只有 5.1 + 代码页 936）上发作，开发机装了 PS7 时**全绿也测不出来**。实例见 `dsh-desktop-env` 的 `HANDOVER.md` §34。
 
 ## 基本规则
 
@@ -65,6 +65,10 @@ python D:\opencode\001\pdf_pipeline.py <文件路径>
 - **curl.exe 在 pwsh 传 JSON body**：`-d '{"..."}'` 可能报 `Problems parsing JSON`（400）→ 写临时文件 + `curl.exe --data-binary "@file"` 传参。
 - **给 Windows PowerShell 5.1 用的 `.ps1` 必须存成 UTF-8 带 BOM**（2026-09-18 实测踩到）：5.1 会把无 BOM 脚本按 ANSI(GBK) 解码，脚本里的中文变成 `灏嗘妸` 之类甚至直接报语法错（`Array index expression is missing or not valid`）。agent 的写文件工具默认写无 BOM → 写完必须补 BOM：`[IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($true)))`；`.md`/`.mjs` 无此要求。
   - **补充（同日二次实测）：`edit` 工具改完会把文件里已有的 BOM 吃掉** → 任何一次编辑之后都要复查首 3 字节是否 `EF BB BF`，不是就补回；否则脚本又按 ANSI 解码（本次两个 `.ps1` 都中过）。
+- **🔴 Windows PowerShell 5.1 的两条"只在干净 Windows 上发作"的坑（2026-09-23 实测，教训级）**：**目标机器是干净 Windows ⇒ 只有 5.1**（开发机侧载了 PS7 ⇒ 用 `pwsh` 跑的测试**全绿也证明不了目标机可用**）。凡「`.ps1` 调外部程序（node/git/…）并解析其输出」的路径都要按这两条写：
+  1. **5.1 用「控制台代码页」解码子进程 stdout**（zh-CN = 936/GBK），不是 UTF-8。中文被按 GBK 误读后，**末尾一个悬空前导字节会吞掉后面那个 `"`**（实测：`项目文件树` = `E6 A0 91` → 前两字节成「鏍」、`91` 吞掉收尾引号）→ JSON 永不闭合 → `ConvertFrom-Json` 崩，且报错里出现的是**中文标题**（极具误导性）。→ 对策：**机器可读载荷一律输出纯 ASCII**（如给 mjs 加 `--ascii`，把非 ASCII 转义成 `\uXXXX`；JSON 解析器会还原成中文），并在脚本开头钉 `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)`（`try/catch` 包住）。
+  2. **5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作「一个对象」**（PS7 会枚举成 N 个）→ `@($raw | ConvertFrom-Json)` 在 5.1 得 **1 行**而非 N 行；后果往往是**静默退化**（菜单/列表退回兜底数据、只处理第一条）。→ 对策：解析一律做**形状归一** `@($raw | ConvertFrom-Json) | ForEach-Object { $_ }`。
+  3. 两者会**互相掩盖**（先崩的那个挡住后一个）→ 修完解码必须立刻验证数组形状。回归测试要**用真实 `powershell.exe` 子进程 + 把控制台代码页钉成 936** 跑真实脚本（例：`dsh-desktop-env` 的 `.work/ps51-encoding.test.ps1`），并附一条"含非 ASCII 的 `.ps1` 必须有 BOM"的守卫。
 - **改 `~/.dsh/settings.yaml` 必须保持 UTF-8 无 BOM**（原文件无 BOM）→ 别用 5.1 的 `Set-Content -Encoding UTF8`（会加 BOM），用 `[IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($false)))`。设置层是 `schema(mergeLayers(base, section))` 深合并，**只写 `shell.pwshPath` 不会丢 `cwd` 等 base 字段，且热生效、无需重启 DSH**。
 - **解压大 zip 用系统自带 `tar.exe`（bsdtar）**，不要用 5.1 的 `Expand-Archive`（同一个 101MB / 320 文件的包，tar 快一个数量级）。
 - **🔴 本机 PowerShell 现状与乱码回归风险（2026-09-18 起）**：PS7 7.6.6 已免管理员侧载到 `C:\Users\veken\PowerShell\7`，并在 `~/.dsh/settings.yaml` 用 `shell.pwshPath` 指定。DSH 的 `pwsh` 工具解析顺序为 `%ProgramFiles%\PowerShell\7\pwsh.exe` → `PATH` 里的 `pwsh.exe` → **5.1 兜底**；且它以 **`-NoProfile`** 启动，所以 **profile 类编码修复对 agent 命令无效，只能换底层**。若侧载目录被删或 `settings.yaml` 被整体覆盖，agent 会静默退回 5.1 → 乱码回归（`Get-Content` 读 UTF-8 无 BOM 得 `涓枃…`、`Out-File` 默认写 UTF-16LE `FF FE`）。恢复：跑 `D:\dsh\001\tools\ps7-setup\install-pwsh7.ps1`（v1.0；离线包与验证步骤见同目录 `README.md` v1.0）。

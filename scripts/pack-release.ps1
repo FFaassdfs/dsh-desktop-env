@@ -272,9 +272,11 @@ Set-Content -Path (Join-Path $pkgDir "VERSION.txt") -Value $versionText -Encodin
 $catalogueText = ""
 try {
   $describeNode = if (Test-Path $NodeExe) { $NodeExe } else { "node" }
-  $rawCatalogue = (& $describeNode (Join-Path $repoRoot "scripts\setup-plugins.mjs") --describe 2>$null | Out-String)
+  $rawCatalogue = (& $describeNode (Join-Path $repoRoot "scripts\setup-plugins.mjs") --describe --ascii 2>$null | Out-String)
   if ($LASTEXITCODE -eq 0 -and $rawCatalogue.Trim()) {
-    $catalogue = @($rawCatalogue | ConvertFrom-Json)
+    # 5.1 hands back the JSON array as ONE object, 7 enumerates it; normalize so the
+    # generated README.txt keeps its per-plugin descriptions on both engines (§34).
+    $catalogue = @($rawCatalogue | ConvertFrom-Json) | ForEach-Object { $_ }
     $catalogueText = (($catalogue | ForEach-Object {
       "  {0}) {1}" -f $_.index, $_.short
       "       $($_.title) - $($_.summary)"

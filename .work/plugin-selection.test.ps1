@@ -1,4 +1,4 @@
-# Plugin-selection tests for install-offline.ps1 + scripts/setup-plugins.mjs.
+﻿# Plugin-selection tests for install-offline.ps1 + scripts/setup-plugins.mjs.
 #
 # Everything is derived from `setup-plugins.mjs --describe`, so adding a plugin
 # never breaks this suite (only the counted assertions that must scale).

@@ -19,11 +19,20 @@
 //      (resolvable package, dsh.client declaration, exports["./client"],
 //      host main exists) + patch YAML still parses.
 //
-// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>] [--describe]
+// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>] [--describe] [--ascii]
 //   --check-only: verify only, write nothing.
 //   --describe:   print the plugin catalogue as JSON (number, short name, Chinese
 //                 title/summary/where/writes) and exit — used by the offline
 //                 installer menu and to keep README in sync. Nothing is installed.
+//   --ascii:      escape every non-ASCII character in --describe / --status output
+//                 as \uXXXX. REQUIRED when a Windows PowerShell 5.1 caller parses
+//                 it: 5.1 decodes a native process's stdout with the CONSOLE
+//                 codepage (936/GBK on a zh-CN box), and a mojibake trail byte can
+//                 swallow the closing quote of a Chinese string, breaking the JSON
+//                 outright (real failure: 2026-09-23, HANDOVER §34). ASCII decodes
+//                 identically under every codepage, so escaping removes the whole
+//                 class of failure. JSON escapes are decoded by the parser, so the
+//                 caller still receives the original Chinese.
 //   --plugins:    which plugins to install. "all" (default), "none", or a
 //                 comma-separated list of numbers / short names / package names /
 //                 patch ids, e.g. --plugins 2,4  ==  --plugins explainer,project-explorer
@@ -46,6 +55,29 @@ const DSH_HOME = resolve(process.env.DSH_HOME || join(homedir(), ".dsh"));
 const PROFILE_DIR = join(DSH_HOME, "profiles", "web");
 const PATCH_PATH = join(PROFILE_DIR, "cordis.patch.yml");
 const PACKAGES_DIR = join(DSH_HOME, "profiles", "node_modules");
+
+// --- machine-readable output (--describe / --status) --------------------------
+// Windows PowerShell 5.1 decodes a native child process's stdout with the CONSOLE
+// codepage, which on a zh-CN box is 936/GBK — not the UTF-8 node actually wrote.
+// The mojibake is not merely ugly: a dangling GBK lead byte at the end of a Chinese
+// string absorbs the following `"`, so the JSON never closes and ConvertFrom-Json
+// fails with a message that names a plugin title (a real, reproduced failure — see
+// HANDOVER §34). Escaping every non-ASCII character as \uXXXX under --ascii makes
+// the payload pure ASCII, which decodes the same way under every codepage, while
+// the JSON parser turns the escapes back into the original Chinese.
+const asciiOutput = process.argv.includes("--ascii");
+/**
+ * Serialize machine-readable output, optionally as pure ASCII.
+ * @param value - the catalogue or status array.
+ * @returns the JSON text to print.
+ */
+function toJson(value) {
+  const text = JSON.stringify(value, null, 2);
+  if (!asciiOutput) return text;
+  // Non-ASCII can only occur inside JSON string literals, so escaping every
+  // non-ASCII code point keeps the document valid.
+  return text.replace(/[\u007f-\uffff]/g, (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
+}
 
 // Canonical plugin catalogue. The ORDER is the numbering used by the installer
 // menu and by --plugins/--describe, so keep it alphabetical by short name.
@@ -176,7 +208,7 @@ function selectPlugins(arg) {
 // The installer menu and README are generated from this, so the description
 // lives in exactly one place.
 if (process.argv.includes("--describe")) {
-  console.log(JSON.stringify(
+  console.log(toJson(
     PLUGINS.map((p, i) => ({
       index: i + 1,
       short: pluginShortName(p),
@@ -186,9 +218,7 @@ if (process.argv.includes("--describe")) {
       summary: p.summary,
       where: p.where,
       writes: p.writes,
-    })),
-    null,
-    2
+    }))
   ));
   process.exit(0);
 }
@@ -234,7 +264,7 @@ function sourceVersion(dir) {
 
 if (process.argv.includes("--status")) {
   const patchText = existsSync(PATCH_PATH) ? readFileSync(PATCH_PATH, "utf8") : "";
-  console.log(JSON.stringify(
+  console.log(toJson(
     PLUGINS.map((p, i) => {
       const sourceHash = payloadHash(p.src);
       const installedDir = join(PACKAGES_DIR, p.name);
@@ -255,9 +285,7 @@ if (process.argv.includes("--status")) {
         patchEntry: patchText.includes("id: " + p.patchId),
         state,
       };
-    }),
-    null,
-    2
+    })
   ));
   process.exit(0);
 }

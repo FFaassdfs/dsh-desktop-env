@@ -27,6 +27,13 @@ param(
   [switch]$CheckOnly
 )
 $ErrorActionPreference = "Stop"
+# Native commands (node) write UTF-8, but Windows PowerShell 5.1 decodes a child
+# process's stdout with the CONSOLE codepage -- 936/GBK on a zh-CN box -- which
+# mojibakes the JSON that setup-plugins.mjs prints and can break the parse outright
+# (a GBK lead byte at the end of a Chinese string swallows the closing quote; real
+# failure, HANDOVER §34). Pin the decoder here, and pass --ascii so the
+# machine-readable payload does not depend on the codepage at all.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 function Step($t) { Write-Host ""; Write-Host "==> $t" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "    [ok] $m" -ForegroundColor Green }
@@ -81,9 +88,13 @@ function Get-PluginCatalogue {
   $bundled = @(Get-BundledPluginNames)
   $catalogue = @()
   try {
-    $raw = (& $nodeCmd $pluginScript --describe 2>$null | Out-String)
+    $raw = (& $nodeCmd $pluginScript --describe --ascii 2>$null | Out-String)
     if ($LASTEXITCODE -eq 0 -and $raw.Trim()) {
-      $parsed = @($raw | ConvertFrom-Json)
+      # Windows PowerShell 5.1 returns a top-level JSON array as ONE object, while
+      # PowerShell 7 enumerates it into N. Without this normalization 5.1 sees a
+      # single row, the -contains filter below rejects it, and the menu silently
+      # falls back to bare plugin names with no descriptions (HANDOVER §34).
+      $parsed = @($raw | ConvertFrom-Json) | ForEach-Object { $_ }
       $catalogue = @($parsed | Where-Object { $bundled -contains $_.short })
     }
   } catch { $catalogue = @() }

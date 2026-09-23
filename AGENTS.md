@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-23）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。安装/打包必须带 `--before` 时间闸门，见 §31）；最新便携包 = **`desktop-v0.1.7`**（本地留存 = `D:\dsh\app\packages\`，只留一份，见 §32）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；**6 个插件**均已纳入 `scripts/setup-plugins.mjs`（编号 6 = 新增的 `provider-presets` 预置供应商——vekenllm / 电信算力预制 + GUI 内启用/填 key，**脚本与发行包永不携带密钥**，§33），host/client 均已验证（§21.3）。**P0 全部关闭**（§24）；**多机更新链已修好**（§25/§26）；**插件更新器** = `scripts\update-plugins.ps1`（§30）；**目录约定（多会话）见下方新增章节 + §32**。
+> **当前状态（2026-09-23）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。安装/打包必须带 `--before` 时间闸门，见 §31）；最新便携包 = **`desktop-v0.1.9`**（本地留存 = `D:\dsh\app\packages\`，只留一份，见 §32）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；**6 个插件**均已纳入 `scripts/setup-plugins.mjs`（编号 6 = 新增的 `provider-presets` 预置供应商——vekenllm / 电信算力预制 + GUI 内启用/填 key，**脚本与发行包永不携带密钥**，§33），host/client 均已验证（§21.3）。**P0 全部关闭**（§24）；**多机更新链已修好**（§25/§26）；**插件更新器** = `scripts\update-plugins.ps1`（§30）；**目录约定（多会话）见下方新增章节 + §32**。
 
 ## 开工必做
 
@@ -55,7 +55,13 @@
 - **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等，若日后自行 clone）：**只读，不要改**——会被官方同步覆盖
 - 🔴 **别混淆两个「desktop」**：上游仓库有自己的 **一方官方桌面端 `apps/desktop/`**（Electron 壳，已 implemented，独占 `$DSH_HOME/profiles/desktop`，**不提供 `webServer`**）；我们自己的 Wails 壳是**另一个**东西（本仓库根目录，launcher @ 43080 + `profiles/web`）。fork 里被删掉的是**根级** `desktop/`（我们的旧副本），与上游 `apps/desktop/` 无关。详见 `HANDOVER.md` §24.5 / `project-facts-v1.0.md` F13
 
-## 高频坑（详情见 HANDOVER.md §10.7，共 18 条）
+## 高频坑（详情见 HANDOVER.md §10.7，共 20 条；新增的见本节顶部两条 5.1 坑）
+
+- 🔴 **目标机器是干净 Windows ⇒ 只有 Windows PowerShell 5.1**（本机侧载了 PS7，所以 `pwsh` 全绿 ≠ 目标机可用）。两条 5.1 差异必须同时对付（详见 `HANDOVER.md` §34 / `project-facts` F18）：
+  - **5.1 按「控制台代码页」解码子进程 stdout**（zh-CN = 936/GBK），中文乱码时**末尾悬空字节会吞掉 JSON 的收尾引号** → `ConvertFrom-Json` 崩。→ 机器可读载荷一律用 `node ... --describe/--status --ascii`（纯 ASCII 与代码页无关）；脚本开头钉 `[Console]::OutputEncoding` = UTF-8。
+  - **5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作「一个对象」**（PS7 会枚举成 N 个）→ 解析一律写 `@($raw | ConvertFrom-Json) | ForEach-Object { $_ }` 做**形状归一**，否则静默退化成 1 行 / names-only 兜底。
+  - 回归套件：`.work\ps51-encoding.test.ps1`（用真实 5.1 子进程 + 钉 936 跑真实脚本）。
+- **含非 ASCII 的 `.ps1` 必须带 UTF-8 BOM**，且 **`edit` 工具改完会吃掉 BOM** → 每次编辑后复查首 3 字节 `EF BB BF`（`ps51-encoding.test.ps1` 的 D 段会自动抓这个）。
 
 - 沙箱里 git/API 走 HTTPS 报 `SEC_E_NO_CREDENTIALS`（schannel 凭据库被拒）→ 用 `danger-full-access` 重试
 - 探测本地服务**别用** `Get-NetTCPConnection`/`netstat`（沙箱假阴性，会误判「无监听」）→ 用 `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:43080/`
