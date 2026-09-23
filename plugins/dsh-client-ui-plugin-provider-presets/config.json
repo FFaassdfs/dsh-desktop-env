@@ -1,0 +1,110 @@
+{
+  "settingsNs": "llm-pi-ai",
+  "presets": [
+    {
+      "route": "vekenllm",
+      "title": "vekenllm",
+      "summary": "内网 LiteLLM 网关（192.168.100.63:4000）。只有能访问该内网时可用。",
+      "displayName": "vekenllm",
+      "apiKeyEnv": "VEKENLLM_API_KEY",
+      "api": "openai-completions",
+      "baseURL": "http://192.168.100.63:4000/v1",
+      "compat": {
+        "thinkingFormat": "deepseek"
+      },
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "contextWindow": 1000000,
+          "maxTokens": 393216,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoningEfforts": {
+            "off": null,
+            "low": "low",
+            "high": "high"
+          }
+        },
+        {
+          "id": "auto",
+          "name": "Auto",
+          "contextWindow": 1000000,
+          "maxTokens": 393216,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoningEfforts": {
+            "off": null,
+            "low": "low",
+            "high": "high"
+          }
+        }
+      ]
+    },
+    {
+      "route": "ctai",
+      "title": "电信算力",
+      "summary": "电信算力 OpenAI 兼容网关（ai.ctaigw.cn）。公网可达。",
+      "displayName": "电信算力",
+      "apiKeyEnv": "CTAI_API_KEY",
+      "api": "openai-completions",
+      "baseURL": "https://ai.ctaigw.cn/v1",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "glm-5.3-flash",
+          "name": "glm-5.3-flash",
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoningEfforts": {
+            "low": "low",
+            "high": "high",
+            "max": "max"
+          }
+        },
+        {
+          "id": "qwen3.8-flash",
+          "name": "qwen3.8-flash",
+          "contextWindow": 991808,
+          "maxTokens": 131072,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoningEfforts": {
+            "off": null,
+            "high": "high"
+          }
+        },
+        {
+          "id": "deepseek-v4.1-flash",
+          "name": "deepseek-v4.1-flash",
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoningEfforts": {
+            "off": null,
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high"
+          }
+        }
+      ]
+    }
+  ]
+}

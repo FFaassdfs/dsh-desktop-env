@@ -26,14 +26,14 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
 不想装 Go/Wails/Node、也不想联网装 harness 时，用**便携发行包**：解压即用。
 
 - **产物**：`dsh-desktop-<壳commit>-dsh<harness版本>-win-x64.zip`（实测 **109 MB**）+ `SHA256SUMS.txt`
-  - 内含：壳 `dsh-desktop.exe`、**`runtime.zip`（单文件运行时：便携 Node + npm + 离线 harness，首次启动自动解压 ~40 秒，仅一次）**、5 个插件、`install-offline.cmd/.ps1`
+  - 内含：壳 `dsh-desktop.exe`、**`runtime.zip`（单文件运行时：便携 Node + npm + 离线 harness，首次启动自动解压 ~40 秒，仅一次）**、6 个插件、`install-offline.cmd/.ps1`
   - **为什么运行时是单个 zip**：解压开是 **2.7 万个碎文件**（89% 小于 8 KB），Windows 上拷贝它们要按文件数交税（实测：单线程 88.8s vs `robocopy /MT:16` 15.9s）；打包成单文件后，**下载/拷贝只需搬 1 个文件**（整个包 35 个文件）
 - **拷贝/分发的正确姿势**：① **搬 zip，别搬解压后的目录**；② 若必须拷目录，用 `robocopy <源> <目标> /E /MT:16 /NFL /NDL /NJH /NJS /NP`；③ 解压用 `tar -xf 包.zip -C 目标` 或 7-Zip，**别用资源管理器的"全部解压缩"**（最慢）
 - **目标机用法（没有"安装"步骤，解压即用）**：
   ```
   1) 把 zip 解压到任意目录（例如 D:\dsh-desktop-portable）
   2) 双击 dsh-desktop.exe   ← 首次启动会先解压内置运行时（~40 秒，状态面板显示进度），之后就快了
-  3) （可选）想让 5 个插件也进 DSH_HOME：双击 install-offline.cmd
+  3) （可选）想让 6 个插件也进 DSH_HOME：双击 install-offline.cmd
   ```
   - 想跳过 GUI 先解压（脚本化）：`dsh-desktop.exe --extract-runtime`
   - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**列出每个插件的功能说明**并问你要装哪些。命令行同样支持选择：
@@ -48,11 +48,11 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
     ```
     - **多选**：菜单里直接输编号、用**逗号隔开**（如 `2,4` = 只装第 2 和第 4 个）；`a`=全部、`n`=都不装、直接回车=全部。
     - **输入无效时**（如 `9`、`2,x`）提示无效并**不安装任何插件**（不会猜、也不会退化为全装）。
-    - 编号也可写成简名/包名/patch id：`explainer` / `project-explorer` / `model-sync` / `model-capabilities` / `core-version`。
+    - 编号也可写成简名/包名/patch id：`explainer` / `project-explorer` / `model-sync` / `model-capabilities` / `core-version` / `provider-presets`。
     - **安装器只加不减**：已装但这次没选的插件不会被移除；想关掉用「插件说明」面板的开关（或手工删包 + patch 条目）。
     - 无控制台调用（agent/计划任务）时 `ask` 自动退化为全装、不会挂住；`DSH_INSTALL_FORCE_PROMPT=1` 可强制走菜单（便于喂答案：`echo 2,4 | install-offline.cmd`）。
 
-  **5 个插件分别是什么**（安装菜单里显示同一段文字；单一数据源 = `scripts/setup-plugins.mjs --describe`）：
+  **6 个插件分别是什么**（安装菜单里显示同一段文字；单一数据源 = `scripts/setup-plugins.mjs --describe`）：
 
   | 编号 | 短名 | 功能 | 在哪看到 |
   |---|---|---|---|
@@ -61,6 +61,7 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
   | 3 | model-capabilities | **模型能力清单**：每个模型能否识图、上下文多长、有哪些推理档位。只读查询 | 设置 →「模型能力」 |
   | 4 | model-sync | **模型同步**：从 models.dev / OpenRouter / 该商自己的 `/models` 端点拉候选，逐字段对比后写入配置；手工改过的值会被标出、默认不覆盖。**会写 `settings.yaml`**（有 revision 冲突保护） | 设置 →「模型」→ 提供商卡片 |
   | 5 | project-explorer | **项目文件树**：右侧可折叠文件树；把文件拖进输入框即插入其路径，让 agent 自己去读。只给路径、不传内容 | 界面最右侧 |
+  | 6 | provider-presets | **预置供应商**：内置 vekenllm 与电信算力两条完整配置（端点/协议/模型清单），点「启用」写入、点「停用」移除；密钥由你在面板输入。**会写 `settings.yaml`**（密钥只写进凭据引用，永不进配置文件） | 设置 →「模型」页面底部 |
   - 运行前提只有 **WebView2 Runtime**（Win10/11 一般自带）
 - **注意**：壳是**单实例**——本机已装着旧壳时必须先退出它；未签名，首启可能有 SmartScreen 提示；API key/`.env` 各机自配。
 - **自动更新（与源码装一致）**：便携版启动时 + 每 24h 也会查 npm registry，发现新版就用**包内 npm** 自动下载，提示「重启服务」生效；重启时把新 harness 换入 `runtime\`（先暂存、验证能跑、失败自动回滚；`node.exe` 不动）。包内 npm 缺失（`-NoNpm` 构建）或解压到只读目录时会如实提示，可改用下载新版发行包。
@@ -148,6 +149,26 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h      # 指定 DSH_HOME
 
 > ⚠️ 旧流程（clone `FFaassdfs/deepseek-harness` fork 再构建其 `desktop/`）**已废弃**：该目录已于 2026-09-15 从 fork 删除（见 `HANDOVER.md` §24）。
 
+## 预置供应商（`provider-presets` 插件）
+
+把供应商（provider）**预制**成随插件分发的内容，换台机器不用再手敲配置：
+
+1. 装插件（`node scripts\setup-plugins.mjs --plugins 6`，或安装菜单里选 6）→ **重启壳**；
+2. 打开「设置 → 模型」，页面**底部**是「预置供应商」面板，列出内置的两条：
+   | 预置 | 端点 | 模型 | 需要 |
+   |---|---|---|---|
+   | **vekenllm** | `http://192.168.100.63:4000/v1` | `deepseek-v4-flash`、`auto` | 能访问该内网 + `VEKENLLM_API_KEY` |
+   | **电信算力**（`ctai`） | `https://ai.ctaigw.cn/v1` | `glm-5.3-flash`、`qwen3.8-flash`、`deepseek-v4.1-flash` | `CTAI_API_KEY` |
+3. 点「**启用**」→ 该供应商的完整配置写进 `~/.dsh/settings.yaml`（立刻出现在模型选择器里）；
+4. 在面板里**粘贴 API Key → 保存密钥** → 该行凭据变绿即可用。
+
+**不需要时**：点「停用」把该路由整条移除（两步确认）。**预制不等于启用**——装完插件不会偷偷改配置。
+
+- 🔴 **密钥永不进配置文件、不进发行包、不经任何脚本**：你在面板里输入，走官方 `credentials.set`（只写通道），存进凭据引用 `VEKENLLM_API_KEY` / `CTAI_API_KEY`。脚本与打包器只分发**非机密**的预置定义（端点/协议/compat/模型清单）。
+- 你要是**手工改过**某条配置，面板会标「与预置不一致 · 你改过的配置」并列出差异字段，此时只给「重置为预置」（两步确认，会整体覆盖该路由）；**不会**在你点「启用」时静默覆盖。
+- 要**增删预置**：改 `plugins\dsh-client-ui-plugin-provider-presets\config.json` → `node build.mjs` → 重装插件。`build.mjs` 带闸门：预置里出现密钥形状的字段/值就直接拒绝构建。
+- 细节与设计取舍见 [`plugins/dsh-client-ui-plugin-provider-presets/README.md`](plugins/dsh-client-ui-plugin-provider-presets/README.md)。
+
 ## 结构
 
 ```
@@ -160,7 +181,7 @@ main.go            # Wails 入口（单实例锁、固定窗口 440×400 Disable
 frontend/          # 状态面板页（Vite + 原生 JS）
 update.ps1         # 一键更新（pull + 插件 + 构建 + 部署）
 setup.ps1          # 首次复刻环境（依赖检查 + dsh + 插件 + 全局预设 + 构建）
-plugins/           # 5 个自定义插件源码（编号见 scripts/setup-plugins.mjs --describe）
+plugins/           # 6 个自定义插件源码（编号见 scripts/setup-plugins.mjs --describe）
 scripts/           # pack-release.ps1（打包）/ deploy-shell.ps1（部署）/ setup-plugins.mjs / update-plugins.ps1
 .work/             # 可复用的开发脚本与测试套件（含 verify-release.mjs / watch-release.mjs）
 .cache/            # 临时与缓存（gitignored；按用途起子目录，如 .cache\seltest、.cache\verify-0.1.7）
@@ -177,6 +198,7 @@ scripts/           # pack-release.ps1（打包）/ deploy-shell.ps1（部署）/
 
 详见 [`HANDOVER.md`](HANDOVER.md) §14「壳重定位与跨机应用说明」。
 
-> 文档版本：v1.3（2026-09-22 更新）— 结构清单补 `plugins/`/`scripts/`/`.work/`/`.cache/`；新增「目录约定（多会话并行）」段落（含"本地只留一份最新发行包 + `LATEST.txt`"与"别在仓库根留临时产物"）；补 §30 插件更新器与 §31 `--before` 闸门说明。
+> 文档版本：v1.4（2026-09-23 更新）— 新增「预置供应商」一节（路径 Q 插件：vekenllm / 电信算力预置，GUI 内启用/停用 + 填 key）；插件数 5→6、安装菜单编号表补第 6 行。
+> v1.3（2026-09-22 更新）— 结构清单补 `plugins/`/`scripts/`/`.work/`/`.cache/`；新增「目录约定（多会话并行）」段落（含"本地只留一份最新发行包 + `LATEST.txt`"与"别在仓库根留临时产物"）；补 §30 插件更新器与 §31 `--before` 闸门说明。
 > v1.2（2026-09-15）— 新增「更新到最新壳」一节（`update.ps1` 一条命令）；结构清单补 `logutil.go`/`update.ps1`/`setup.ps1`；说明壳源码在本仓库、fork `desktop/` 已废弃。
 > v1.1（2026-09-14）— 修正 dsh 版本号/端口所述、插件数（2→4）、`HANDOVER.md` §12→§14 引用、clone 与构建路径；新增指向 `project-facts-v1.0.md`。

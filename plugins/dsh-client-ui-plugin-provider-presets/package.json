@@ -1,0 +1,35 @@
+{
+  "name": "dsh-client-ui-plugin-provider-presets",
+  "description": "Pre-staged LLM providers for the dsh Web GUI: ships complete llm-pi-ai route profiles (endpoint, protocol, compat, model catalogue) with NO credentials, and adds a panel on Settings > Models to enable/disable each preset and to store its API key through the official credentials Remote. Enabling writes settings.yaml; the key never does.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

@@ -199,6 +199,19 @@ Check "mjs accepts numbers (2,4)" (($two | Where-Object { $ok2 -match [regex]::E
 $spaced = & node "$repo\scripts\setup-plugins.mjs" --plugins "2 4" --check-only 2>&1 | Out-String
 Check "mjs accepts space-separated numbers (2 4)" (($two | Where-Object { $spaced -match [regex]::Escape("$_ (") }).Count -eq 2) ""
 
+# A dry run against a home where NOTHING is installed must still succeed: it is
+# the state a first install starts from, so "not installed yet" is not a failure
+# (it used to abort with MODULE_NOT_FOUND / "cordis.patch.yml missing").
+$fresh = New-Home
+$env:DSH_HOME = $fresh
+$freshOut = & node "$repo\scripts\setup-plugins.mjs" --plugins $shorts[0] --check-only 2>&1 | Out-String
+$freshExit = $LASTEXITCODE
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+Check "mjs --check-only exits 0 on a home with nothing installed" ($freshExit -eq 0) "exit=$freshExit"
+Check "mjs --check-only verifies the source payload when not installed" ($freshOut -match "verifying the source payload") ""
+Check "mjs --check-only says the patch file would be created" ($freshOut -match "cordis.patch.yml missing .* would be created with the plugin-") ""
+Check "mjs --check-only still writes nothing" ((InstalledPlugins $fresh).Count -eq 0) "count=$((InstalledPlugins $fresh).Count)"
+
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 $newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
 Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"

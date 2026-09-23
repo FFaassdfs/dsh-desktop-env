@@ -8,6 +8,7 @@
 //   dsh-client-ui-plugin-model-capabilities     -> patch id plugin-model-capabilities
 //   dsh-client-ui-plugin-core-version           -> patch id plugin-core-version
 //   dsh-client-ui-plugin-model-sync             -> patch id plugin-model-sync
+//   dsh-client-ui-plugin-provider-presets       -> patch id plugin-provider-presets
 //
 // For each plugin:
 //   1. copies package.json + lib/ into $DSH_HOME/profiles/node_modules
@@ -101,6 +102,16 @@ const PLUGINS = [
     writes: "",
     comment: "# dsh-client-ui-plugin-project-explorer: right-side project file tree (HANDOVER path C).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
     src: join(repoRoot, "plugins", "dsh-client-ui-plugin-project-explorer"),
+  },
+  {
+    name: "dsh-client-ui-plugin-provider-presets",
+    patchId: "plugin-provider-presets",
+    title: "预置供应商",
+    summary: "设置 →「模型」底部多一块「预置供应商」：内置 vekenllm 与电信算力两条完整配置（端点、协议、模型清单），点「启用」就写进配置、点「停用」就移除；密钥由你在面板里输入，走官方凭据引用。不需要时保持未启用即可。",
+    where: "设置 →「模型」页面底部",
+    writes: "只在你点「启用/停用/重置为预置」时写 ~/.dsh/settings.yaml 的 llm-pi-ai.providers.<路由>；密钥单独写入凭据引用（只写，不进配置文件）",
+    comment: "# dsh-client-ui-plugin-provider-presets: pre-staged provider profiles on the Models page footer (HANDOVER path Q).\n# Package lives in $DSH_HOME/profiles/node_modules (installed by setup.ps1, see HANDOVER.md).\n",
+    src: join(repoRoot, "plugins", "dsh-client-ui-plugin-provider-presets"),
   },
 ];
 
@@ -281,7 +292,13 @@ function installPackage(plugin) {
 // --- 2. patch entry (idempotent: skip if the insert id already exists) -------
 function ensurePatchEntry(plugin) {
   if (!existsSync(PATCH_PATH)) {
-    if (checkOnly) fail(`cordis.patch.yml missing (${PATCH_PATH})`);
+    // A dry run on a machine that has never installed anything has no patch file
+    // to read. That is the state a first install is supposed to be in, so it must
+    // not be reported as a verification failure.
+    if (checkOnly) {
+      console.log(`2. cordis.patch.yml missing (${PATCH_PATH}) — would be created with the ${plugin.patchId} entry`);
+      return;
+    }
     mkdirSync(dirname(PATCH_PATH), { recursive: true });
     writeFileSync(PATCH_PATH, "# Your patch layer for this dsh profile, applied after every bundle layer:\n# a top-level YAML array of loader patch entries (id-targeted config\n# overrides, disables, and insert lists; `!!js` expressions allowed).\n", "utf8");
   }
@@ -307,10 +324,22 @@ function ensurePatchEntry(plugin) {
 async function verify(plugin) {
   const requireFromProfile = createRequire(join(PROFILE_DIR, "package.json"));
 
-  // condition 1: package resolvable from the profile base
-  const pkgJsonPath = requireFromProfile.resolve(`${plugin.name}/package.json`);
+  // condition 1: package resolvable from the profile base.
+  // A --check-only run against a plugin that is NOT installed yet has nothing to
+  // resolve, which used to abort the dry run with MODULE_NOT_FOUND — exactly the
+  // run you want before installing something new. In that case verify the SOURCE
+  // payload instead: it is what a real run would copy, and the remaining
+  // conditions are all relative to the package root, so they check the same files.
+  let pkgJsonPath = null;
+  try {
+    pkgJsonPath = requireFromProfile.resolve(`${plugin.name}/package.json`);
+    console.log(`3a. resolve OK -> ${pkgJsonPath}`);
+  } catch (error) {
+    if (!checkOnly) throw error;
+    pkgJsonPath = join(plugin.src, "package.json");
+    console.log(`3a. not installed yet; verifying the source payload -> ${pkgJsonPath}`);
+  }
   const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
-  console.log(`3a. resolve OK -> ${pkgJsonPath}`);
 
   // condition 2: dsh.client declaration
   if (!pkg.dsh || !pkg.dsh.client || pkg.dsh.client.platform !== "web" || !Array.isArray(pkg.dsh.client.inject)) {
@@ -338,7 +367,7 @@ async function verify(plugin) {
   if (!existsSync(clientPath)) fail(plugin.name + ": client bundle missing: " + clientPath);
   const clientSource = readFileSync(clientPath, "utf8");
   if (!clientSource.includes("window.__ModuleLoader__.load")) fail(plugin.name + ": client bundle is not a ModuleLoader bundle");
-  console.log(`3c. exports['./client'] OK -> ${clientPath} (${clientSource.length} bytes)`);
+  console.log(`3c. exports['./client'] OK -> ${clientPath} (${Buffer.byteLength(clientSource, "utf8")} bytes)`);
 
   // condition 4: host main exists
   const mainSpec = pkg.main || "lib/index.js";
@@ -360,7 +389,9 @@ async function verifyPatch() {
     // js-yaml not resolvable from profile — skip YAML check (non-fatal)
   }
   if (parsed === null) {
-    console.log("3e. js-yaml not found from profile — patch YAML check skipped");
+    console.log(existsSync(PATCH_PATH)
+      ? "3e. js-yaml not found from profile — patch YAML check skipped"
+      : "3e. cordis.patch.yml does not exist yet (nothing installed) — patch YAML check skipped");
     return;
   }
   if (!Array.isArray(parsed)) fail("cordis.patch.yml top level is not an array");
@@ -369,7 +400,15 @@ async function verifyPatch() {
     .flatMap((e) => e.insert.map((i) => i && i.id))
     .filter(Boolean);
   for (const plugin of SELECTED) {
-    if (!ids.includes(plugin.patchId)) fail(`patch entry missing after append: ${plugin.patchId}`);
+    if (ids.includes(plugin.patchId)) continue;
+    // A dry run has not appended anything, so a missing id is the expected state
+    // there rather than a failure — otherwise --check-only could never pass
+    // before the first real install.
+    if (checkOnly) {
+      console.log(`3e'. patch entry ${plugin.patchId} would be appended (dry run)`);
+      continue;
+    }
+    fail(`patch entry missing after append: ${plugin.patchId}`);
   }
   console.log(`3e. patch YAML OK (ids: ${ids.join(", ")})`);
 }
