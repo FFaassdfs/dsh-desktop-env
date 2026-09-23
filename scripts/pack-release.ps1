@@ -287,111 +287,106 @@ try {
 } catch { $catalogueText = "" }
 if (-not $catalogueText) { $catalogueText = "  (run: node scripts\setup-plugins.mjs --describe)" }
 
-$readmeText = @"
-dsh-desktop portable release ($pkgName)
-=======================================
+# SINGLE-quoted here-string on purpose: this text is full of `$` and backticks that
+# the user must SEE (`$DSH_HOME`, `tar -xf`). Inside a double-quoted here-string
+# PowerShell interpolates/escapes them first, which silently produced two real bugs
+# until 2026-09-23: "`tar" became a TAB, and "$DSH_HOME" vanished (undefined here).
+# Values are substituted through placeholders instead (HANDOVER §37).
+$readmeText = @'
+dsh-desktop 便携发行包（__PKG__）
+=================================
 
-This package is self-contained: no Node.js, npm, Go or Wails needed.
-There is NO installer - it is portable, just unzip and run.
+本包自带全部依赖：目标机不需要 Node.js、npm、Go 或 Wails。
+没有安装步骤 —— 解压即用。
 
-Quick start
------------
-1. Unzip anywhere (for example D:\dsh-desktop-portable).
-2. Run dsh-desktop.exe in that folder.
-   The FIRST start unpacks the bundled runtime (runtime.zip -> runtime\, ~30-60 s,
-   one time only; the status panel shows the progress). After that it starts fast.
-   It then opens the Web UI in your browser.
+快速开始
+--------
+1. 解压到任意目录（例如 D:\dsh-desktop-portable）。
+2. 运行该目录下的 dsh-desktop.exe。
+   首次启动会先把内置运行时解开（runtime.zip -> runtime\，约 30-60 秒，只此一次；
+   状态面板会显示进度），之后就快了。随后它会在浏览器里打开 Web UI。
 
-Copying this package around
----------------------------
-The runtime is a single file (runtime.zip) on purpose: an unpacked runtime is
-~27,000 mostly tiny files and copying that on Windows costs minutes. So:
-  * move the ZIP, not the unpacked folder; or
-  * if you must copy the folder, use multithreaded robocopy, which is several
-    times faster for many small files:
-      robocopy <src> <dst> /E /MT:16 /NFL /NDL /NJH /NJS /NP /R:1 /W:1
-  * extract with `tar -xf <pkg>.zip -C <dir>` (built into Windows 10+) or 7-Zip;
-    Explorer's "Extract All" is the slowest option.
-
-Optional: install the custom plugins into your DSH home
--------------------------------------------------------
-The package ships these plugins (all are optional UI enhancements):
-
-$catalogueText
-
-Double-click install-offline.cmd      (recommended; it lists the descriptions above
-                                       and asks which ones you want)
-   or:  powershell -ExecutionPolicy Bypass -File install-offline.ps1
-        add -Plugins all | none | ask | 2,4 | explainer,project-explorer
-        Numbers are the ones listed above; separate several with commas (2,4).
-        An invalid answer installs nothing (nothing is guessed).
-        -CheckOnly lists the plugins and what would happen, without changing anything.
-        -SkipPlugins skips this step entirely.
-
-This copies the chosen plugins into %USERPROFILE%\.dsh and adds their entries
-to the profile patch. Plugins that are already installed are never removed here -
-the installer only adds/updates what you pick. Use -DSHome <dir> to target
-another home, and -AppDir <dir> to also copy the shell into an app directory.
-
-Updating plugins later (already-installed machines)
----------------------------------------------------
-Double-click update-plugins.cmd    (or: powershell -ExecutionPolicy Bypass -File update-plugins.ps1)
-It compares the bundled copies with what is installed (content hash, not version
-numbers) and only rewrites what actually changed:
-
-    update-plugins.cmd                     # update the plugins already installed
-    update-plugins.cmd -CheckOnly           # just report 已是最新 / 待更新 / 未安装
-    update-plugins.cmd -Plugins all         # also install any that are missing
-    update-plugins.cmd -Plugins 2,4         # numbered multi-select (same numbers as above)
-    update-plugins.cmd -DSHome <dir>        # a different DSH home
-    update-plugins.cmd --which-shell        # print which PowerShell it would use
-
-Which PowerShell runs this?
----------------------------
-The .cmd wrappers prefer PowerShell 7 (the standard install location first, then
-pwsh on PATH) and fall back to Windows PowerShell 5.1. Note that "powershell"
-ALWAYS means 5.1 -- PowerShell 7 ships as pwsh.exe only -- so if you type the
-command yourself, use pwsh for 7. Everything here also works on 5.1; run
-    install-offline.cmd --which-shell      (or update-plugins.cmd --which-shell)
-to see which engine a double-click would actually pick.
-
-Before overwriting it keeps a backup of the old copies; if the new copy fails its
-verification the previous one is restored automatically (the backup folder is
-kept for inspection in that case). Restart the shell afterwards to load changes.
-
-Requirements
+本包怎么拷贝
 ------------
-* Windows 10/11 with the WebView2 Runtime (shipped with Windows; if the window
-  stays blank, install "Microsoft Edge WebView2 Runtime").
-* Nothing else. The bundled runtime\ provides Node.js and the harness.
+运行时故意做成单文件（runtime.zip）：解开后是约 2.7 万个碎文件，在 Windows 上拷贝它们
+要按文件数交税，动辄几分钟。所以：
+  * 搬 ZIP，别搬解开后的目录；或者
+  * 必须拷目录时用多线程 robocopy（碎文件下快好几倍）：
+      robocopy <源> <目标> /E /MT:16 /NFL /NDL /NJH /NJS /NP /R:1 /W:1
+  * 解压用 tar -xf <包>.zip -C <目录>（Win10+ 自带）或 7-Zip；
+    资源管理器的「全部解压缩」是最慢的。
 
-Notes
------
-* Keep the folder layout intact - the shell resolves runtime\ (or runtime.zip) next
-  to the exe. Deleting runtime.zip after the first start is safe (runtime\ exists
-  by then), but keep it if you want a copyable single-file package.
-* The shell is SINGLE-INSTANCE per user: if another dsh-desktop (installed or
-  older portable copy) is already running, this one exits and just shows that
-  window. Close it first when trying the portable build next to an install.
-* API keys / .env are NOT included; configure them per machine.
-* The build is unsigned: Windows SmartScreen may warn on first run
-  ("More info" -> "Run anyway").
-* Plugin changes need a full shell restart to take effect.
-* Port 43080 is fixed; a bare http://127.0.0.1:43080/ answers 401 by design.
-* Logs: %APPDATA%\dsh-desktop\ (dsh.log, debug.log; rotated at 5 MiB / 1 MiB).
-* First start only: `dsh-desktop.exe --extract-runtime` unpacks the runtime
-  without opening the window (useful for scripts/installs).
+可选：把自定义插件装进你的 DSH home
+-----------------------------------
+本包自带这些插件（全部可选，都是界面增强）：
 
-Update
-------
-The shell checks the npm registry at startup and every 24 h - exactly like the
-source/script install - and downloads a newer harness with the bundled npm. The
-new version is installed into a staging folder and swapped in on the next start
-("check for updates" -> restart), so nothing is replaced while dsh is running.
-You can always unzip a newer package over this folder instead; your $DSH_HOME
-(sessions, settings, plugins) is kept separately and is not touched.
-"@
-Set-Content -Path (Join-Path $pkgDir "README.txt") -Value $readmeText -Encoding utf8
+__CATALOGUE__
+
+双击 install-offline.cmd          （推荐；它会列出上面的说明并问你要装哪些）
+   或： powershell -ExecutionPolicy Bypass -File install-offline.ps1
+        -Plugins all | none | ask | 2,4 | explainer,project-explorer
+        编号就是上面列的那些；多个用逗号隔开（如 2,4）。
+        输入无效则什么都不装（不会替你猜）。
+        -CheckOnly 只列出插件与将要发生的事，不写任何东西。
+        -SkipPlugins 完全跳过这一步。
+
+它把选中的插件复制到 %USERPROFILE%\.dsh，并把条目加进 profile 的 patch 文件。
+这里只加不减：已装好的插件不会被移除，安装器只添加/更新你选的那些。
+用 -DSHome <目录> 指定别的 DSH home；用 -AppDir <目录> 顺带把壳复制到应用目录。
+
+以后更新插件（已装过的机器）
+----------------------------
+双击 update-plugins.cmd    （或：powershell -ExecutionPolicy Bypass -File update-plugins.ps1）
+它按内容哈希（不是版本号）比较包内副本与已装副本，只重写真正变了的东西：
+
+    update-plugins.cmd                     # 更新"已经装了"的插件
+    update-plugins.cmd -CheckOnly           # 只报告：已是最新 / 待更新 / 未安装
+    update-plugins.cmd -Plugins all         # 连没装的也一起装齐
+    update-plugins.cmd -Plugins 2,4         # 按编号多选（编号同上）
+    update-plugins.cmd -DSHome <目录>       # 指定别的 DSH home
+    update-plugins.cmd --which-shell        # 打印它会用哪个 PowerShell
+
+用哪个 PowerShell
+-----------------
+.cmd 包装器优先 PowerShell 7（先找标准安装位置，再找 PATH 上的 pwsh），都没有才退回
+Windows PowerShell 5.1。注意 "powershell" 永远是 5.1（PowerShell 7 只提供 pwsh.exe），
+所以手敲命令要用 pwsh 才是 7.x。这里的一切在 5.1 上也能用；想知道双击实际会跑哪个：
+
+    install-offline.cmd --which-shell      （或 update-plugins.cmd --which-shell）
+
+覆盖前它会先备份旧副本；如果新副本校验不过，会自动恢复旧副本（那种情况下备份目录会
+保留供你检查）。改完插件要完全重启壳才生效。
+
+运行要求
+--------
+* Windows 10/11 且带 WebView2 Runtime（Windows 一般自带；若窗口一片空白，装一下
+  "Microsoft Edge WebView2 Runtime"）。
+* 没别的了。包内 runtime\ 自带 Node.js 与 harness。
+
+注意事项
+--------
+* 请保持目录结构 —— 壳会在 exe 同级解析 runtime\（或 runtime.zip）。首次启动后删掉
+  runtime.zip 是安全的（那时 runtime\ 已经存在），但想保留一个"单文件可拷"的包就别删。
+* 壳每个用户单实例：如果已经有另一个 dsh-desktop 在跑（安装版或更早的便携版），
+  这个会直接退出并只把那个窗口显示出来。要在安装版旁边试便携版时先关掉它。
+* 不包含任何 API Key / .env：每台机器自己配。
+* 未签名构建：首次运行 Windows SmartScreen 可能提示（「更多信息」→「仍要运行」）。
+* 插件改动需要完全重启壳才生效（只刷新浏览器无效）。
+* 端口固定 43080；裸访问 http://127.0.0.1:43080/ 返回 401 是设计如此。
+* 日志：%APPDATA%\dsh-desktop\（dsh.log、debug.log；分别在 5 MiB / 1 MiB 轮转）。
+* 仅首次启动：dsh-desktop.exe --extract-runtime 只解开运行时不打开窗口（便于脚本化）。
+
+更新
+----
+壳在启动时以及每 24 小时查一次 npm registry —— 与源码/脚本安装完全一致 —— 并用包内 npm
+下载更新的 harness。新版先装进暂存目录，下次启动才换入（「检查更新」→ 重启生效），
+所以 dsh 运行中不会被替换。你也可以随时把新版包解压覆盖到本目录；你的 DSH home
+（$DSH_HOME，默认 %USERPROFILE%\.dsh：会话、配置、插件）是单独存放的，不受影响。
+'@
+$readmeText = $readmeText.Replace('__PKG__', $pkgName).Replace('__CATALOGUE__', $catalogueText)
+# Write with an explicit UTF-8 BOM: `Set-Content -Encoding utf8` is BOM-less on
+# PowerShell 7, and a BOM-less UTF-8 Chinese .txt shows as mojibake in legacy Notepad.
+[IO.File]::WriteAllText((Join-Path $pkgDir "README.txt"), $readmeText, (New-Object Text.UTF8Encoding($true)))
 Ok "metadata written"
 
 # --- zip ----------------------------------------------------------------------

@@ -145,6 +145,23 @@ if (-not (Test-Path $shellExe)) {
   Check "installer menu keeps every Chinese title" ((@($titles | Where-Object { $ins.Text -match [regex]::Escape($_) })).Count -eq $total) ($ins.Text.Trim())
   Check "installer menu keeps the per-plugin description lines" ($ins.Text -match "在哪看：") ($ins.Text.Trim())
   Check "installer did not fall back to names-only" ($ins.Text -notmatch "no interactive console") ($ins.Text.Trim())
+
+  # The packaged README.txt is the first thing a user reads after unzipping, so it
+  # must survive both the encoding rules and the here-string rules it is built with
+  # (HANDOVER §37): Chinese with a BOM (legacy Notepad mojibakes a BOM-less UTF-8
+  # Chinese .txt), the literal `tar ...` and `$DSH_HOME` a double-quoted here-string
+  # used to eat, and no unreplaced placeholder.
+  $readmePath = Join-Path $pkg "README.txt"
+  Check "package ships README.txt" (Test-Path $readmePath) $readmePath
+  $readmeBytes = [IO.File]::ReadAllBytes($readmePath)
+  $readmeText = [IO.File]::ReadAllText($readmePath)
+  $readmeCjk = ([regex]::Matches($readmeText, '[\u4e00-\u9fff]')).Count
+  Check "README.txt has a UTF-8 BOM" ($readmeBytes.Length -ge 3 -and $readmeBytes[0] -eq 0xEF -and $readmeBytes[1] -eq 0xBB -and $readmeBytes[2] -eq 0xBF) ""
+  Check "README.txt is Chinese" ($readmeCjk -gt 500) "cjk=$readmeCjk"
+  Check "README.txt has no stray TAB from an escaped backtick" (-not $readmeText.Contains([char]9)) ""
+  Check "README.txt shows the literal DSH_HOME variable" ($readmeText.Contains('$DSH_HOME')) ""
+  Check "README.txt keeps the plugin catalogue" ($readmeText.Contains('位置：') -and (@($titles | Where-Object { $readmeText -match [regex]::Escape($_) })).Count -eq $total) ""
+  Check "README.txt has no unreplaced placeholder" (-not ($readmeText -match '__PKG__|__CATALOGUE__')) ""
 }
 
 # --- D. every non-ASCII .ps1 still carries its BOM ---------------------------
