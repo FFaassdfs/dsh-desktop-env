@@ -1,0 +1,42 @@
+name: localize-release-notes
+
+# One-off (and idempotent) maintenance job: the first ten releases (0.1.0-0.1.9) were
+# published by a workflow whose release body was English, while the template is
+# Chinese now. This rewrites those bodies (and titles) in Chinese, keeping each
+# release's OWN facts - the script parses them out of the release itself and derives
+# per-version capabilities from this repo's history.
+#
+# Re-running is a no-op: the script skips any body that already contains Chinese.
+#
+# It uses the built-in GITHUB_TOKEN (permissions: contents: write) - no PAT needed.
+# The repo description ("About") needs repository administration rights, which the
+# built-in token does not have, so that one field is set by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.work/localize-release-notes.mjs'
+      - '.github/workflows/localize-release-notes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  localize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Rewrite the release notes in Chinese
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .work/localize-release-notes.mjs --apply
