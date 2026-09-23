@@ -2,7 +2,7 @@
 
 > **文档版本：v1.18**（2026-09-23 更新）
 > 变更记录：
-> - v1.18 — **F9 → 6 个插件**（新增 `provider-presets`＝编号 6：把 vekenllm / 电信算力两条 provider profile 做成**随插件分发的预置**，GUI 内启用/停用 + 就地填 key；密钥只走官方 `credentials.set`，脚本与发行包永不携带；`HANDOVER.md` §33）；**F11 → 14 个套件/工具**（新增 `provider-presets.test.mjs` 180 断言 + `provider-presets-smoke.test.mjs` 19 断言；`plugin-selection.test.ps1` 57 项）；**F15** 包内插件数 5→6（`0.1.8`：raw 114.6 MB / 51 文件、zip 98 MB）。
+> - v1.18 — **F9 → 6 个插件**（新增 `provider-presets`＝编号 6：把 vekenllm / 电信算力两条 provider profile 做成**随插件分发的预置**，GUI 内启用/停用 + 就地填 key；密钥只走官方 `credentials.set`，脚本与发行包永不携带；`HANDOVER.md` §33）；**F11 → 14 个套件/工具**（新增 `provider-presets.test.mjs` 180 断言 + `provider-presets-smoke.test.mjs` 19 断言；`plugin-selection.test.ps1` 57 项）；**F15**：`0.1.8` 已发布（CI run #14 success；raw 114.6 MB / 51 文件、资产 zip 98.6 MB；`verify-release.mjs` **27/27**）。
 > 变更记录：
 > - v1.17 — **F7** 补「本地发行包目录 `D:\dsh\app\packages\`：只留最新一份 zip + `LATEST.txt`（打包自动清理旧包）」；**F11** → **12 个套件/工具**（新增两个入库工具 `verify-release.mjs` / `watch-release.mjs`；两个 pwsh 套件扩到 52/28 项并含"仓库根干净"断言）；目录约定见 `HANDOVER.md` §32 与 `AGENTS.md`「目录约定（多会话并行）」。
 > 变更记录：
