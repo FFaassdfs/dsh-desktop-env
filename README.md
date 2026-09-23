@@ -138,7 +138,10 @@ pwsh -File scripts\update-plugins.ps1 -Plugins all      # 连没装的也一起�
 pwsh -File scripts\update-plugins.ps1 -Plugins 2,4      # 编号多选（编号同安装菜单）
 pwsh -File scripts\update-plugins.ps1 -Force            # 即使内容一致也重拷
 pwsh -File scripts\update-plugins.ps1 -DSHome D:\h      # 指定 DSH_HOME
+.\scripts\update-plugins.cmd --which-shell              # 报告双击时实际会用哪个 PowerShell
 ```
+
+- **用哪个 PowerShell**：`.cmd` 包装器**优先 PowerShell 7**（先找标准安装位置 `…\PowerShell\7\pwsh.exe`，再找 PATH 上的 `pwsh`），都没有才退回 Windows PowerShell **5.1**。注意 **`powershell` 永远是 5.1**——PowerShell 7 只提供 `pwsh.exe`，所以手敲命令要用 `pwsh` 才是 7.x。**安装器/更新器在 5.1 下也已验证可用**（§34），不必为了它们去改 PATH。
 
 - **判定"是否最新"用内容哈希**（`package.json` + `lib/**`，由 `setup-plugins.mjs --status` 计算）——插件版本号都是 `0.1.0`，光看版本号没有意义。
 - **先备份再覆盖**：失败（校验不过）会**自动回滚**到旧副本，并把 `profiles\node_modules\.backup-<时间戳>\` 留给你检查；成功则删除备份（`-NoBackup` 可关闭备份）。
@@ -198,7 +201,8 @@ scripts/           # pack-release.ps1（打包）/ deploy-shell.ps1（部署）/
 
 详见 [`HANDOVER.md`](HANDOVER.md) §14「壳重定位与跨机应用说明」。
 
-> 文档版本：v1.4（2026-09-23 更新）— 新增「预置供应商」一节（路径 Q 插件：vekenllm / 电信算力预置，GUI 内启用/停用 + 填 key）；插件数 5→6、安装菜单编号表补第 6 行。
+> 文档版本：v1.5（2026-09-23 更新）— 「只更新插件」补「用哪个 PowerShell」与 `--which-shell` 自检（`powershell` 永远是 5.1，PS7 只有 `pwsh.exe`）；安装器/更新器在 5.1 下也已验证可用（HANDOVER §34）。
+> v1.4（2026-09-23 更新）— 新增「预置供应商」一节（路径 Q 插件：vekenllm / 电信算力预置，GUI 内启用/停用 + 填 key）；插件数 5→6、安装菜单编号表补第 6 行。
 > v1.3（2026-09-22 更新）— 结构清单补 `plugins/`/`scripts/`/`.work/`/`.cache/`；新增「目录约定（多会话并行）」段落（含"本地只留一份最新发行包 + `LATEST.txt`"与"别在仓库根留临时产物"）；补 §30 插件更新器与 §31 `--before` 闸门说明。
 > v1.2（2026-09-15）— 新增「更新到最新壳」一节（`update.ps1` 一条命令）；结构清单补 `logutil.go`/`update.ps1`/`setup.ps1`；说明壳源码在本仓库、fork `desktop/` 已废弃。
 > v1.1（2026-09-14）— 修正 dsh 版本号/端口所述、插件数（2→4）、`HANDOVER.md` §12→§14 引用、clone 与构建路径；新增指向 `project-facts-v1.0.md`。

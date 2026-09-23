@@ -344,6 +344,16 @@ numbers) and only rewrites what actually changed:
     update-plugins.cmd -Plugins all         # also install any that are missing
     update-plugins.cmd -Plugins 2,4         # numbered multi-select (same numbers as above)
     update-plugins.cmd -DSHome <dir>        # a different DSH home
+    update-plugins.cmd --which-shell        # print which PowerShell it would use
+
+Which PowerShell runs this?
+---------------------------
+The .cmd wrappers prefer PowerShell 7 (the standard install location first, then
+pwsh on PATH) and fall back to Windows PowerShell 5.1. Note that "powershell"
+ALWAYS means 5.1 -- PowerShell 7 ships as pwsh.exe only -- so if you type the
+command yourself, use pwsh for 7. Everything here also works on 5.1; run
+    install-offline.cmd --which-shell      (or update-plugins.cmd --which-shell)
+to see which engine a double-click would actually pick.
 
 Before overwriting it keeps a backup of the old copies; if the new copy fails its
 verification the previous one is restored automatically (the backup folder is

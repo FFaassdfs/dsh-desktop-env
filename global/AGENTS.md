@@ -5,7 +5,7 @@
 > ⚠️ **本文件是「全局预设」的权威副本**（本仓库 `global/AGENTS.md`）。部署机上的 `~/.dsh/AGENTS.md` 是安装副本：首次部署时由 `setup.ps1` 拷贝；更新全局预设 = 改本文件 + 在需要更新的机器上重装（删除 `~/.dsh/AGENTS.md` 后重跑 setup，或手动拷贝）。
 > **🔴 维护纪律**：改本文件后必须同步安装副本（`Copy-Item` 覆盖 `~/.dsh/AGENTS.md`），否则会出现「权威副本落后于安装副本」——2026-08-19 已发生过一次（图片/PDF 策略与正式文件版本化约定只在安装副本里）。
 >
-> **文档版本：v2.18**（2026-09-23 更新；上一版 v2.17 = 2026-09-18）——本次补充「环境常见坑」两条 **Windows PowerShell 5.1 专有差异**（① 5.1 按**控制台代码页**解码子进程 stdout → 中文乱码可吞掉 JSON 收尾引号；② 5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作**一个对象**）。两者只在**干净 Windows**（只有 5.1 + 代码页 936）上发作，开发机装了 PS7 时**全绿也测不出来**。实例见 `dsh-desktop-env` 的 `HANDOVER.md` §34。
+> **文档版本：v2.19**（2026-09-23 更新；上一版 v2.18 = 同日）——补一条「环境常见坑」：**双引号 here-string 里的裸反引号会让整个脚本解析失败**（把 Markdown 式 `` `code` `` 写进 `@"..."@` 内容里 → PowerShell 当转义符 → `scripts/pack-release.ps1` 被写坏、3 个测试套件同时以 ParserError 崩）。v2.18 内容见下。
 
 ## 基本规则
 
@@ -75,4 +75,5 @@ python D:\opencode\001\pdf_pipeline.py <文件路径>
 - **推送 `.github/workflows/*`**：内置 `GITHUB_TOKEN` 推不了 workflow 文件，需带 `workflow` scope 的 PAT（存 secret 使用）。
 - **DSH 模态枚举只有 `text`/`image`**：`dsh-llm-pi-ai` 的 `MODALITIES = {text, image}`，在 provider profile 写 `video`/`audio` 会以 `settings-rejected` 写入失败；模态写在**条目级 `input`**（优先级：条目级 → provider 级 → 路由级 `defaultInput`）。
 - **双引号 here-string 里生成 PowerShell 代码时，`$false` 必须转义成 `` `$false ``**（2026-09-18 实测踩到）：不转义会被内插成字面量 `False`，生成 `New-Object ...UTF8Encoding(False)` 这类非法调用，运行时报「False 不是 cmdlet」而**静默失效**（本次导致生成的 profile 里三行编码设置全废）→ 生成器里写 `` `$false ``，或用单引号 here-string `@'...'@`；推荐 `[System.Text.UTF8Encoding]::new($false)`。
+- **🔴 双引号 here-string（`@"..."@`）的「内容」里也不能有裸反引号**（2026-09-23 实测踩到）：反引号在 PowerShell 里是**转义符**，往 here-string 里写 Markdown 式 `` `code` ``（尤其 `` `u ``、`` `i ``）会被当成转义序列 → **整个脚本解析失败**（本次把 `scripts/pack-release.ps1` 的 README 文本写成带反引号 → 3 个测试套件同时以 `ParserError: The Unicode escape sequence is not valid` 崩，而不是给出有用的失败信息）。**对策**：here-string 内避免反引号（纯文本/README 本来也不需要），要用就改用单引号 here-string `@'...'@`；**且改完立刻做一次解析自检**——`[ScriptBlock]::Create([IO.File]::ReadAllText($p))`，PS7 与 5.1 各跑一次（成本 1 秒，能把「静默到运行时才炸」提前到写文件那一刻）。
 - **Windows 上别生成以「.」结尾的文件名**（2026-09-18 实测踩到）：用 `new Date().toISOString().replace(/[-:T]/g,'')` 做时间戳时，`slice(0,15)` 会截到毫秒前的小数点，生成 `xxx.bak-20260918085529.`；这种名字 `Get-ChildItem` **列得出来**，但 `Test-Path`/`Get-Item`/`Copy-Item` 因 Win32 剥掉结尾点而**报「不存在」**（备份等于取不回来）→ 时间戳只取到秒（`slice(0,14)`）；已经生成了的只能走 `\\?\` 前缀改名：`[IO.File]::Move("\\?\$p.", $p)`。

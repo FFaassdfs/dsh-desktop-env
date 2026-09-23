@@ -160,7 +160,100 @@ foreach ($file in @(Get-ChildItem $repo -Filter *.ps1 -Recurse -File |
 }
 Check "every non-ASCII .ps1 has a UTF-8 BOM" ($bomMissing.Count -eq 0) ("missing BOM: " + ($bomMissing -join ", "))
 
-# --- E. the repo root stayed clean -------------------------------------------
+# --- E. which engine do the .cmd wrappers pick? ------------------------------
+# `powershell` is ALWAYS 5.1 (PowerShell 7 ships as pwsh.exe only), so the wrapper
+# decides 5.1-vs-7 by NAME. It must prefer the standard PS7 install location, then
+# PATH, then 5.1 — including when PATH is stale (a cmd window opened before PS7 was
+# installed does not see the new PATH entry), which is exactly how a user ends up on
+# 5.1 without meaning to.
+Write-Host "`n==> E. .cmd wrapper engine resolution" -ForegroundColor Cyan
+$picker = Join-Path $out "which.cmd"
+@'
+@echo off
+setlocal
+set "ProgramFiles=%~1"
+set "ProgramW6432=%~1"
+if /i "%~3"=="nops7" set "PATH=C:\Windows\System32\WindowsPowerShell\v1.0"
+call "%~2" --which-shell
+'@ | Set-Content -Path $picker -Encoding ASCII
+
+function Get-ChosenEngine([string]$fakePf, [string]$wrapper, [string]$mode) {
+  $line = & cmd /c "`"$picker`" `"$fakePf`" `"$wrapper`" $mode" 2>&1 |
+    Where-Object { $_ -match '\S' } | Select-Object -First 1
+  return "$line".Trim()
+}
+
+$pfWith = Join-Path $out "pf-with"      # pretends PowerShell 7 lives here
+$pfWithout = Join-Path $out "pf-without"
+New-Item -ItemType Directory -Force (Join-Path $pfWith "PowerShell\7") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $pfWithout "PowerShell\7") | Out-Null
+# existence is all the wrapper checks in --which-shell mode, so a stub is enough
+Copy-Item "$env:SystemRoot\System32\where.exe" (Join-Path $pfWith "PowerShell\7\pwsh.exe") -Force
+
+$wrappers = @(
+  @{ name = "install-offline.cmd"; path = Join-Path $repo "install-offline.cmd" },
+  @{ name = "update-plugins.cmd"; path = Join-Path $repo "scripts\update-plugins.cmd" }
+)
+foreach ($w in $wrappers) {
+  Check "$($w.name) exists" (Test-Path $w.path) $w.path
+  if (-not (Test-Path $w.path)) { continue }
+  $chosenInstall = Get-ChosenEngine $pfWith $w.path "normal"
+  Check "$($w.name) prefers the PS7 install location over PATH" `
+    ($chosenInstall -eq (Join-Path $pfWith "PowerShell\7\pwsh.exe")) "chose: $chosenInstall"
+  $chosenFallback = Get-ChosenEngine $pfWithout $w.path "nops7"
+  Check "$($w.name) falls back to PowerShell 5.1 with no PS7 anywhere" `
+    ($chosenFallback -eq "powershell") "chose: $chosenFallback"
+  # only meaningful where PS7 is actually installed
+  if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    $chosenPath = Get-ChosenEngine $pfWithout $w.path "normal"
+    Check "$($w.name) uses pwsh from PATH when Program Files has none" `
+      ($chosenPath -eq "pwsh") "chose: $chosenPath"
+  } else {
+    Write-Host "  SKIP  $($w.name) PATH branch: no pwsh on this machine" -ForegroundColor Yellow
+  }
+  # the wrappers ARE the 5.1 entry point, so they must stay pure ASCII: non-ASCII
+  # in a .cmd is decoded with the console codepage and can garble or break parsing.
+  $cmdBytes = [IO.File]::ReadAllBytes($w.path)
+  $nonAsciiBytes = @($cmdBytes | Where-Object { $_ -gt 127 }).Count
+  Check "$($w.name) is pure ASCII" ($nonAsciiBytes -eq 0) "non-ascii bytes: $nonAsciiBytes"
+}
+
+# --- F. every shipped .ps1 parses under BOTH engines -------------------------
+# A parse error is fatal and silent until something runs the file. This session
+# broke scripts/pack-release.ps1 exactly that way: a backtick inside a
+# double-quoted here-string is an ESCAPE in PowerShell (`u... is a Unicode escape),
+# so the README text made the whole script unparseable — and three suites failed
+# with a ParserError instead of a useful message. One second of parsing would have
+# caught it, so it is now a permanent check on both engines.
+Write-Host "`n==> F. parse every shipped .ps1 (PS7 in-process + 5.1 child)" -ForegroundColor Cyan
+$ps1Files = @(Get-ChildItem $repo -Filter *.ps1 -Recurse -File |
+  Where-Object { $_.FullName -notmatch '\\node_modules\\|\\.cache\\|\\.git\\|\\build\\' })
+Check "there are .ps1 files to check" ($ps1Files.Count -gt 0) "found $($ps1Files.Count)"
+$ps7Bad = @()
+foreach ($f in $ps1Files) {
+  try { [void][ScriptBlock]::Create([IO.File]::ReadAllText($f.FullName)) }
+  catch { $ps7Bad += "$($f.Name): $($_.Exception.Message)" }
+}
+Check "every .ps1 parses under PowerShell 7" ($ps7Bad.Count -eq 0) ($ps7Bad -join " | ")
+
+$parseProbe = Join-Path $out "parsecheck.ps1"
+@'
+param([string]$Repo)
+$bad = @()
+$files = @(Get-ChildItem $Repo -Filter *.ps1 -Recurse -File |
+  Where-Object { $_.FullName -notmatch '\\node_modules\\|\\.cache\\|\\.git\\|\\build\\' })
+foreach ($f in $files) {
+  try { [void][ScriptBlock]::Create([IO.File]::ReadAllText($f.FullName)) }
+  catch { $bad += "$($f.Name): $($_.Exception.Message)" }
+}
+if ($bad.Count -gt 0) { "PARSEFAIL " + ($bad -join " | "); exit 1 }
+"PARSEOK $($files.Count) file(s)"
+'@ | Set-Content -Path $parseProbe -Encoding UTF8
+$parsed51 = Invoke-In51 $parseProbe "-Repo '$repo'"
+Check "every .ps1 parses under Windows PowerShell 5.1" ($parsed51.Exit -eq 0 -and $parsed51.Text -notmatch "PARSEFAIL") ($parsed51.Text.Trim())
+Check "the 5.1 parse probe saw the same file count" ($parsed51.Text -match "PARSEOK $($ps1Files.Count) file") ($parsed51.Text.Trim())
+
+# --- G. the repo root stayed clean -------------------------------------------
 $newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
 Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"
 
