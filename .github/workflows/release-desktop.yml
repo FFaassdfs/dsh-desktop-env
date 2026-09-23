@@ -128,28 +128,49 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: dsh-desktop ${{ github.event.inputs.tag || github.ref_name }}
+          name: dsh-desktop ${{ github.event.inputs.tag || github.ref_name }}（便携包 · Windows x64）
           files: |
             dist/*.zip
             dist/SHA256SUMS.txt
+          # NOTE (maintenance): the plugin table below mirrors scripts/setup-plugins.mjs
+          # PLUGINS. When the plugin list changes, update this table AND the "插件" row
+          # above it, the same way README.md's table is updated (HANDOVER §28).
           body: |
-            Portable dsh-desktop release: **self-contained** (no Node.js, npm, Go or Wails needed on the target machine).
+            **dsh-desktop 便携发行包**：解压即用，目标机**不需要** Node.js、npm、Go 或 Wails。
 
-            | item | value |
+            | 项 | 值 |
             |---|---|
-            | shell | commit `${{ github.sha }}` |
-            | harness | `@deepseek-ai/dsh ${{ env.DSH_VERSION }}` (bundled offline) |
-            | node | `${{ env.NODE_VERSION }}` (bundled portable runtime) |
-            | npm | bundled — the portable shell **self-updates** like the script install |
+            | 壳 | commit `${{ github.sha }}` |
+            | 核心 | `@deepseek-ai/dsh ${{ env.DSH_VERSION }}`（离线内置） |
+            | Node | `24.x` 便携运行时（`${{ env.NODE_VERSION }}`） |
+            | npm | 已内置 —— 便携壳与源码装一样**能自更新** |
+            | 插件 | 6 个自定义插件随包（`install-offline.cmd` 里可选装哪些） |
 
-            **Quick start**: unzip anywhere, optionally run `install-offline.cmd`
-            (choose which custom plugins to install into `%USERPROFILE%\.dsh`), then run `dsh-desktop.exe`.
+            **快速开始**
 
-            **Updates**: the shell checks the npm registry at startup and every 24 h; a newer harness is
-            downloaded with the bundled npm into a staging folder and swapped in on the next start
-            (restart to apply). Unzipping a newer package over the folder works too.
+            1. 把 zip 解压到任意目录（例如 `D:\dsh-desktop`）
+            2. 双击 `dsh-desktop.exe` —— 首次启动会先解压内置运行时（约 40 秒，只此一次）
+            3. （可选）双击 `install-offline.cmd`，按提示选择要装进 `%USERPROFILE%\.dsh` 的插件，装完**完全退出壳再重启**
+            4. 想跳过界面先解压运行时：`dsh-desktop.exe --extract-runtime`
 
-            Notes: API keys/`.env` are not included; the build is unsigned, so SmartScreen may warn
-            on first run; port 43080 is fixed; sessions/settings live in `$DSH_HOME` and survive updates.
-            Keep the folder layout intact (the shell resolves `runtime\` next to the exe) and note the
-            shell is single-instance per user.
+            **6 个内置插件**（安装菜单显示同一份说明，单一数据源 = `scripts\setup-plugins.mjs --describe`）
+
+            | 编号 | 短名 | 说明 | 在哪看到 |
+            |---|---|---|---|
+            | 1 | core-version | 核心版本徽标 | 界面左下角 |
+            | 2 | explainer | 插件说明面板（逐插件中文说明 + 一键开关） | 设置 →「插件」 |
+            | 3 | model-capabilities | 模型能力清单（能否识图 / 上下文 / 推理档位） | 设置 →「模型能力」 |
+            | 4 | model-sync | 模型同步（拉候选、逐字段对比后写回配置） | 设置 →「模型」→ 提供商卡片 |
+            | 5 | project-explorer | 项目文件树（拖文件即插路径） | 界面最右侧 |
+            | 6 | provider-presets | 预置供应商（vekenllm / 电信算力的完整配置预制，点「启用」即用；**密钥由你在面板里输入，随包不携带任何密钥**） | 设置 →「模型」页面底部 |
+
+            **更新**：壳启动时以及每 24 小时会查一次 npm registry，发现新版就用**包内 npm** 下载到暂存目录，下次启动换入（只作用于 harness，`node.exe` 不动）；也可以直接解压更新版覆盖本目录。
+
+            **注意**
+
+            - 包内**不含**任何 API Key / `.env`：每台机器自己配（预置供应商面板里填，或在设置里填）
+            - 未签名构建：首次运行可能有 SmartScreen 提示
+            - 端口固定 **43080**；会话与配置在 `$DSH_HOME`（`%USERPROFILE%\.dsh`），更新不丢
+            - 请保持目录结构（壳按 exe 同级的 `runtime\` 解析便携运行时）；**每个用户单实例**
+            - 拷贝/分发请**搬 zip**；必须拷目录时用 `robocopy <源> <目标> /E /MT:16 /NFL /NDL /NJH /NJS /NP`
+            - 插件改动需**完全退出壳并重启**才生效（只刷新浏览器无效）
