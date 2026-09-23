@@ -2179,7 +2179,8 @@ ctx.slots.register({ name: "settings.models.footer", id: "provider-presets" }, P
 | 本机实视（**用户复核**） | 修好并 `setup-plugins.mjs` 重装后，**只刷新页面（Ctrl+F5）**「预置供应商」面板即出现 ✅ —— 同时验证了 §38.3 那条"客户端 bundle 改动无需重启壳"（宿主按内容算 rev） |
 | 全套件 | plugin-selection **59** / update-plugins **28** / ps51-encoding **38** / provider-presets **184** + smoke **19** + 其余 node 套件全过 |
 | 提交 | `a9fccbd`（插件修复 + 契约断言 + §38 + README v1.1 + F22） |
-| 发布 | **0.1.10**（同一提交内容；让另一台机器能一次下到含修复的包） |
+| 发布 | **0.1.10**（`917b2a1`；CI **run #16 = success**；资产端到端 `verify-release.mjs` **27/27**，并专项核对包内 `provider-presets/lib/client.js` **含修复** `id: "provider-presets"`。该包同时带上 §37 的**中文 README.txt**） |
+| 标题修正 | 0.1.10 是**第一个**用 §36 中文模板发出来的版本，标题把 tag 前缀重复成 `dsh-desktop desktop-v0.1.10`。已修模板（pack 步骤把 `$shellVersion` 写进 `GITHUB_ENV`，标题用 `env.SHELL_VERSION`）**并让 `localize-release-notes.mjs` 顺带纠正标题**（把"是否已本地化"拆成**正文是否中文**与**标题是否规范**两个独立判据，只改需要改的），CI run #2 已把 0.1.10 标题改成 `dsh-desktop 0.1.10（便携包 · Windows x64）` |
 | ⚠️ 遗留 | 0.1.9 的包**仍含旧插件**（面板不显示）；已告知用户两条路：改一行热修 / 下 0.1.10。用户选择后者 |
 
 
