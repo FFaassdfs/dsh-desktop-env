@@ -52,6 +52,16 @@ if ($DSHome.StartsWith("~")) { $DSHome = $env:USERPROFILE + $DSHome.Substring(1)
 if (-not [System.IO.Path]::IsPathRooted($DSHome)) {
   $DSHome = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $DSHome))
 }
+# -AppDir must be absolute. A relative value is almost always a mistake (a stray
+# positional argument bound to this parameter) and would silently create a folder
+# named after that argument in the current directory - that is exactly how junk
+# folders like "2, 4" ended up in the repository root on 2026-09-22 (HANDOVER §32).
+if ($AppDir) {
+  if ($AppDir.StartsWith("~")) { $AppDir = $env:USERPROFILE + $AppDir.Substring(1) }
+  if (-not [System.IO.Path]::IsPathRooted($AppDir)) {
+    throw "-AppDir must be an absolute path (got '$AppDir'); refusing to create '$AppDir' in the current folder"
+  }
+}
 
 # --- plugin selection ---------------------------------------------------------
 function Get-BundledPluginNames {

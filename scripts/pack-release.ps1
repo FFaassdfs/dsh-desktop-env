@@ -25,6 +25,7 @@
 #   pwsh -File scripts\pack-release.ps1 -SkipZip               # stage only
 #   pwsh -File scripts\pack-release.ps1 -NoRuntimeArchive      # keep runtime\ as loose files
 #   pwsh -File scripts\pack-release.ps1 -CheckOnly             # plan only
+#   pwsh -File scripts\pack-release.ps1 -KeepOldPackages       # do not prune older zips in -OutDir
 #
 # -RuntimeMode: auto (default) | dsh-tree | full-node-modules
 #   auto picks by layout: nested deps inside @deepseek-ai/dsh -> dsh-tree;
@@ -47,6 +48,7 @@ param(
   [switch]$NoRuntimeArchive,
   [switch]$SkipZip,
   [switch]$KeepStaging,
+  [switch]$KeepOldPackages,
   [switch]$CheckOnly
 )
 $ErrorActionPreference = "Stop"
@@ -399,6 +401,27 @@ if (-not $SkipZip) {
   $sums = Join-Path $OutDir "SHA256SUMS.txt"
   "$hash  $pkgName.zip" | Set-Content -Path $sums -Encoding ascii
   Ok "SHA256 -> $sums"
+
+  # Keep exactly ONE release package in the output folder (this build), so that
+  # folder is always "the latest official build to copy" - see HANDOVER §32.
+  if (-not $KeepOldPackages) {
+    Get-ChildItem $OutDir -File -Filter "dsh-desktop-*.zip" |
+      Where-Object { $_.FullName -ne (Get-Item $zipPath).FullName } |
+      ForEach-Object { Remove-Item $_.FullName -Force; Ok "removed older package $($_.Name)" }
+  }
+  $latest = Join-Path $OutDir "LATEST.txt"
+  @(
+    "dsh-desktop portable release - latest local copy"
+    "file    : $pkgName.zip"
+    "version : $ShellVersion (harness @deepseek-ai/dsh $DshVersion)"
+    "built   : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    "size    : $([math]::Round((Get-Item $zipPath).Length/1MB,1)) MB"
+    "sha256  : $hash"
+    ""
+    "Copy THIS zip to another machine, then unzip it and run dsh-desktop.exe."
+    "(the output folder keeps only the newest package; -KeepOldPackages disables pruning)"
+  ) | Set-Content -Path $latest -Encoding utf8
+  Ok "LATEST.txt -> $latest"
 }
 Write-Host ""
 Write-Host "package : $pkgName"

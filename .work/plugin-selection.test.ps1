@@ -10,6 +10,9 @@
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $repo
+# Guard: this suite must not litter the repository root (a stray positional arg
+# once created folders named "2, 4" there - see HANDOVER §32).
+$rootBefore = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name })
 $out = ".cache\seltest"
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -197,6 +200,8 @@ $spaced = & node "$repo\scripts\setup-plugins.mjs" --plugins "2 4" --check-only 
 Check "mjs accepts space-separated numbers (2 4)" (($two | Where-Object { $spaced -match [regex]::Escape("$_ (") }).Count -eq 2) ""
 
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+$newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
+Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"
 Write-Host ""
 Write-Host ("RESULT: {0} passed, {1} failed" -f $pass, $fail) -ForegroundColor $(if ($fail -eq 0) { "Green" } else { "Red" })
 exit $(if ($fail -eq 0) { 0 } else { 1 })

@@ -7,6 +7,8 @@
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $repo
+# Guard: this suite must not litter the repository root (see HANDOVER §32).
+$rootBefore = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name })
 $out = ".cache\uptest"
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -137,6 +139,8 @@ Write-Host "`n==> 7. the .cmd wrapper exists next to the script" -ForegroundColo
 Check "update-plugins.cmd copied with the script" (Test-Path (Join-Path $pkg "update-plugins.cmd")) ""
 
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+$newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
+Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"
 Write-Host ""
 Write-Host ("RESULT: {0} passed, {1} failed" -f $pass, $fail) -ForegroundColor $(if ($fail -eq 0) { "Green" } else { "Red" })
 exit $(if ($fail -eq 0) { 0 } else { 1 })

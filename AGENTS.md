@@ -2,7 +2,7 @@
 
 > 本文件每个会话开工时自动加载。详细交接细节见同目录 `HANDOVER.md`。默认中文回复。
 >
-> **当前状态（2026-09-20）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。旧记的 `0.1.2-rc.1`/`0.1.5-rc.1` 均为过时快照，见 `HANDOVER.md` §21）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；5 个插件均已纳入 `scripts/setup-plugins.mjs`，host 与 client 半区均已验证可见（§21.3）。**P0 全部关闭**（§24：fork 降级为纯镜像 + `SYNC_TOKEN` 已换新验证）；**多机更新链已修好**（§25/§26：`update.ps1` 一条命令 + 首装/更新统一落点）。
+> **当前状态（2026-09-22）**：源码区 = `D:\dsh\dsh-desktop-env`（本仓库，唯一权威工作区）；应用区 = `D:\dsh\app\current`（**唯一启动入口**，首装/更新同一落点）；壳 = **launcher @ 43080**（已运行 P0-3 加固版：退避 + 日志轮转，见 §23）；核心 = **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm latest` 同版本。安装/打包必须带 `--before` 时间闸门，见 §31）；最新便携包 = **`desktop-v0.1.7`**（本地留存 = `D:\dsh\app\packages\`，只留一份，见 §32）；旧工作区 `D:\opencode\001\dsh-desktop` **已冻结**；**5 个插件**均已纳入 `scripts/setup-plugins.mjs`（编号 4 = 新增的 `model-sync` 模型同步，§29），host/client 均已验证（§21.3）。**P0 全部关闭**（§24）；**多机更新链已修好**（§25/§26）；**插件更新器** = `scripts\update-plugins.ps1`（§30）；**目录约定（多会话）见下方新增章节 + §32**。
 
 ## 开工必做
 
@@ -17,6 +17,28 @@
 5. **正式文件版本化（2026-08-19 约定）**：正式文件（配置说明/部署脚本/交接文档等会被其他 agent 复用/执行的文件）**每次更新后必须在文件内标注版本号 + 时间戳**并附变更记录；**文件名也要带版本号**（如 `xxx-setup-v3.4.md`）；语义化递增（大改→主号，小修→次号）。已实例：`vekenllm-auto-setup-v1.7.md`、`vekenllm-deepseek-v4-flash-setup-v3.4.md`、`litellm-auto-router-setup-v1.0.md`。
 6. **参数以实测为准（2026-08-19 约定）**：外部服务/模型参数（上下文、输出上限、能力开关）文档只给推荐值/快照，**配置前必须实测**（如 vekenllm `/v1/models`），冲突时以实测为准。
 
+## 目录约定（多会话并行，2026-09-22 起）
+
+> **目的**：多个会话同时在这个仓库里干活时，各写各的、互不踩踏，且仓库根永远只有"源码 + 文档"。详见 `HANDOVER.md` §32。
+
+| 位置 | 放什么 | 规则 |
+|---|---|---|
+| **仓库根** `<repo>\` | 源码 / 脚本 / 正式文档 / `plugins\` / `scripts\` / `.work\` / `global\` / `.github\` | **只放会入库的东西**。任何临时文件、临时目录、试验产物**都不要落在根目录** |
+| `<repo>\.cache\<用途>\` | 临时/缓存：测试骨架、下载的包、npm/go 缓存、诊断输出 | **gitignored**。**按用途或会话起子目录**（如 `.cache\selftest`、`.cache\verify-0.1.7`），**别共用固定名字**——两个会话用同一个目录会互相删掉对方的东西 |
+| `<repo>\.work\` | 可复用的开发脚本与测试套件（**入库**，别的会话能直接用） | 新增脚本/测试放这里，并在 HANDOVER/facts 留索引 |
+| `D:\dsh\app\current\` | **唯一启动入口**（已部署的壳 exe + `VERSION.txt`） | 改壳后由 `update.ps1` / `scripts\deploy-shell.ps1` 部署；运行中的壳持有文件锁 |
+| `D:\dsh\app\versions\<日期>\` | 历史部署归档 | 由部署脚本自动写，保留 |
+| **`D:\dsh\app\packages\`** | **本地唯一的发行包**（你要拷去别的机器的那份） | 由 `pwsh -File scripts\pack-release.ps1 -ShellVersion <ver> -OutDir D:\dsh\app\packages` 生成；**打包时自动删掉旧包**（`-KeepOldPackages` 可关），并写 `LATEST.txt`（文件名/版本/大小/SHA256）与 `SHA256SUMS.txt`。**复制时只认 `LATEST.txt` 指向的那个 zip** |
+| `D:\dsh\001\`、`D:\dsh\_migrate-2026-09-14\`、`D:\dsh\official-desktop-eval\` | 其他项目区 / 迁移归档 / 官方桌面端评估交接 | 不属于本仓库，别往里写 |
+
+**🔴 两条硬规则（都有真实事故）**：
+
+1. **别在仓库根留临时目录**：2026-09-22 曾因调用 `install-offline.ps1` 时漏了 `-Plugins` 标志，插件列表字符串被**位置绑定到 `-AppDir`**，在仓库根创建出 `2, 4`、`4,2`、`explainer,project-explorer` 等 5 个目录（各含一个 11 MB 的 exe），又被 `git add -A` **误提交**（`3f30a63`）。
+   - 现已加护栏：`-AppDir` **必须是绝对路径**（否则直接报错，不建目录）；
+   - 两个 pwsh 测试套件末尾都加了断言"**测试结束时仓库根没有新增条目**"。
+   - **仍然**：提交前先 `git status` 看一眼，**不要无脑 `git add -A`**（本次就是它把垃圾带进库的）。
+2. **临时目录带用途后缀**：`.cache\<用途或 tag>`。验证脚本会自己建 `.cache\verify-<版本>`；测试建 `.cache\seltest` / `.cache\uptest`。**发现别人占用了就换个名字**，不要清空别人的目录。
+
 ## 权威源码位置（别改错）
 
 > ⚠️ **2026-09-14 迁移后更新**：壳源码权威位置已变更，旧记录（`.work\deepseek-harness\desktop\`）**作废**。
@@ -27,7 +49,7 @@
   - 改壳后：`wails build` → 用 **`pwsh -File scripts\deploy-shell.ps1 -BuiltExe build\bin\dsh-desktop.exe`** 部署到应用区（首装/更新共用这段逻辑；exe 被运行中的壳锁住时自动暂存 `.new.exe`）
   - 🟢 **一条命令搞定（含 pull/插件/构建/部署）**：`pwsh -File update.ps1`（开关 `-SkipFrontend` 只编 Go、`-CheckOnly` 干跑、`-AppDir` 改应用区）；首次部署用 `setup.ps1`。**壳源码就在本仓库**，fork 根级 `desktop/` 已废弃（见 `HANDOVER.md` §24/§25）
   - 回归验证「新克隆能否构建」：`pwsh -File .work\verify-fresh-clone.ps1`
-  - 📦 **便携发行包（离线一键，目标机零前置依赖）**：`pwsh -File scripts\pack-release.ps1` 打出 `dsh-desktop-<shell>-dsh<ver>-win-x64.zip`（含便携 Node + 离线 harness 树 + 4 插件 + `install-offline.ps1`）；打 tag `desktop-v*` 由 `.github/workflows/release-desktop.yml` 自动发 Release（见 `HANDOVER.md` §27）。壳已支持便携运行时（`$DSH_DESKTOP_RUNTIME` → `<exeDir>\runtime` → `<exeDir>`），便携模式下**跳过 npm 自更新**
+  - 📦 **便携发行包（离线一键，目标机零前置依赖）**：`pwsh -File scripts\pack-release.ps1` 打出 `dsh-desktop-<壳版本>-dsh<harness版本>-win-x64.zip`（含便携 Node + npm + 单文件 `runtime.zip` 离线 harness 树 + **5 个插件** + `install-offline.ps1` + `update-plugins.ps1`）；打 tag `desktop-v*` 由 `.github/workflows/release-desktop.yml` 自动发 Release（见 `HANDOVER.md` §27/§30）。壳已支持便携运行时（`$DSH_DESKTOP_RUNTIME` → `<exeDir>\runtime` → `<exeDir>`），便携模式下自更新走**包内 npm**（§27.9）
 - **旧工作区 `D:\opencode\001\dsh-desktop` 已冻结**（见其 `FROZEN.md`）：**不要再写入/提交**
 - **fork 本地克隆不在本工作区**：`.work\deepseek-harness` 未迁移；fork 仅作官方镜像用，历史补丁存 `.work\migration-2026-09-14\`
 - **官方 harness 源码**（`packages/`、`apps/`、`vendor/` 等，若日后自行 clone）：**只读，不要改**——会被官方同步覆盖

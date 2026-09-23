@@ -160,7 +160,13 @@ main.go            # Wails 入口（单实例锁、固定窗口 440×400 Disable
 frontend/          # 状态面板页（Vite + 原生 JS）
 update.ps1         # 一键更新（pull + 插件 + 构建 + 部署）
 setup.ps1          # 首次复刻环境（依赖检查 + dsh + 插件 + 全局预设 + 构建）
+plugins/           # 5 个自定义插件源码（编号见 scripts/setup-plugins.mjs --describe）
+scripts/           # pack-release.ps1（打包）/ deploy-shell.ps1（部署）/ setup-plugins.mjs / update-plugins.ps1
+.work/             # 可复用的开发脚本与测试套件（含 verify-release.mjs / watch-release.mjs）
+.cache/            # 临时与缓存（gitignored；按用途起子目录，如 .cache\seltest、.cache\verify-0.1.7）
 ```
+
+**目录约定（多会话并行）**：仓库根只放"会入库的东西"；**临时产物一律进 `.cache\<用途>\`**，且**别共用固定名字**（并行会话会互相删）。本地发行包固定放 **`D:\dsh\app\packages\`**，打包时**自动只保留最新那一份**并写 `LATEST.txt`（要拷去别的机器就认它）；应用区 `D:\dsh\app\current` 是唯一启动入口，历史版本在 `D:\dsh\app\versions\<日期>\`。提交前**先看 `git status`，别无脑 `git add -A`**（2026-09-22 曾因此把 5 个垃圾目录误提交进库）。完整约定见 `AGENTS.md`「目录约定」与 `HANDOVER.md` §32。
 
 ## 关键注意点（跨机应用必读）
 
@@ -171,5 +177,6 @@ setup.ps1          # 首次复刻环境（依赖检查 + dsh + 插件 + 全局�
 
 详见 [`HANDOVER.md`](HANDOVER.md) §14「壳重定位与跨机应用说明」。
 
-> 文档版本：v1.2（2026-09-15 更新）— 新增「更新到最新壳」一节（`update.ps1` 一条命令）；结构清单补 `logutil.go`/`update.ps1`/`setup.ps1`；说明壳源码在本仓库、fork `desktop/` 已废弃。
+> 文档版本：v1.3（2026-09-22 更新）— 结构清单补 `plugins/`/`scripts/`/`.work/`/`.cache/`；新增「目录约定（多会话并行）」段落（含"本地只留一份最新发行包 + `LATEST.txt`"与"别在仓库根留临时产物"）；补 §30 插件更新器与 §31 `--before` 闸门说明。
+> v1.2（2026-09-15）— 新增「更新到最新壳」一节（`update.ps1` 一条命令）；结构清单补 `logutil.go`/`update.ps1`/`setup.ps1`；说明壳源码在本仓库、fork `desktop/` 已废弃。
 > v1.1（2026-09-14）— 修正 dsh 版本号/端口所述、插件数（2→4）、`HANDOVER.md` §12→§14 引用、clone 与构建路径；新增指向 `project-facts-v1.0.md`。
