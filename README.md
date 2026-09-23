@@ -157,17 +157,23 @@ pwsh -File scripts\update-plugins.ps1 -DSHome D:\h      # 指定 DSH_HOME
 把供应商（provider）**预制**成随插件分发的内容，换台机器不用再手敲配置：
 
 1. 装插件（`node scripts\setup-plugins.mjs --plugins 6`，或安装菜单里选 6）→ **重启壳**；
-2. 打开「设置 → 模型」，页面**底部**是「预置供应商」面板，列出内置的两条：
+2. 打开「设置 → 模型」，页面**底部**是「预置供应商」面板，列出内置的三条：
    | 预置 | 端点 | 模型 | 需要 |
    |---|---|---|---|
-   | **vekenllm** | `http://192.168.100.63:4000/v1` | `deepseek-v4-flash`、`auto` | 能访问该内网 + `VEKENLLM_API_KEY` |
+   | **vekenllm（集团内网）** | `http://192.168.100.63:4000/v1` | `deepseek-v4-flash`、`auto` | 能访问**集团大楼内网** + `VEKENLLM_API_KEY` |
+   | **vekenllm（技术内网）** | `http://192.168.15.137:4000/v1` | 同上（**照集团配置复制，未实测**） | 能访问**维科技术内网** + `VEKENLLM_TECH_API_KEY` |
    | **电信算力**（`ctai`） | `https://ai.ctaigw.cn/v1` | `glm-5.3-flash`、`qwen3.8-flash`、`deepseek-v4.1-flash` | `CTAI_API_KEY` |
 3. 点「**启用**」→ 该供应商的完整配置写进 `~/.dsh/settings.yaml`（立刻出现在模型选择器里）；
 4. 在面板里**粘贴 API Key → 保存密钥** → 该行凭据变绿即可用。
 
+> 🔴 **vekenllm 有两个内网网关，是两套独立部署**：集团大楼内网 `192.168.100.63:4000` 与维科技术内网 `192.168.15.137:4000`（都是 LiteLLM，同一套配置形状）。实测（2026-09-23）：两个地址**本机都能连上**，但**同一个 key 只在一个网关上有效**——拿集团 key 请求技术网关会 401 `token_not_found_in_db`（两套 LiteLLM 各自的 token 库）。所以：
+> - 两条预置**各用独立的凭据引用**（`VEKENLLM_API_KEY` / `VEKENLLM_TECH_API_KEY`）——否则在技术内网填的 key 会把集团内网那条**覆盖掉**；
+> - **只启用你所在网络的那一条**（两个内网互不相通；同时启用会让模型列表里出现重复模型）。
+> - 技术内网那条的**模型清单是照集团配置复制的**（拿不到该网关的 key 无法实测）；能连上时用「模型同步」或 `/v1/models` 刷新。
+
 **不需要时**：点「停用」把该路由整条移除（两步确认）。**预制不等于启用**——装完插件不会偷偷改配置。
 
-- 🔴 **密钥永不进配置文件、不进发行包、不经任何脚本**：你在面板里输入，走官方 `credentials.set`（只写通道），存进凭据引用 `VEKENLLM_API_KEY` / `CTAI_API_KEY`。脚本与打包器只分发**非机密**的预置定义（端点/协议/compat/模型清单）。
+- 🔴 **密钥永不进配置文件、不进发行包、不经任何脚本**：你在面板里输入，走官方 `credentials.set`（只写通道），存进凭据引用 `VEKENLLM_API_KEY` / `VEKENLLM_TECH_API_KEY` / `CTAI_API_KEY`。脚本与打包器只分发**非机密**的预置定义（端点/协议/compat/模型清单）。
 - 你要是**手工改过**某条配置，面板会标「与预置不一致 · 你改过的配置」并列出差异字段，此时只给「重置为预置」（两步确认，会整体覆盖该路由）；**不会**在你点「启用」时静默覆盖。
 - 要**增删预置**：改 `plugins\dsh-client-ui-plugin-provider-presets\config.json` → `node build.mjs` → 重装插件。`build.mjs` 带闸门：预置里出现密钥形状的字段/值就直接拒绝构建。
 - 细节与设计取舍见 [`plugins/dsh-client-ui-plugin-provider-presets/README.md`](plugins/dsh-client-ui-plugin-provider-presets/README.md)。

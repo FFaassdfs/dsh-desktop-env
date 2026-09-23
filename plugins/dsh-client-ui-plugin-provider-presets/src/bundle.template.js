@@ -58,6 +58,7 @@ window.__ModuleLoader__.load({
 .pp_error{font-size:12px;line-height:18px;color:var(--dsw-alias-state-error-primary);margin:0}
 .pp_status{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);margin:0}
 .pp_hint{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);margin:0}
+.pp_note{font-size:11px;line-height:16px;color:var(--dsw-alias-state-warn-label);margin:0}
 `;
 		const tagId = "dsh-client-ui-plugin-provider-presets/main.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -606,6 +607,7 @@ window.__ModuleLoader__.load({
 								]
 							}),
 							preset.summary ? (0, react_jsx_runtime.jsx)("p", { className: "pp_sub", children: preset.summary }) : null,
+							preset.note ? (0, react_jsx_runtime.jsx)("p", { className: "pp_note", children: preset.note }) : null,
 							(0, react_jsx_runtime.jsx)("p", { className: "pp_meta", children: row.meta }),
 							(0, react_jsx_runtime.jsx)("div", { className: "pp_actions", children: actions }),
 							(0, react_jsx_runtime.jsx)("div", { className: "pp_keyRow", children: keyRow })

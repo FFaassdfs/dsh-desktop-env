@@ -100,7 +100,7 @@ ok(typeof renderToStaticMarkup === "function", "react-dom/server is available");
 const element = React.createElement(registration.Component);
 ok(React.isValidElement(element), "the panel produces a valid React element");
 const html = renderToStaticMarkup(element);
-for (const needle of ["预置供应商", "预置 2 个供应商", "正在读取配置", "刷新"]) {
+for (const needle of ["预置供应商", "预置 3 个供应商", "正在读取配置", "刷新"]) {
   ok(html.includes(needle), "server-rendered panel contains " + JSON.stringify(needle));
 }
 ok(html.includes("pp_wrap"), "the panel carries its own class namespace");
@@ -108,7 +108,7 @@ console.log("SSR render OK (" + html.length + " bytes of markup)");
 
 // ---- 6. config is embedded in the shipped bundle ----
 const config = JSON.parse(readFileSync(configPath, "utf8"));
-eq(config.presets.map((p) => p.route), ["vekenllm", "ctai"], "shipped preset routes");
+eq(config.presets.map((p) => p.route), ["vekenllm", "ctai", "vekenllm-tech"], "shipped preset routes");
 for (const [key, value] of Object.entries(config)) {
   ok(source.includes(JSON.stringify(value)), "config value embedded: " + key);
 }

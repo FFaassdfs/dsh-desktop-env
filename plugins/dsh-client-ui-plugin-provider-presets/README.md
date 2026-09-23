@@ -1,8 +1,9 @@
 # dsh-client-ui-plugin-provider-presets
 
-> **文档版本：v1.1**（2026-09-23 更新）—— 修掉一个**真 bug**：`settings.models.footer` 是 **list** 座位，契约要求必填 `id`；首版只传 `{name}` → 注册被拒 → 面板**静默不渲染**（两台机器上都复现）。补「座位契约」一节与对应测试断言（§38）。
+> **文档版本：v1.2**（2026-09-23 更新）—— 新增**第二条 vekenllm 预置** `vekenllm-tech`（维科技术内网 `192.168.15.137:4000`）：与集团内网是**两套独立 LiteLLM 部署、key 不通用**（实测 401 `token_not_found_in_db`），故**各用独立凭据引用**；技术那条的模型清单照集团复制并标「未实测」。新增预置的界面专用 `note` 字段。单测 **205 断言**。
+> v1.1（2026-09-23 更新）—— 修掉一个**真 bug**：`settings.models.footer` 是 **list** 座位，契约要求必填 `id`；首版只传 `{name}` → 注册被拒 → 面板**静默不渲染**（两台机器上都复现）。补「座位契约」一节与对应测试断言（§38）。
 > v1.0（2026-09-23 创建）—— 路径 Q：把供应商（provider）**预制**出来，随插件分发；GUI 内一键启用/停用，密钥由用户就地输入。
-> 状态：Host 半区最小激活入口 + Client 半区（官方 `settings.models.footer` slot）；单测 **184 断言** + SSR 冒烟 **19 断言** 全通过；预置已通过**宿主自己的 pi-ai schema** 校验。
+> 状态：Host 半区最小激活入口 + Client 半区（官方 `settings.models.footer` slot）；单测 **205 断言** + SSR 冒烟 **19 断言** 全通过；预置已通过**宿主自己的 pi-ai schema** 校验。
 
 ## 它解决什么
 
@@ -21,10 +22,31 @@
 
 | route | 显示名 | 端点 | 协议 | 模型 | 凭据引用 |
 |---|---|---|---|---|---|
-| `vekenllm` | vekenllm | `http://192.168.100.63:4000/v1` | openai-completions | `deepseek-v4-flash`、`auto` | `VEKENLLM_API_KEY` |
+| `vekenllm` | vekenllm | `http://192.168.100.63:4000/v1`（**集团大楼内网**） | openai-completions | `deepseek-v4-flash`、`auto` | `VEKENLLM_API_KEY` |
+| `vekenllm-tech` | vekenllm 技术内网 | `http://192.168.15.137:4000/v1`（**维科技术内网**） | openai-completions | 同上（**照集团配置复制，未实测**） | `VEKENLLM_TECH_API_KEY` |
 | `ctai` | 电信算力 | `https://ai.ctaigw.cn/v1` | openai-completions | `glm-5.3-flash`、`qwen3.8-flash`、`deepseek-v4.1-flash` | `CTAI_API_KEY` |
 
-`vekenllm` 是**内网**地址，只有能访问该内网时可用；`ctai` 公网可达。两者是**完全独立**的供应商，端点与密钥互不通用。
+两条 `vekenllm` 是**内网**地址，只有能访问对应内网时可用；`ctai` 公网可达。三者是**完全独立**的供应商，端点与密钥互不通用。
+
+### 🔴 vekenllm 的两个内网网关（集团 / 技术）
+
+| | 集团大楼内网 | 维科技术内网 |
+|---|---|---|
+| 端点 | `http://192.168.100.63:4000` | `http://192.168.15.137:4000` |
+| 服务对象 | 集团大楼 | 维科技术 |
+| 预置 route | `vekenllm` | `vekenllm-tech` |
+| 凭据引用 | `VEKENLLM_API_KEY` | `VEKENLLM_TECH_API_KEY` |
+
+**实测结论（2026-09-23，两个地址本机都可达）**：
+
+- 两个都是 **LiteLLM 代理**（根路径返回 Swagger UI），配置形状相同；
+- **但 key 不通用**：拿集团 key 请求技术网关得到 `401 token_not_found_in_db`（*"Unable to find token in cache or `LiteLLM_VerificationTokenTable`"*）⇒ **两套独立部署、各自的 token 库**；
+- 所以**两条预置各带一个独立的凭据引用**：若共用 `VEKENLLM_API_KEY`，在技术内网填的 key 会把集团内网那条**覆盖掉**，两边互相打架；
+- **只启用你所在网络的那一条**（两个内网互不相通）。同时启用不会报错，但模型列表里会出现重复模型（同一批 id 来自两条路由）。
+
+**待验证**：技术网关那条的**模型清单/上下文/推理档位是照集团配置复制的**——拿不到该网关的 key 就无法实测。能连上该内网后，用「模型同步」插件或直接 `GET /v1/models` 实测刷新（`参数以实测为准`）。
+
+面板展示：每条预置除 `title`/`summary` 外还支持一个**只用于界面**的 `note` 字段（写进面板的黄色提示行，例如技术网关那条的"模型清单照集团复制、未实测"）。`note` 与 `title`/`summary` 一样**不会写进 `settings.yaml`**（`profileOf()` 只投影 route profile 字段）。
 
 ## 为什么 Host 半区是空的
 

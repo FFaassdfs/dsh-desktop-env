@@ -239,7 +239,7 @@ function makeRemote(view, options = {}) {
 	const snapshot = await P.readSnapshot(remote, "llm-pi-ai", config.presets);
 	eq(snapshot.writable, true, "writability read from the settings seam");
 	eq(snapshot.view.revision, 3, "revision carried for fencing");
-	eq(Object.keys(snapshot.keys).sort(), ["CTAI_API_KEY", "VEKENLLM_API_KEY"], "both credential references described");
+	eq(Object.keys(snapshot.keys).sort(), ["CTAI_API_KEY", "VEKENLLM_API_KEY", "VEKENLLM_TECH_API_KEY"], "every preset credential reference described");
 	eq(P.keyStateOf(snapshot.keys.CTAI_API_KEY), "set", "ctai key configured");
 	eq(P.keyStateOf(snapshot.keys.VEKENLLM_API_KEY), "missing", "vekenllm key missing");
 	eq(snapshot.keysError, "", "no credential error");
@@ -424,7 +424,7 @@ console.log("plugin contract OK (locale, footer slot, component)");
 
 //#region 11. config integrity + the bundle carries what config states
 eq(config.settingsNs, "llm-pi-ai", "presets install into llm-pi-ai");
-eq(config.presets.map((p) => p.route), ["vekenllm", "ctai"], "preset order");
+eq(config.presets.map((p) => p.route), ["vekenllm", "ctai", "vekenllm-tech"], "preset order");
 for (const preset of config.presets) {
 	ok(/^https?:\/\//.test(preset.baseURL), preset.route + ": baseURL is an http(s) URL");
 	eq(preset.api, "openai-completions", preset.route + ": wire protocol");
@@ -432,7 +432,7 @@ for (const preset of config.presets) {
 	ok(preset.models.length > 0, preset.route + ": at least one model");
 	for (const model of preset.models) ok(typeof model.id === "string" && model.id !== "", preset.route + ": model id");
 	// the preset may state ONLY route-profile + presentation fields
-	const allowed = new Set(["route", "title", "summary", "displayName", "apiKeyEnv", "api", "baseURL", "compat", "models"]);
+	const allowed = new Set(["route", "title", "summary", "note", "displayName", "apiKeyEnv", "api", "baseURL", "compat", "models"]);
 	for (const field of Object.keys(preset)) {
 		if (!allowed.has(field)) throw new Error(`${preset.route}: unexpected preset field ${field}`);
 	}
@@ -509,7 +509,7 @@ console.log("config integrity OK (" + Object.keys(config).join(", ") + ")");
 		ok(piAi.supportedProtocols().includes("openai-completions"), "openai-completions is a supported protocol");
 		// a valueless level must survive as null (how "off" is spelled)
 		eq(resolved.providers.ctai.models.find((m) => m.id === "qwen3.8-flash").reasoningEfforts.off, null, "the off level survives as null");
-		console.log("host-schema conformance OK (both presets validate against @deepseek-ai/dsh-llm-pi-ai)");
+		console.log(`host-schema conformance OK (all ${config.presets.length} presets validate against @deepseek-ai/dsh-llm-pi-ai)`);
 	}
 }
 //#endregion
@@ -572,7 +572,7 @@ console.log("config integrity OK (" + Object.keys(config).join(", ") + ")");
 	const loadedAcc = collect(render([snapshot, "", "", "", {}, ""]));
 	const loaded = loadedAcc.text.join(" | ");
 	ok(loaded.includes("预置供应商"), "loaded panel keeps its title");
-	ok(loaded.includes("预置 2 个供应商"), "loaded panel counts the presets");
+	ok(loaded.includes("预置 3 个供应商"), "loaded panel counts the presets");
 	ok(loaded.includes("已启用"), "loaded panel shows the enabled state");
 	ok(loaded.includes("与预置不一致"), "loaded panel shows the drift tag");
 	ok(loaded.includes("差异字段：models"), "loaded panel names the drifting fields");
@@ -584,7 +584,7 @@ console.log("config integrity OK (" + Object.keys(config).join(", ") + ")");
 	ok(loaded.includes("http://192.168.100.63:4000/v1"), "loaded panel prints the endpoint");
 	ok(loaded.includes("粘贴密钥后点「保存密钥」"), "loaded panel renders the key input placeholder");
 	ok(!loaded.includes("正在读取配置"), "a loaded panel drops the loading line");
-	eq(inputs(loadedAcc).filter((el) => el.props.type === "password").length, 2, "one key field per preset");
+	eq(inputs(loadedAcc).filter((el) => el.props.type === "password").length, 3, "one key field per preset");
 	ok(inputs(loadedAcc).every((el) => el.props.autoComplete === "off"), "key fields opt out of autocomplete");
 
 	// the armed state must reach the button label
@@ -596,23 +596,29 @@ console.log("config integrity OK (" + Object.keys(config).join(", ") + ")");
 	const KEY_LABELS = ["保存密钥", "清除密钥"];
 	const writeButtons = (acc, labels) => buttons(acc).filter((el) => labels.includes(el.props.children));
 	const readOnly = collect(render([{ ...snapshot, writable: false }, "", "", "", {}, ""]));
-	ok(writeButtons(readOnly, PROFILE_LABELS).length === 3, "the read-only case still renders the profile controls");
+	// One control per preset: "启用" while it is absent, "重置为预置" + "停用" once it is
+	// present and drifted (only vekenllm is, in this snapshot). Derived from the shipped
+	// catalogue so adding a preset cannot make this assertion silently wrong.
+	const expectedProfileControls = config.presets.reduce((n, preset) => n + (preset.route === "vekenllm" ? 2 : 1), 0);
+	ok(writeButtons(readOnly, PROFILE_LABELS).length === expectedProfileControls, `the read-only case still renders the profile controls (${expectedProfileControls})`);
 	ok(writeButtons(readOnly, PROFILE_LABELS).every((el) => el.props.disabled === true), "a read-only settings provider disables profile writes");
 	ok(writeButtons(loadedAcc, PROFILE_LABELS).some((el) => el.props.disabled !== true), "a writable settings provider leaves profile writes usable");
 	eq(P.keyWritable(VEK, { keys: { VEKENLLM_API_KEY: { configured: false, writable: false } } }), false, "an unwritable reference blocks key writes");
 	eq(P.keyWritable(VEK, { keys: {} }), true, "an unknown reference does not block a key write");
 	eq(P.keyWritable(VEK, { keys: { VEKENLLM_API_KEY: { configured: true, writable: false } } }), false, "a configured-but-unwritable reference still blocks writes");
-	// an unwritable credential disables exactly the key controls
+	// an unwritable credential disables exactly the key controls (one entry per preset,
+	// so every shipped reference must be described — an ABSENT one deliberately stays
+	// writable, which is why the fixture lists all of them)
 	const unwritableKeys = collect(render([{
 		...snapshot,
-		keys: { VEKENLLM_API_KEY: { configured: true, writable: false }, CTAI_API_KEY: { configured: false, writable: false } }
+		keys: Object.fromEntries(config.presets.map((preset) => [preset.apiKeyEnv, { configured: preset.apiKeyEnv === "VEKENLLM_API_KEY", writable: false }]))
 	}, "", "", "", { vekenllm: "sk-draft" }, ""]));
 	ok(writeButtons(unwritableKeys, KEY_LABELS).every((el) => el.props.disabled === true), "an unwritable credential disables save and clear");
 	ok(inputs(unwritableKeys).every((el) => el.props.disabled === true), "an unwritable credential disables the key fields");
 	ok(writeButtons(unwritableKeys, PROFILE_LABELS).some((el) => el.props.disabled !== true), "credential writability does not affect profile writes");
 	// an empty key field cannot be submitted
 	const saveButtons = buttons(loadedAcc).filter((el) => el.props.children === "保存密钥");
-	ok(saveButtons.length === 2 && saveButtons.every((el) => el.props.disabled === true), "save is inert until a key is typed");
+	ok(saveButtons.length === 3 && saveButtons.every((el) => el.props.disabled === true), "save is inert until a key is typed");
 
 	// a failed snapshot must show the error, not a stuck spinner
 	const failed = collect(render([null, "", "", "读取设置失败：boom", {}, ""]));
