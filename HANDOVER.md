@@ -2298,12 +2298,41 @@ ctx.slots.register({ name: "settings.models.footer", id: "provider-presets" }, P
 `scripts/deploy-shell.ps1` 在**壳正在运行时**会把新 exe 暂存为 `D:\dsh\app\current\dsh-desktop.new.exe`（旧 10.81 MB → 新 10.99 MB）+ `VERSION.new.txt`，并提示「关掉壳后改名覆盖」（或跑 `.work\swap-desktop-exe.ps1`）。
 ⚠️ **换壳必须在 dsh web 停止时做**——而 dsh web 正是当前会话的宿主，所以这一步只能在用户方便时执行（见 §40.6）。
 
-### 40.6 待办：换壳（未完成）
+### 40.6 换壳（用户自行执行，2026-09-24 确认）
 
-`dsh-desktop.new.exe` 已就位，**运行中的壳仍是旧版**（`Get-Process dsh-desktop | Select Id,Path` 可核对）。换法两选一：
-1. 用户关闭壳 → 跑 `pwsh -File .work\swap-desktop-exe.ps1`（或再跑一次 `deploy-shell.ps1`）→ 重新启动壳；
-2. 用户说一声，由 agent 执行（但**必须等当前会话结束**：换壳会停掉 dsh web，也就是停掉这个会话的宿主）。
-换完请核对：面板出现「核心版本」区、显示 `当前 0.1.5-rc.2`，并列出 `rc 0.1.7-rc.1` / `alpha 0.1.7-alpha.2` 两行（各带「更新」「跳过」）。
+`dsh-desktop.new.exe` 已就位，**运行中的壳仍是旧版**（`Get-Process dsh-desktop | Select Id,Path` 可核对）。用户选择**自己关壳 + 跑换壳脚本**：
+
+```powershell
+# 1) 关闭壳窗口（任务管理器确认没有 dsh-desktop.exe）
+# 2) 把暂存的新 exe 换上去
+pwsh -File D:\dsh\dsh-desktop-env\.work\swap-desktop-exe.ps1
+# 3) 重新启动壳
+```
+
+换完核对：面板出现「**核心版本**」区、显示 `当前 0.1.5-rc.2`，并列出 `rc 0.1.7-rc.1` / `alpha 0.1.7-alpha.2` 两行（各带「更新」「跳过」），底部显示「有可用更新（rc 0.1.7-rc.1）」。
+
+### 40.7 发布（0.1.12）
+
+| 项 | 结果 |
+|---|---|
+| 提交 | `a0185ae`（功能 + 前端 + 绑定 + 测试 + 文档，16 files / +1121 −104） |
+| 打包 | 由 **CI** 产出（tag `desktop-v0.1.12`）；本地留存 = **下载 CI 资产**（保证与发布那份字节一致） |
+| 全套件 | Go **39 用例**（`go vet` 干净）/ pwsh 59·28·38 / node 205·19·64 + 其余全过 |
+| ⚠️ 说明 | 便携包的**壳 exe 换新**后才会带上面板选择器；插件部分与 0.1.11 相同（3 条预置） |
+
+#### 🔴 本地打包 vs CI 打包：harness 版本会不一样（2026-09-24 实测）
+
+本地直接 `pack-release.ps1 -ShellVersion 0.1.12`（不传 `-DshVersion`）打出来的包叫 **`…-dsh0.1.5-rc.3-…`**，因为**本地运行时来源解析的是 registry 当前的 `latest`**（现在是 rc.3）；而 **CI 走 `--before` 时间闸门（§31）固定 `0.1.5-rc.2`**，包名是 `…-dsh0.1.5-rc.2-…`。
+
+传 `-DshVersion 0.1.5-rc.2` **不能**改变本地取哪个运行时，只会改"期望值"，于是被打包器自己的闸门当场拦下（**这是设计得对**）：
+
+```
+staged runtime is NOT runnable (exit=0, first line='0.1.5-rc.3', expected='0.1.5-rc.2').
+Check -RuntimeMode / -RuntimeSource: hoisted layouts need -RuntimeMode full-node-modules.
+```
+
+⇒ **结论**：要保证"本地留存的那份"与"Release 上那份"完全一致（含 harness 版本），**别在本地另打一份**，直接下 CI 资产放进 `D:\dsh\app\packages\`（照 F15 的规矩只留一份 + `LATEST.txt`）。若确实想让便携包内置更新的 harness（如 rc.3 / 0.1.7-rc.1），那要**显式改 §31 的闸门日期**，是一次单独的、需要复验的决定。
+
 
 
 
