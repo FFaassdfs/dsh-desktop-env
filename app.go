@@ -63,6 +63,11 @@ type App struct {
 	restarts     int
 	monitorOn    bool
 	runtimeReady chan struct{}
+
+	// registry 文档缓存（见 version.go 的 registryCached）：面板可能被反复打开。
+	registryMu sync.Mutex
+	registry   *registryDoc
+	registryAt time.Time
 }
 
 func NewApp() *App {
@@ -559,111 +564,60 @@ func versionFromPackageJSON(pkg string) string {
 	return m.Version
 }
 
-func (a *App) latestVersion() string {
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get("https://registry.npmjs.org/@deepseek-ai/dsh")
-	if err != nil {
-		debugLog("latestVersion: registry fetch failed: %v", err)
-		return ""
-	}
-	defer resp.Body.Close()
-	var m struct {
-		DistTags struct {
-			Latest string `json:"latest"`
-		} `json:"dist-tags"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		debugLog("latestVersion: registry decode failed: %v", err)
-		return ""
-	}
-	return m.DistTags.Latest
-}
-
+// checkUpdates 只**提示**可用更新，绝不自动安装。
+//
+// 这里以前是 `installed == dist-tags.latest` 的字符串等值比较 + 静默 `npm i -g`，
+// 那既看不到 `next`/`alpha` 上的新版本，也会把用户手动装的新版本降级回去。
+// 现在按 semver 比较每个通道的最新版本，把决定权交给面板上的按钮（version.go）。
 func (a *App) checkUpdates() {
 	a.emitUpdate("正在检查更新…")
-	if rt, ok := bundledRuntimeInUse(); ok {
-		// Portable release: same user-visible behaviour as the script install
-		// (query the registry, fetch the newer harness, then ask for a restart),
-		// except that the new version is installed into the package's own runtime
-		// instead of the global npm prefix - nothing reads the global install here.
-		a.checkBundledUpdate(rt)
-		return
-	}
 	installed := a.installedVersion()
-	latest := a.latestVersion()
-	if latest == "" {
+	doc, err := a.registryCached()
+	if err != nil {
+		debugLog("checkUpdates: %v", err)
 		a.emitUpdate("检查更新失败（网络不可用）")
 		return
 	}
 	if installed == "" {
-		a.emitUpdate("已安装版本未知，最新版本 " + latest)
+		a.emitUpdate("已安装版本未知，可在下方「核心版本」里手动选择")
 		return
 	}
-	if installed == latest {
-		a.emitUpdate("已是最新版本 " + latest)
-		return
-	}
-	a.emitUpdate("发现新版本 " + latest + "（当前 " + installed + "），正在自动更新…")
-	if err := a.npmInstallGlobal(); err != nil {
-		debugLog("checkUpdates: npm install failed: %v", err)
-		a.emitUpdate("更新失败，请手动执行 npm i -g @deepseek-ai/dsh")
-		return
-	}
-	a.emitUpdate("已更新到 " + latest + "，请点击「重启服务」生效")
-}
 
-// ---- portable (bundled runtime) self-update ---------------------------------
-
-// checkBundledUpdate mirrors the npm self-update path for a portable package:
-// query the registry, download the newer harness into a staging prefix using the
-// BUNDLED npm, then ask the user to restart (the swap happens at next start).
-func (a *App) checkBundledUpdate(rt harnessRuntime) {
-	current := versionFromPackageJSON(rt.Package)
-	latest := a.latestVersion()
-	if latest == "" {
-		a.emitUpdate("检查更新失败（网络不可用）")
-		return
-	}
-	if current == "" {
-		a.emitUpdate("内置运行时版本未知，最新版本 " + latest)
-		return
-	}
-	if current == latest {
-		// Drop any stale staged tree (e.g. left over from a folder that was later
-		// replaced by hand) so it cannot be applied on a future start.
-		if _, ok := stagedRuntimeIn(updateStagingDir(rt.Root)); ok {
-			debugLog("checkBundledUpdate: discarding stale staged runtime (already on %s)", latest)
-			_ = os.RemoveAll(updateStagingDir(rt.Root))
+	// 便携包：若已经下载好一个更新的版本在等重启，先把这件事说清楚。
+	if rt, ok := bundledRuntimeInUse(); ok {
+		staging := updateStagingDir(rt.Root)
+		if staged, ok := stagedRuntimeIn(staging); ok {
+			v := versionFromPackageJSON(staged.Package)
+			if v != "" && compareDshVersions(v, installed) > 0 {
+				a.emitUpdate("已下载核心 " + v + "，重启服务后生效")
+				return
+			}
+			debugLog("checkUpdates: discarding stale staged runtime (installed %s, staged %s)", installed, v)
+			_ = os.RemoveAll(staging)
 		}
-		a.emitUpdate("已是最新版本 " + latest)
-		return
 	}
 
-	npmCLI := bundledNpmCLI(rt.Root)
-	if npmCLI == "" {
-		debugLog("checkBundledUpdate: no bundled npm, cannot self-update")
-		a.emitUpdate("内置运行时 " + current + "（本包未内置 npm，无法自更新；请下载新版发行包）")
-		return
-	}
-	// Already staged and waiting for a restart?
-	staging := updateStagingDir(rt.Root)
-	if staged, ok := stagedRuntimeIn(staging); ok {
-		if v := versionFromPackageJSON(staged.Package); v == latest {
-			a.emitUpdate("已下载 " + latest + "，重启服务后生效")
+	prefs := loadUpdatePrefs()
+	newer := newerChannels(doc, installed, prefs.SkippedCore)
+	if len(newer) == 0 {
+		if prefs.SkippedCore != "" && compareDshVersions(prefs.SkippedCore, installed) > 0 {
+			a.emitUpdate("当前 " + installed + "（已跳过 " + prefs.SkippedCore + "）")
 			return
 		}
-		_ = os.RemoveAll(staging)
-	}
-
-	a.emitUpdate("发现新版本 " + latest + "（当前 " + current + "），正在下载…")
-	if err := a.stageBundledRuntime(rt, npmCLI, latest); err != nil {
-		debugLog("checkBundledUpdate: staging failed: %v", err)
-		a.emitUpdate("自动更新失败：" + err.Error() + "（也可下载新版发行包）")
+		a.emitUpdate("已是最新（当前 " + installed + "）")
 		return
 	}
-	debugLog("checkBundledUpdate: staged %s at %s", latest, staging)
-	a.emitUpdate("已下载 " + latest + "，请点击「重启服务」生效")
+	parts := make([]string, 0, len(newer))
+	for _, o := range newer {
+		parts = append(parts, channelLabel(o.Channel)+" "+o.Version)
+	}
+	a.emitUpdate("有可用更新：" + strings.Join(parts, "、") + "（当前 " + installed + "）—— 在下方「核心版本」里选择")
 }
+
+// ---- portable (bundled runtime) update --------------------------------------
+
+// 便携包的更新不再自动下载：UpdateCore(version)（见 version.go）在用户点按钮时调用
+// stageBundledRuntime，把指定版本装进暂存目录；下次启动由 applyPendingRuntimeUpdate 换入。
 
 // stageBundledRuntime installs @deepseek-ai/dsh@version into the staging prefix
 // with the bundled npm, then verifies that the staged tree actually runs.

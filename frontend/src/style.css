@@ -28,7 +28,7 @@ body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
 .header {
@@ -90,7 +90,146 @@ body {
 .actions {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+}
+
+/* 重启/退出并排，给下面的"核心版本"腾出垂直空间（窗口固定 440x400 不可缩放） */
+.actionRow {
+    display: flex;
+    gap: 8px;
+}
+
+.actionRow button {
+    flex: 1;
+}
+
+/* ---- 核心版本选择器 ---- */
+
+.core {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid #334155;
+    padding-top: 8px;
+}
+
+.coreHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.coreLabel {
+    flex: none;
+}
+
+.coreInstalled {
+    color: #e2e8f0;
+    font-weight: 600;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.coreList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 92px;
+    overflow-y: auto;
+}
+
+.coreRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.coreRow .ch {
+    flex: none;
+    width: 38px;
+    color: #94a3b8;
+}
+
+.coreRow .ver {
+    flex: 1;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.coreRow.installed .ver {
+    color: #34d399;
+}
+
+.coreRow .tag {
+    flex: none;
+    color: #64748b;
+}
+
+.coreRow .tag.newer {
+    color: #4d7fff;
+}
+
+.coreEmpty {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.coreFoot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #64748b;
+    min-height: 18px;
+}
+
+.coreFoot .footText {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+button.mini {
+    flex: none;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.6;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #e2e8f0;
+    background: #334155;
+}
+
+button.mini:hover {
+    background: #475569;
+}
+
+button.mini.primary {
+    background: #4d7fff;
+}
+
+button.mini.primary:hover {
+    background: #3d6df0;
+}
+
+button.mini.ghost {
+    background: transparent;
+    color: #94a3b8;
+}
+
+button.mini:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .actions button {

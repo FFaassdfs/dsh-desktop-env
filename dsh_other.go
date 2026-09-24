@@ -34,6 +34,8 @@ func (a *App) startDsh() error {
 	return nil
 }
 
-func (a *App) npmInstallGlobal() error {
-	return exec.Command("npm", "install", "-g", "@deepseek-ai/dsh").Run()
+// npmInstallGlobalVersion 安装一个明确版本（非 Windows 路径；版本由调用方给出，
+// 壳不再自己装 latest —— 见 version.go）。
+func (a *App) npmInstallGlobalVersion(version string) error {
+	return exec.Command("npm", "install", "-g", "@deepseek-ai/dsh@"+version).Run()
 }

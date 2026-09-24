@@ -132,11 +132,12 @@ func (a *App) startDsh() error {
 	return nil
 }
 
-// npmInstallGlobal updates the global @deepseek-ai/dsh package. The stdout of
-// the npm process is not captured (it lands in the hidden console); the exit
-// code alone reports success.
-func (a *App) npmInstallGlobal() error {
-	cmd := exec.Command("cmd", "/C", "npm", "install", "-g", "@deepseek-ai/dsh")
+// npmInstallGlobalVersion 安装 @deepseek-ai/dsh 的**一个明确版本**。
+// 版本号始终由调用方给出：壳自己不再装 "latest"（见 version.go）——那既会漏掉
+// next/alpha 上的新版本，也可能把用户选好的版本静默降级回去。
+// npm 进程的 stdout 不捕获（落在隐藏控制台里），只以退出码判断成功与否。
+func (a *App) npmInstallGlobalVersion(version string) error {
+	cmd := exec.Command("cmd", "/C", "npm", "install", "-g", "@deepseek-ai/dsh@"+version)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: 0x08000000 | 0x00000008,
 	}

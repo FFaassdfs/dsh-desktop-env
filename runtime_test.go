@@ -319,6 +319,12 @@ func TestCompareDshVersions(t *testing.T) {
 		{"0.1.5-rc.2", "0.1.5", -1}, // and the reverse
 		{"0.1.6-alpha.2", "0.1.5-rc.2", 1},
 		{"0.1.6-alpha.2", "0.1.6-alpha.10", -1},
+		// 通道之间的先后（核心版本选择器按这个顺序展示各通道最新版）
+		{"0.1.7-rc.1", "0.1.5-rc.3", 1},    // 数字段压过通道
+		{"0.1.5-rc.1", "0.1.5-alpha.2", 1}, // rc > alpha
+		{"0.1.5-beta.1", "0.1.5-alpha.9", 1},
+		{"0.1.5-rc.1", "0.1.5-beta.9", 1},
+		{"0.1.7-alpha.2", "0.1.7-rc.1", -1},
 		{"0.2", "0.1.9", 1},
 		{"v0.1.5-rc.2", "0.1.5-rc.2", 0}, // leading v is tolerated
 		{"1.0.0+build.5", "1.0.0", 0},    // build metadata is ignored

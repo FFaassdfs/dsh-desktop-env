@@ -15,8 +15,22 @@
         <div class="url" id="url">—</div>
         <div class="actions">
             <button id="open" class="primary" disabled>在浏览器打开</button>
-            <button id="restart">重启服务</button>
-            <button id="quit" class="ghost">退出</button>
+            <div class="actionRow">
+                <button id="restart">重启服务</button>
+                <button id="quit" class="ghost">退出</button>
+            </div>
+        </div>
+        <!-- 核心版本选择器：各通道最新版本 + 逐版本更新/跳过（后端只在用户点按钮时安装） -->
+        <div class="core">
+            <div class="coreHead">
+                <span class="coreLabel">核心版本</span>
+                <span class="coreInstalled" id="coreInstalled">—</span>
+                <button class="mini" id="coreRefresh" title="重新从 npm 读取可用版本">↻</button>
+            </div>
+            <div class="coreList" id="coreList">
+                <div class="coreEmpty">读取可用版本…</div>
+            </div>
+            <div class="coreFoot" id="coreFoot"></div>
         </div>
         <div class="update" id="update">检查更新…</div>
         <div class="hint" id="hint"></div>
