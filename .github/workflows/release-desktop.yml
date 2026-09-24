@@ -129,6 +129,7 @@ jobs:
       - name: Verify the staged runtime boots
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Continue"
           $home_ = Join-Path $env:RUNNER_TEMP "boot-home"
           New-Item -ItemType Directory -Force -Path $home_ | Out-Null
           $out = Join-Path $env:RUNNER_TEMP "boot-out.txt"
@@ -141,18 +142,23 @@ jobs:
             -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
           $deadline = (Get-Date).AddSeconds(120)
           $up = $false
+          $code = ""
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 2
             if ($p.HasExited) { break }
             if (-not (Test-Path $out)) { continue }
-            $m = [regex]::Match((Get-Content $out -Raw), 'dsh web: http://127\.0\.0\.1:(\d+)/')
+            # -Raw returns $null while the file is still empty; [regex]::Match
+            # throws on a null input, so read it safely first.
+            $text = Get-Content $out -Raw -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrEmpty($text)) { continue }
+            $m = [regex]::Match($text, 'dsh web: http://127\.0\.0\.1:(\d+)/')
             if (-not $m.Success) { continue }
-            try {
-              $code = (Invoke-WebRequest -Uri "http://127.0.0.1:$($m.Groups[1].Value)/" -UseBasicParsing -TimeoutSec 5).StatusCode
-              if ($code -gt 0) { $up = $true; break }   # 401 = expected (browser-trust fence)
-            } catch {
-              if ($_.Exception.Response) { $up = $true; break }   # 401 throws but IS a response
-            }
+            # curl.exe, NOT Invoke-WebRequest: the fence answers 401, which IWR
+            # raises as a terminating error whose catch-block handling differs
+            # between PS editions (it blew up run #19 with
+            # ParentContainsErrorRecordException). curl simply prints a code.
+            $code = (& curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "http://127.0.0.1:$($m.Groups[1].Value)/") 2>$null
+            if ("$code" -match '^\d+$' -and [int]"$code" -gt 0) { $up = $true; break }   # 401 = expected
           }
           $alive = -not $p.HasExited
           if ($alive) { $p.Kill() }
