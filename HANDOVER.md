@@ -2538,11 +2538,89 @@ sessions\
 
 ### 42.7 待办
 
-1. **换壳**：§41.3 与 §42.4-A 的构建都在 `build\bin\`；应用区已有旧暂存的 `dsh-desktop.new.exe`（11,532,288 字节，09:53，**不含 §42.4-A**）——**注意别让旧的覆盖新的**（本次新构建 = 11,533,312 字节）。换壳须在 dsh web 停止时做（`dsh web` 正是当前会话宿主）。
-2. **便携包钉版抬到 rc.1**（42.4-C）+ 实跑打包验证。`verify-release.mjs` 的新闸门（42.4-A2）**必须对 0.1.13 及以后的每个包跑**——它是唯一能提前抓到"包能解压但起不来"的检查。
-3. **§41.4 的日志请求可以撤回**——本次已在**本机**拿到决定性证据（同一台机器的 `dsh.log`）。
-4. 评估给 `$DSH_HOME` 加备份建议/脚本（42.6）。
-5. **上游 bug 存档**（可选）：`patchReload: "live"` 在 `0.1.5-rc.2` 上启动即崩、且**只在便携（嵌套依赖）布局下暴露**——这是个干净的可复现上游缺陷，值得提 issue（复现方式：`DSH_HOME=<空目录> node <嵌套树的>/dsh/lib/bin.js web --no-open --port 0`）。
+1. **换壳**（⏳ 未做）：§41.3、§42.4-A、§42.8 的构建都在 `build\bin\`（**11,533,312 字节**）；应用区还躺着**旧的** `dsh-desktop.new.exe`（11,532,288 字节，09:53，**不含 §42.4-A**）——🔴 **注意别让旧的覆盖新的**。换壳须在 dsh web 停止时做（`dsh web` 正是当前会话宿主），或用 `.work\swap-desktop-exe.ps1`。
+2. ~~**便携包钉版抬到 rc.1**~~ ✅ **已完成（0.1.13 已发布，见 42.8）**。`verify-release.mjs` 的启动闸门（42.4-A2）**必须对 0.1.13 及以后的每个包跑**——它是唯一能提前抓到"包能解压但起不来"的检查。
+3. ~~**§41.4 的日志请求可以撤回**~~ ✅ 本次已在本机拿到决定性证据。
+4. **评估给 `$DSH_HOME` 加备份建议/脚本**（42.6/42.9）——⏳ 未做，**这是目前唯一没有兜底的重要数据**。
+5. **上游 bug 存档**（可选，⏳ 未做）：`patchReload: "live"` 在 `0.1.5-rc.2` 上启动即崩、且**只在便携（嵌套依赖）布局下暴露**——干净的可复现上游缺陷，值得提 issue（复现：`DSH_HOME=<空目录> node <嵌套树的>/dsh/lib/bin.js web --no-open --port 0`）。
+6. **`verify-release.mjs` / `watch-release.mjs` 不支持 token**（42.8.4）——匿名 API 撞速率限制时验证直接失败（今天实际发生）。建议支持 `GITHUB_TOKEN`/`GH_TOKEN` 环境变量。
+
+### 42.8 发布 0.1.13（2026-09-24，✅ 已完成）
+
+#### 42.8.1 提交与 CI
+
+| 项 | 结果 |
+|---|---|
+| 提交 | `b28ec17`（主体修复）→ `5318a3d`（CI 闸门修复，见 42.8.2） |
+| tag | `desktop-v0.1.13`（因 #19 失败重推过一次） |
+| CI | **run #19 = failure** → **run #20 = success**（11 步全绿） |
+| Release | 标题 `dsh-desktop 0.1.13（便携包 · Windows x64）`、正文中文、壳 commit `5318a3d`、核心 **`0.1.7-rc.1`** ✅ |
+| 资产 | `dsh-desktop-0.1.13-dsh0.1.7-rc.1-win-x64.zip`（**223.7 MB**）+ `SHA256SUMS.txt` |
+
+#### 42.8.2 🔴 run #19 的失败：闸门自己写错了（教训）
+
+第 9 步「Verify the staged runtime boots」（42.4-A2 新增）在 CI 上挂了，**原因与闸门逻辑无关，纯粹是脚本健壮性**：
+
+| # | 错误 | 修法 |
+|---|---|---|
+| A | `Invoke-WebRequest` 对认证围栏的 **401 抛 terminating error**，`catch` 里访问 `$_.Exception.Response` 在不同 PS 版本下行为不一致 → `ParentContainsErrorRecordException` | 改用 **`curl.exe`**（项目里已验证的做法，不受 PowerShell 异常语义影响） |
+| B | `Get-Content $out -Raw` 在文件**还空**时返回 `$null`，`[regex]::Match($null, …)` 抛异常 | 补 `[string]::IsNullOrEmpty` 守卫 |
+
+修完做了**正/负双向本地验证**（这次学乖了）：
+
+| 方向 | 输入 | 期望 | 实测 |
+|---|---|---|---|
+| 正向 | `0.1.7-rc.1`（好的） | 放行 | ✅ 退出码 0、`code=401`、无异常输出 |
+| 负向 | `0.1.5-rc.2`（真会崩的） | 拦住 | ✅ **退出码 1**、打印 HMR 崩溃 stderr、抛 `do not ship this package` |
+
+> 🔴 **教训**（与 §34.6-2 同源）：**脚本改了必须在"目标环境的失败条件"下验证**。我上一版只在本地跑通了"成功路径"就推了，而 CI 的失败条件是 **① 空文件读取时序 ② 401 的异常语义**——两者本机都不复现。**闸门本身的价值也被这次失败反证了：它确实拦住了发布**（`Pack`/`Publish` 两步被 skip，没有把包发出去）。
+
+#### 42.8.3 发布资产端到端验证（✅ **30/30 全过**）
+
+`.work/verify-release.mjs desktop-v0.1.13`：
+
+| 步骤 | 结果 |
+|---|---|
+| 1–4 元数据 / 下载 / SHA256 / 解压布局 | ✅ SHA256 与线上 `SHA256SUMS.txt` **一致**；8 个顶层条目；运行时是单文件 `runtime.zip` |
+| 5–7 包内安装器（干跑 / 交互菜单 / `-Command` 形式） | ✅ 全过，且**都没写任何东西** |
+| 8 包内更新器 `-CheckOnly` | ✅ 用包内 node、不写 |
+| 9 `--extract-runtime` | ✅ 解出 **dsh `0.1.7-rc.1`** + npm `11.19.0` |
+| **10 启动闸门（新增）** | ✅ **存活 + HTTP 有响应 + profile 未 opt-in live patch reload** |
+
+#### 42.8.4 已知缺陷：两个验证工具不支持 token
+
+`verify-release.mjs` 与 `watch-release.mjs` 都**不带认证**（`headers` 只有 accept/user-agent），今天匿名额度被我前面的轮询耗尽后，`verify-release.mjs` 直接报「**no release for desktop-v0.1.13**」——**而 release 明明存在**（真实原因是 `403 rate limit exceeded`）。`watch-release.mjs` 同样退出码 1。
+
+- 本次绕过方式：复制一份到 `.cache/` 注入 `Authorization` 头再跑（`.catch(() => null)` 还把错误吞了，所以从输出看不出真因——建议顺手改成打印错误）。
+- **建议**：两个工具都支持 `GITHUB_TOKEN`/`GH_TOKEN` 环境变量（见 42.7-6）。
+
+> 另记：本地包与 CI 包 **SHA256 不同属正常**（§27.12）——本地用全局安装树（嵌套 → `dsh-tree`、Node v24.16.0），CI 用 `npm --prefix` 暂存（提升 → `full-node-modules`、Node v24.20.0）。**本次两者 harness 版本相同（都是 0.1.7-rc.1）**，差异只来自布局。**要拷去别的机器请用 CI 资产**（`D:\dsh\app\packages\` 里那份）。
+
+#### 42.8.5 包体积从 98.6 MB 涨到 223.7 MB（正常）
+
+**不是打包错误**：`0.1.7-rc.1` 的依赖树本身从 ~213 MB 涨到 **585.2 MB**（`runtime.zip` 102 MB → **230 MB**）。各闸门（运行时自检、npm 可运行、归档内容）全绿。
+
+### 42.9 环境损失清单（本次事故的连带损失，**不在版本控制内**）
+
+🔴 **这一节是新会话最容易漏掉的**——它们不在仓库里，读文档看不到，但会直接影响干活。
+
+| 项 | 状态 | 恢复方式 |
+|---|---|---|
+| `~/.ssh/`（私钥 + known_hosts） | ❌ **整个目录没了** | 重新生成密钥并加到 GitHub，或从备份恢复 |
+| git 全局 `user.name` / `user.email` | ❌ **空** | `git config --global user.name/email` |
+| `credential.helper` | ❌ 空 | 按需重设 |
+| **`~/.dsh/settings.yaml`** | ❌ **没了** | 🔴 **模型供应商配置全丢**（vekenllm / ctai 端点、模型清单、默认模型）→ 用 `provider-presets` 插件恢复（见下） |
+| `~/.dsh/.credentials.yaml` | ✅ **在**，含 `VEKENLLM_API_KEY` | 无需操作 |
+| `~/.dsh/profiles/`（含 6 个插件 + `cordis.patch.yml`） | ✅ 在 | 无需操作 |
+| 全局 `@deepseek-ai/dsh` | ✅ `0.1.7-rc.1` | 无需操作 |
+| 本仓库（源码 / 文档 / plugins） | ✅ 全在，且已推送 GitHub | 无需操作 |
+
+**`settings.yaml` 的恢复（用现成插件，别手敲）**：重启 dsh web → 「设置 → 模型」**底部** →「预置供应商」→ 点 vekenllm 那条的「**启用**」→ key 已在 `VEKENLLM_API_KEY` 里，应直接变绿。（这正是 §33/§39 做 `provider-presets` 的目的。）
+
+**本次事故期间用过的临时凭据**：为推送申请了一枚 classic PAT（`repo` + `workflow`）。用法：只经一次性 URL（`https://<token>@github.com/...`）推送，**未写入 git remote 或任何配置**；用后删除 `.cache/gh-pat.txt`（本就未落盘）并全仓扫描确认无残留。⚠️ **该 token 出现在会话记录中，用户应已撤销；日后不要复用。**
+
+🔴 **给 `$DSH_HOME` 加备份的建议依然成立**（42.6）：`sessions\`、`storages\`、`.credentials.yaml`、`settings.yaml` 全都没有兜底。
+
 
 
 
