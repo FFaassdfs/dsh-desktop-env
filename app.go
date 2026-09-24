@@ -22,11 +22,16 @@ import (
 const (
 	// dshPort 选择固定高位端口，避开 Windows 动态端口范围（本机 1024~15000）
 	// 以及 Hyper-V/WSL/winnat 会动态保留的排除端口段。
-	dshPort        = "43080"
-	dshHost        = "127.0.0.1"
-	dshAddr        = dshHost + ":" + dshPort
-	dshURL         = "http://" + dshAddr
-	waitTimeout    = 30 * time.Second
+	dshPort     = "43080"
+	dshHost     = "127.0.0.1"
+	dshAddr     = dshHost + ":" + dshPort
+	dshURL      = "http://" + dshAddr
+	waitTimeout = 30 * time.Second
+	// 首次启动（便携包要先解压 runtime.zip）+ 干净机器上的杀毒扫描会让 dsh web
+	// 迟迟不 ready，30 秒明显不够；waitReady 一旦就绪就立刻返回，所以放宽上限是无害的。
+	firstRunTimeout = 150 * time.Second
+	// 等待期间每这么久回报一次进度，避免"看起来卡死"。
+	waitSlice      = 10 * time.Second
 	pollInterval   = 300 * time.Millisecond
 	updateInterval = 24 * time.Hour
 
@@ -68,6 +73,10 @@ type App struct {
 	registryMu sync.Mutex
 	registry   *registryDoc
 	registryAt time.Time
+
+	// 首次启动解压内置运行时（runtime.zip）的结果，供 bootstrap 报准错误。
+	runtimeErr  error
+	runtimeSync runtimeSyncResult
 }
 
 func NewApp() *App {
@@ -104,9 +113,15 @@ func (a *App) ensureRuntimeExtracted() {
 	})
 	if err != nil {
 		debugLog("ensureRuntimeExtracted: failed: %v", err)
+		a.mu.Lock()
+		a.runtimeErr = err
+		a.mu.Unlock()
 		a.emitUpdate("内置运行时解压失败：" + err.Error())
 		return
 	}
+	a.mu.Lock()
+	a.runtimeSync = result
+	a.mu.Unlock()
 	elapsed := time.Since(start).Round(time.Second)
 	switch result {
 	case runtimeSyncExtracted:
@@ -172,25 +187,82 @@ func (a *App) bootstrap(ctx context.Context) {
 	// A staged portable self-update is applied here, before anything runs.
 	a.applyPendingRuntimeUpdate()
 
+	// 解压失败必须在这里就说清楚：否则后面会退化成"请确认已安装 npm i -g …"这种
+	// 误导性提示（干净机器上根本没装全局 dsh，用户会去装一个不必要的东西）。
+	a.mu.Lock()
+	runtimeErr := a.runtimeErr
+	runtimeSync := a.runtimeSync
+	a.mu.Unlock()
+	if runtimeErr != nil {
+		debugLog("bootstrap: bundled runtime unpack failed: %v", runtimeErr)
+		a.fail(ctx, "内置运行时解压失败，无法启动：\n\n"+runtimeErr.Error()+
+			"\n\n可尝试：① 把发行包解压到较短、可写的路径（如 D:\\dsh-desktop）后重试；"+
+			"② 手动把包内 runtime.zip 解压到 exe 同级的 runtime\\ 目录；③ 检查磁盘空间与杀毒软件拦截。")
+		return
+	}
+
+	// 便携包先用内置 node 自证可运行：干净/受管机器上它可能被策略或杀软拦下，
+	// 那种情况下后面所有报错都会跑偏，不如在这里给出原始错误。
+	rt, portable := bundledRuntimeInUse()
+	if portable {
+		if err := probeRuntimeNode(rt.NodeExe); err != nil {
+			debugLog("bootstrap: bundled node unusable: %v", err)
+			a.fail(ctx, "内置 Node 无法运行，DeepSeek Harness 起不来：\n\n"+err.Error()+
+				"\n\n请把 "+filepath.Dir(rt.NodeExe)+" 加入杀毒/应用控制策略白名单后重试。")
+			return
+		}
+	}
+
 	a.emitStatus("正在启动 DeepSeek Harness…")
 	if !a.portOpen() {
 		debugLog("bootstrap: port %s closed, spawning dsh web", dshPort)
 		if err := a.startDsh(); err != nil {
 			debugLog("bootstrap: startDsh failed: %v", err)
-			a.fail(ctx, "无法启动 DeepSeek Harness，请确认已安装：npm i -g @deepseek-ai/dsh\n\n"+err.Error())
+			a.fail(ctx, "无法启动 DeepSeek Harness：\n\n"+err.Error()+
+				"\n\n若这不是便携包，请确认已安装：npm i -g @deepseek-ai/dsh")
 			return
 		}
 		a.owns = true
 	} else {
 		debugLog("bootstrap: port %s already open, adopting existing instance", dshPort)
 	}
-	if !a.waitReady(waitTimeout) {
+
+	// 首次启动（刚解压完）+ 便携包给更宽的上限：就绪即返回，放宽只影响"多久才放弃"。
+	timeout := waitTimeout
+	if portable || runtimeSync == runtimeSyncExtracted {
+		timeout = firstRunTimeout
+	}
+	startWait := time.Now()
+	ready := false
+	for time.Now().Before(startWait.Add(timeout)) {
+		slice := waitSlice
+		if left := time.Until(startWait.Add(timeout)); left < slice {
+			slice = left
+		}
+		if a.waitReady(slice) {
+			ready = true
+			break
+		}
+		if exited, _ := a.childExited(); exited {
+			break
+		}
+		a.emitStatus(fmt.Sprintf("正在启动 DeepSeek Harness…（已等待 %d 秒）", int(time.Since(startWait).Seconds())))
+	}
+	if !ready {
+		waited := time.Since(startWait).Round(time.Second)
 		if exited, _ := a.childExited(); exited {
 			debugLog("bootstrap: dsh web exited before ready")
-			a.fail(ctx, "DeepSeek Harness 启动失败，进程已退出：\n\n"+a.tailDshLog())
+			a.fail(ctx, fmt.Sprintf("DeepSeek Harness 启动失败，进程已退出（等待 %s）：\n\n", waited)+
+				a.tailDshLog()+"\n\n完整日志："+dshLogPath())
+		} else if !a.owns {
+			debugLog("bootstrap: waitReady timed out on an adopted listener")
+			a.fail(ctx, fmt.Sprintf("端口 %s 上已有程序在监听，但它不像 dsh web 那样响应（等待 %s 超时）。\n\n"+
+				"可能是别的程序占用了该端口，或上一次的 dsh 实例卡住了：请结束占用进程后重试。\n\n地址: %s",
+				dshPort, waited, dshURL))
 		} else {
 			debugLog("bootstrap: waitReady timed out")
-			a.fail(ctx, "等待 DeepSeek Harness 启动超时（30 秒）\n\n请检查: "+dshURL)
+			a.fail(ctx, fmt.Sprintf("等待 DeepSeek Harness 启动超时（%s）\n\n请检查: %s\n\n日志: %s",
+				waited, dshURL, dshLogPath()))
 		}
 		return
 	}
@@ -310,6 +382,29 @@ func (a *App) childExited() (bool, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.exited, a.exitErr
+}
+
+// dshLogPath is where dsh web's stdout/stderr is captured; the path is shown in
+// startup failures so the user can hand over the log without hunting for it.
+func dshLogPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "(日志目录不可用)"
+	}
+	return filepath.Join(dir, "dsh-desktop", "dsh.log")
+}
+
+// probeRuntimeNode runs "<node> --version" so a bundled runtime that cannot
+// execute at all (blocked by policy/antivirus, wrong architecture, ...) is
+// reported as such, with the raw error, before dsh is even involved.
+func probeRuntimeNode(nodeExe string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, nodeExe, "--version").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s --version 失败：%w\n%s", nodeExe, err, firstLine(string(out)))
+	}
+	return nil
 }
 
 // tailDshLog returns the last few lines of dsh web's stderr log so a startup

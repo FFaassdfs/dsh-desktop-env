@@ -2333,6 +2333,51 @@ Check -RuntimeMode / -RuntimeSource: hoisted layouts need -RuntimeMode full-node
 
 ⇒ **结论**：要保证"本地留存的那份"与"Release 上那份"完全一致（含 harness 版本），**别在本地另打一份**，直接下 CI 资产放进 `D:\dsh\app\packages\`（照 F15 的规矩只留一份 + `LATEST.txt`）。若确实想让便携包内置更新的 harness（如 rc.3 / 0.1.7-rc.1），那要**显式改 §31 的闸门日期**，是一次单独的、需要复验的决定。
 
+---
+
+## §41 新电脑首次运行「启动服务失败」——诊断加固（2026-09-24）
+
+> **来源（用户报告）**：「新电脑刚开始运行的时候会启动服务失败，打开浏览器也是页面无法访问的状态。」
+
+### 41.1 已排除的两个猜测（都有实证）
+
+| 猜测 | 验证方式 | 结论 |
+|---|---|---|
+| 全新机器上 `~/.dsh/profiles/web` 不存在，`dsh web` 起不来 | 用**空的 DSH_HOME** 跑 `dsh web --no-open --port 43099` | ❌ 排除：它能**自举**（自己建 `profiles/`、`storages/`、`.credentials.yaml`，打印 token URL，裸 URL 返回 401） |
+| 干净 Windows 缺 VC++ 运行库 ⇒ 内置 node.exe 跑不起来 | 直接读 `node.exe` 的 PE 导入字符串 | ❌ 排除：官方 Node 24 构建**不引用** `VCRUNTIME140.dll` / `MSVCP140.dll` / `ucrtbase.dll`（只依赖 `KERNEL32.dll`） |
+
+（另外核对本机 `debug.log`：本机换壳后的每次启动都以 `bootstrap: ready` 结束，**没有**失败/重启记录；用户报的是**新机器**。）
+
+### 41.2 最可能的原因（待用户日志确认）
+
+**首次启动远慢于 30 秒**：便携包要先解压 `runtime.zip`（~40s；这一步是**有等待**的，`bootstrap` 里 `<-a.runtimeReady`），接着**第一次** `dsh web` 要在该机器上创建整个 profile 树（数百个 junction + 2.5 万个文件，还要被杀毒扫描）——**这第二段完全可能超过 30 秒**，于是壳在 30 秒时报「等待启动超时」，而**服务其实还在起**。此时用户手动打开浏览器 → **连接被拒**（页面无法访问）✓ 与报告吻合，也解释了为什么只有"**刚开始**运行的时候"才出问题（profile 建好后后续启动只要几秒）。
+
+### 41.3 本次加固（app.go）
+
+1. **解压失败不再退化成误导提示**：`ensureRuntimeExtracted` 的错误存进 `App.runtimeErr`，`bootstrap` **用它本身**报错并给三条可行建议（换短路径 / 手动解压 `runtime.zip` / 查磁盘与杀软）。以前会掉到"请确认已安装：npm i -g @deepseek-ai/dsh"——干净机器上根本没装全局 dsh，用户会去装一个**不必要**的东西。
+2. **内置 node 预检**：便携包启动前跑一次 `<node.exe> --version`（15s 超时，`probeRuntimeNode`）；被策略/杀软拦下时**在涉及 dsh 之前**就报出原始错误。
+3. **首次启动超时 30s → 150s**（`firstRunTimeout`）：便携包或"刚解压过"时生效；`waitReady` 一就绪即返回，**放宽只影响"多久才放弃"**。
+4. **等待期间显示进度**：状态栏每 10 秒刷新「正在启动…（已等待 N 秒）」，不再"看起来卡死"。
+5. **失败原因分类**：进程已退出 → 附 `dsh.log` 尾部 **+ 完整日志路径**；端口被占用/上一个实例卡住（adopt 模式超时）→ 明确提示端口冲突；普通超时 → 附日志路径。
+6. **测试不再污染真实日志**：新增 `TestMain`（`app_test.go`）把 `%AppData%` 指到临时目录——实测本机真实 `debug.log` 里 **27% 是 `go test` 噪音**，而这个文件正是排查此问题唯一能看到真相的地方。加固后跑测试前后行数 **217 → 217**。
+
+新增测试：`app_test.go` 的 `TestProbeRuntimeNode`（不存在的 exe 必报错且错误里带路径；真 node 必成功）与 `TestDshLogPath`。Go 套件 **41 用例**，`go vet` 干净。
+
+### 41.4 待用户提供（决定性证据）
+
+那台机器上：
+1. **壳窗口里的红字原文**（截图即可）；
+2. `%APPDATA%\dsh-desktop\debug.log` 与 `%APPDATA%\dsh-desktop\dsh.log`；
+3. 一条命令的原始输出（绕开壳，直接用包内运行时起服务，报错会打在屏幕上）：
+   ```powershell
+   cd <解压目录>
+   .\runtime\node.exe .\runtime\node_modules\@deepseek-ai\dsh\lib\bin.js web --no-open --port 43080
+   ```
+4. 顺带确认：解压目录里 `runtime\` 是否存在、`runtime\node.exe` 在不在（即**解压是否成功**）。
+
+⚠️ 那台机器现在装的壳**仍是 0.1.12（30s 超时）**；本次加固的构建已暂存为本机应用区的 `dsh-desktop.new.exe`（等下一次换壳生效），**新机器要拿到诊断能力需要新的便携包（0.1.13）** —— 建议拿到日志定位后**一起发**（若日志证实是超时，0.1.13 即修复版）。
+
+
 
 
 
