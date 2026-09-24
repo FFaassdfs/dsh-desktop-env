@@ -2641,21 +2641,36 @@ git config --global push.default simple
 
 ⚠️ **注意**：本次会话为临时提交用过 `-c user.name="dsh-desktop"`，那是**权宜之计**，不要写进全局配置——否则以后所有提交的作者都是它。
 
-### 43.2 SSH（🔑 密钥已生成，⏳ **公钥待加到 GitHub**）
+### 43.2 SSH（✅ **已完成并端到端验证**）
 
-`~/.ssh` 整个目录丢失 → **无法恢复**（私钥不可再生），只能**生成新密钥并重新授权**：
+`~/.ssh` 整个目录丢失 → **无法恢复**（私钥不可再生），只能**生成新密钥并重新授权**。
+
+#### 🔴 生成密钥：`-N` 的空口令必须用 `cmd /c` 传（本次踩坑）
 
 ```powershell
+# ❌ 错误：PowerShell 会把 '""' 里的引号传递/转义坏，结果设成**非空口令**
 ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\id_ed25519 -N '""' -C "aassdfs@qq.com"
+
+# ✅ 正确：交给 cmd，-N "" 才是真正的空字符串
+cmd /c 'ssh-keygen -t ed25519 -f "%USERPROFILE%\.ssh\id_ed25519" -N "" -C "aassdfs@qq.com" -q'
 ```
 
-**本机生成的新公钥**（需加到 GitHub → Settings → SSH and GPG keys）：
+**症状**：密钥看起来正常（464 字节、无 BOM、合法 base64），GitHub 也回 `Server accepts key`，但最终 `Permission denied (publickey)`——因为签名需要口令，而 `BatchMode=yes` 下无法输入。
 
-```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ+MjEv4LcB2vS+OuE1mjHAYhgsAwzKshwoe/OFGnZnt aassdfs@qq.com
+**诊断命令**（无 `-P` 时若挂住等输入 = 有口令；立即返回 0 = 无口令）：
+
+```powershell
+ssh-keygen -y -f $env:USERPROFILE\.ssh\id_ed25519      # 挂住 => 有口令
+ssh -vT git@github.com 2>&1 | Select-String 'Server accepts key|Permission denied'
 ```
 
-新密钥指纹：`SHA256:oKiJmJMSQCkyqOiaKjpB0HK2e5IBpZbUcl+rb6se7+M`
+> 教训与 §34.8 同族：**PowerShell 的引号/转义会静默改变传给原生命令的参数**。这类"看起来对、实际不对"的坑，靠"生成成功"是发现不了的——必须**验证产物**（`ssh-keygen -y` 能否无口令推导）。
+
+#### 当前生效的密钥（2026-09-24）
+
+- 公钥指纹：`SHA256:bt4k6sY4YahBI+1RsFjemvqurrkHQ8/H/nERrwk+okc`（ED25519，`aassdfs@qq.com`）
+- 旧密钥（带口令、已废弃）备份在 `~/.ssh/old-keys-20260924/`，**可删**
+- **验证通过**：`ssh -T git@github.com` → `Hi FFaassdfs! You've successfully authenticated…`；`git fetch` / `git push --dry-run` 均成功，且**不再需要任何 PAT**
 
 #### 🔴 `~/.ssh/config` 必须带 443 端口（本机 22 不通）
 
@@ -2684,11 +2699,13 @@ Host github.com
 | RSA | `SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s` |
 
 **验证连接**：`ssh -T git@github.com`
-- `successfully authenticated` + `does not provide shell access` = ✅ 已生效（**不需要** `-p 443`，config 已处理）
-- `Permission denied (publickey)` = 公钥还没加到 GitHub
+- `Hi <user>! You've successfully authenticated…` = ✅ 已生效（**不需要** `-p 443`，config 已处理）
+- `Permission denied (publickey)` = ① 公钥还没加到 GitHub，**或 ② 私钥带了口令**（看 `ssh -vT` 是否出现 `Server accepts key`——出现即属于 ②，见上面的 `-N` 坑）
 - `Host key verification failed` = known_hosts 缺 `[ssh.github.com]:443` 条目（**本次最初就是这个报错**）
 
-> 加完公钥后 `git push origin main` **不再需要临时 PAT**。
+**端到端验证（2026-09-24 实测通过）**：`git fetch origin` 成功、`git push --dry-run origin main` 成功、本地 HEAD 与 `git ls-remote origin refs/heads/main` 一致。
+
+> ✅ 现在的 `git push origin main` **不再需要任何临时 PAT**。remote 保持 `ssh://git@ssh.github.com:443/FFaassdfs/dsh-desktop-env.git`（**不要**往 remote 里塞 token）。
 
 ### 43.3 `$DSH_HOME` 备份（✅ 已实现并实测）
 
