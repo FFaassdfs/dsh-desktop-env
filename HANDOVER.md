@@ -2621,6 +2621,112 @@ sessions\
 
 🔴 **给 `$DSH_HOME` 加备份的建议依然成立**（42.6）：`sessions\`、`storages\`、`.credentials.yaml`、`settings.yaml` 全都没有兜底。
 
+---
+
+## §43 事故后的环境恢复：SSH / git 身份 / `$DSH_HOME` 备份（2026-09-24）
+
+> §42.9 列出的损失，本节记录**实际怎么恢复的**——照着做即可，不必再摸索一遍。
+
+### 43.1 git 全局身份（✅ 已恢复）
+
+依据：仓库级配置（`git -C <repo> config --local user.name/email`）+ 提交历史里的作者（`FFaassdfs <aassdfs@qq.com>`）。
+
+```powershell
+git config --global user.name  "FFaassdfs"
+git config --global user.email "aassdfs@qq.com"
+git config --global init.defaultBranch main
+git config --global core.autocrlf true
+git config --global push.default simple
+```
+
+⚠️ **注意**：本次会话为临时提交用过 `-c user.name="dsh-desktop"`，那是**权宜之计**，不要写进全局配置——否则以后所有提交的作者都是它。
+
+### 43.2 SSH（🔑 密钥已生成，⏳ **公钥待加到 GitHub**）
+
+`~/.ssh` 整个目录丢失 → **无法恢复**（私钥不可再生），只能**生成新密钥并重新授权**：
+
+```powershell
+ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\id_ed25519 -N '""' -C "aassdfs@qq.com"
+```
+
+**本机生成的新公钥**（需加到 GitHub → Settings → SSH and GPG keys）：
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ+MjEv4LcB2vS+OuE1mjHAYhgsAwzKshwoe/OFGnZnt aassdfs@qq.com
+```
+
+新密钥指纹：`SHA256:oKiJmJMSQCkyqOiaKjpB0HK2e5IBpZbUcl+rb6se7+M`
+
+#### 🔴 `~/.ssh/config` 必须带 443 端口（本机 22 不通）
+
+```ssh-config
+Host github.com
+    HostName ssh.github.com
+    Port 443
+    User git
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+```
+
+#### 🔴 known_hosts 的坑：走 443 时查的是 `[ssh.github.com]:443`
+
+`ssh-keyscan` 在本机网络下**无输出**（受限），改用 **GitHub 官方公示的 host key**（<https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints>）手工写入，并**同时写两个 host 名**：
+
+- `github.com …` ×3（RSA / ECDSA / ED25519）
+- `[ssh.github.com]:443 …` ×3（**非默认端口必须用 `[host]:port` 形式**）
+
+**写完后必须校验指纹**（`ssh-keygen -lf ~/.ssh/known_hosts`），应恰好等于官方公示值——这能证明公钥没被中间人替换：
+
+| 类型 | 官方公示指纹 |
+|---|---|
+| ED25519 | `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU` |
+| ECDSA | `SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM` |
+| RSA | `SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s` |
+
+**验证连接**：`ssh -T git@github.com`
+- `successfully authenticated` + `does not provide shell access` = ✅ 已生效（**不需要** `-p 443`，config 已处理）
+- `Permission denied (publickey)` = 公钥还没加到 GitHub
+- `Host key verification failed` = known_hosts 缺 `[ssh.github.com]:443` 条目（**本次最初就是这个报错**）
+
+> 加完公钥后 `git push origin main` **不再需要临时 PAT**。
+
+### 43.3 `$DSH_HOME` 备份（✅ 已实现并实测）
+
+**新增 `.work/backup-dsh-home.ps1`**（入库，别的会话可直接用）：
+
+```powershell
+pwsh -File .work\backup-dsh-home.ps1              # 备份到 D:\dsh\backups
+pwsh -File .work\backup-dsh-home.ps1 -CheckOnly   # 干跑
+pwsh -File .work\backup-dsh-home.ps1 -Keep 30     # 保留份数（默认 20）
+```
+
+| 项 | 说明 |
+|---|---|
+| **备份什么**（不可再生的用户数据） | `sessions\`、`storages\`、`.credentials.yaml`、`settings.yaml`、`AGENTS.md`、`.anonymous-user-id`、`profiles\web\cordis.patch.yml` |
+| **刻意跳过**（大 / 可再生） | `profiles\node_modules\`（插件，用 `setup-plugins.mjs` 重装）、缓存、日志 |
+| 落点 | `D:\dsh\backups\dsh-home-<yyyyMMdd-HHmmss>\`，自动保留最新 20 份 |
+| **自验证** | 逐项比对**文件数**，并断言 `.credentials.yaml` **逐字节相同**——不一致就 `throw`（"没验证过的备份不算备份"） |
+| 实测 | 18 文件 / 1.8 MB；两次运行（手动 + 计划任务触发）均 `LastTaskResult = 0` |
+| 计划任务 | **`dsh-desktop-backup-DSH_HOME`**，每天 **12:00**，注册时用 `pwsh`(PS7)、`-ExecutionPolicy Bypass` |
+
+> 为什么值得做：整个 `$DSH_HOME` 才 **~2 MB**，而它是本项目**唯一没有兜底的重要数据**。备份成本几乎为零，丢失代价却很大（本次就丢了全部会话）。
+
+### 43.4 其它清理（本次一并做了）
+
+| 对象 | 处置 |
+|---|---|
+| `D:\dsh\app\current\dsh-desktop.new.exe`（11,532,288，09:53 旧暂存，**不含 §42 修复**） | 🗑️ **删除**——留着是陷阱（误点会退回旧壳） |
+| `D:\dsh\app\current\VERSION.new.txt` | 🗑️ 删除 |
+| `D:\dsh\app\current\VERSION.txt` | 🔄 刷新为当前状态（旧版备份为 `VERSION.txt.bak-20260924`） |
+| `D:\dsh-desktop\.npm-cache`（275.7 MB） | 🗑️ 删除（npm 缓存，可再生） |
+| `D:\dsh-desktop\.update`（585.8 MB） | 🗑️ 删除（换入失败残留，内含 rc.2 暂存树） |
+| **`D:\dsh-desktop\`**（坏包目录，内置 rc.2） | 📦 **归档**为 `D:\dsh\_broken-pkg-0.1.12-rc2-20260924`（428.5 MB）——**没永久删除**，留可逆余地 |
+
+> ⚠️ PowerShell 的 `Rename-Item` 对**根级路径**会报 `Cannot rename ... because it represents a path or device name`——改用 `cmd /c move` 即可（本次踩到）。
+
+**换壳已确认生效**：运行中的壳 = `D:\dsh\app\current\dsh-desktop.exe`（**11,533,312 字节**），且二进制内**含 §42.4-A 的诊断字符串**（`knownStartupFault` 的中文指引 + HMR 签名常量）；对照旧的 `.new.exe` 两者皆无。
+
+
 
 
 
