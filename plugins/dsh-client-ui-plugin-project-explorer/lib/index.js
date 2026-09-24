@@ -85,6 +85,23 @@ async function readJson(req) {
 }
 
 // --- root resolution ---------------------------------------------------------
+/**
+* Whether `p` is a filesystem root ("C:\", "D:\", "/").
+*
+* Why this matters: when the client cannot name a session the host falls back to
+* its own working directory. A dsh server started from a desktop shortcut has
+* `process.cwd()` = the drive root, and the panel then rendered the ENTIRE C:
+* drive as "the project folder" — a confusing, slow, and misleading tree. A
+* drive root is never a useful project root, so it is reported instead.
+* @param p - an absolute, already resolved path.
+* @returns true when p is a drive/filesystem root.
+*/
+function isFilesystemRoot(p) {
+	const trimmed = p.replace(/[\\/]+$/, "");
+	// "C:" (drive relative) / "C:\" both trim to "C:"; POSIX "/" trims to "".
+	return trimmed === "" || /^[a-zA-Z]:$/.test(trimmed);
+}
+
 async function resolveRoot(sessionCwd) {
 	if (typeof sessionCwd === "string" && sessionCwd.trim() !== "") {
 		try {
@@ -95,7 +112,13 @@ async function resolveRoot(sessionCwd) {
 			// fall through to the server cwd
 		}
 	}
-	return { root: await realpath(process.cwd()), via: "fallback" };
+	const fallback = await realpath(process.cwd());
+	if (isFilesystemRoot(fallback)) {
+		const error = httpError(409, "无法确定项目目录：当前会话没有提供工作目录，dsh 服务的启动目录是磁盘根目录（" + fallback + "）");
+		error.code = "no-project-root";
+		throw error;
+	}
+	return { root: fallback, via: "fallback" };
 }
 
 function rootNameOf(root) {
@@ -127,6 +150,22 @@ function extensionOf(name) {
 }
 
 // --- handlers ----------------------------------------------------------------
+/**
+* Map a thrown error to the wire error code for a route response.
+* An error may carry its own `code` (e.g. "no-project-root", which the client
+* shows as actionable guidance rather than a generic failure).
+* @param error - the caught error.
+* @param status - the HTTP status that will be sent.
+* @returns the error code string.
+*/
+function errorCodeOf(error, status) {
+	if (typeof error.code === "string" && error.code !== "") return error.code;
+	if (status === 400) return "bad-request";
+	if (status === 403) return "forbidden";
+	if (status === 409) return "conflict";
+	return "internal";
+}
+
 async function handleRoot(req, res) {
 	try {
 		const payload = await readJson(req);
@@ -134,7 +173,7 @@ async function handleRoot(req, res) {
 		send(res, 200, { ok: true, root, rootName: rootNameOf(root), resolvedVia: via });
 	} catch (error) {
 		const status = error.status || 500;
-		send(res, status, { ok: false, error: { code: status === 400 ? "bad-request" : "internal", message: error.message || String(error) } });
+		send(res, status, { ok: false, error: { code: errorCodeOf(error, status), message: error.message || String(error) } });
 	}
 }
 
@@ -206,8 +245,7 @@ async function handleList(req, res) {
 		send(res, 200, { ok: true, root, entries, truncated });
 	} catch (error) {
 		const status = error.status || 500;
-		const code = status === 400 ? "bad-request" : status === 403 ? "forbidden" : "internal";
-		send(res, status, { ok: false, error: { code, message: error.message || String(error) } });
+		send(res, status, { ok: false, error: { code: errorCodeOf(error, status), message: error.message || String(error) } });
 	}
 }
 
@@ -281,8 +319,7 @@ async function handleOpen(req, res, openFn = spawnExplorer) {
 		send(res, 200, { ok: true, opened: real, openedAs: isDir ? "dir" : "file" });
 	} catch (error) {
 		const status = error.status || 500;
-		const code = status === 400 ? "bad-request" : status === 403 ? "forbidden" : "internal";
-		send(res, status, { ok: false, error: { code, message: error.message || String(error) } });
+		send(res, status, { ok: false, error: { code: errorCodeOf(error, status), message: error.message || String(error) } });
 	}
 }
 

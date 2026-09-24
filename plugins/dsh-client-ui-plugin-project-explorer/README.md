@@ -8,7 +8,9 @@
 
 - 右侧固定面板（宽 300px，可折叠成 26px 细条，折叠状态记忆在 localStorage）。
 - 目录树**懒加载**：展开目录才向后端请求列表；`.git`/`node_modules`/`dist`/`build`/`*.log` 等默认隐藏（策略在 `lib/index.js` 顶部常量）。
-- 根目录 = **当前会话的工作目录**（`sessions.list` 的 `current` 会话的 `cwd`）；切换会话自动跟随刷新；无会话时回退 dsh server 启动目录（桌面壳以项目 workdir 拉起，即项目目录）。
+- 根目录 = **当前会话的工作目录**（`sessions.list` 快照里 `retainedBy.mainView > 0` 的那个会话的 `cwd`）；切换会话自动跟随刷新；无会话时回退 dsh server 启动目录（桌面壳以项目 workdir 拉起，即项目目录）。
+  - 🔴 **当前会话的判定**：会话列表快照的形状是 `{ids, byId, phase, projectionsBySession}`——**没有 `current` 字段**。正确写法（与官方 `dsh-client-ui-session` 的 `publishMain` 一致）是取 **`retainedBy.mainView` 计数 > 0** 的会话；已经跟随的会话只要仍被主视图保留就继续用它。
+  - ⚠️ 早期版本读的是 `snap.current`（不存在）→ 恒为 `undefined` → 回退到 dsh 服务自身 cwd，而桌面快捷方式启动的壳 cwd 是**磁盘根**，于是面板把整个 `C:\` 当成「项目目录」。见 HANDOVER §44。
 - **拖文件进对话框**：行元素可拖拽（自定义 MIME `application/x-dsh-filetree`），document 级 drop 处理器把路径插入 composer 草稿**末尾**（换行分隔），焦点回到输入框，可直接继续输入。
   - 相对路径基准 = 当前会话 cwd；文件在 cwd 外才用绝对路径（v1 树根就是 cwd，正常不会发生）。
   - 目录也可拖（agent 自己 list）。
@@ -32,6 +34,7 @@
 ```
 POST /plugin-project-explorer/root  {sessionCwd?}
   -> {ok, root, rootName, resolvedVia: "session"|"fallback"}
+  -> 409 {ok:false, error:{code:"no-project-root"}} 当回退目标本身是磁盘根时（拒绝把 C:\ 当项目目录）
 POST /plugin-project-explorer/list  {sessionCwd?, path}
   -> {ok, root, entries: [{name, path, kind: "dir"|"file", size}], truncated}
 ```
@@ -41,11 +44,12 @@ POST /plugin-project-explorer/list  {sessionCwd?, path}
 - 请求路径必须落在当前解析出的根目录内（大小写不敏感前缀检查），越界 403；
 - 忽略名单：`.git/.svn/.hg/node_modules/.cache/dist/build/out/coverage/target/.idea/.vscode/__pycache__/.venv/venv/.dsh/.work/.DS_Store/Thumbs.db`，忽略扩展名 `.log/.tmp/.lock/.swp/.bak`；
 - 单目录最多 500 条（超出标记 `truncated`）、深度上限 40、请求体上限 1MiB；
+- **回退目标不得是磁盘根**（`C:\` / `D:\` / `/`）：那不是有意义的项目根，返回 409 `no-project-root` 并给出可读原因，而不是把整个盘当项目树渲染；
 - **不提供读文件内容的路由**——拖入只是路径，内容由 agent 自己读。
 
 ### Client 关键点
 
-- `ctx.get("sessions")` → `list.getSnapshot()` 取 `current` 会话 id 与 `byId[id].cwd`（client-runtime 第 8953 行 `rootCtx.reflect.provide("sessions", …)`）。
+- `ctx.get("sessions")` → `list.getSnapshot()` 取 `byId`，按 **`retainedBy.mainView > 0`** 选出主视图正在看的会话，再读它的 `cwd`（官方 `dsh-client-ui-session` 的 `publishMain` 就是这么判的；**快照没有 `current` 字段**）。导出为 `activeSessionId` / `currentSessionCwd` 以便单测。
 - `ctx.get("conversation")` → `conversation.input.shell(sessionId)`（ui-conversation 第 9768 行 `ctx.plugin(ConversationController, {input: inputHub, …})`），`shell.snapshot.draft` 读草稿、`shell.setDraft(text)` 写入；失败时退化为 DOM 方案（`textarea[data-phase]` 插值 + 派发 input 事件）。
 - 面板不依赖官方布局插槽，直接 `createRoot` 挂一个 `position:fixed` 容器。
 - 相对路径计算 `toRelative(root, filePath)`：正斜杠归一化 + 大小写不敏感前缀匹配，导出以便单测。
@@ -66,18 +70,20 @@ node .work/install-project-explorer.mjs
 
 验收清单：
 - [ ] 右侧出现「📁 项目文件」细条，点击展开 300px 面板，标题为当前项目目录名；
+- [ ] **打开一个会话后面板标题 = 该会话的 cwd**（不再是 `C:` / 启动目录）；切换会话根目录跟随变化；
 - [ ] 目录树正常展开/收起，`node_modules`/`.git`/`*.log` 不显示；
-- [ ] 切换会话，根目录跟随该会话 cwd 变化；
 - [ ] 拖一个 `.ts`/`.md` 文件到输入框 → 末尾出现相对路径（正斜杠），可继续打字，发送后 agent 能读到该文件；
 - [ ] 拖图片同样插入路径（不走原生图片附件）。
 
 ## 测试
 
 ```powershell
-node .work/filetree-host.test.mjs    # host 路由单测（临时目录 + 假 req/res）
-node .work/filetree-smoke.test.mjs   # bundle 冒烟（exports/toRelative/SSR loading/config 注入）
+node .work/filetree-host.test.mjs    # host 路由单测（临时目录 + 假 req/res，含磁盘根拒绝）
+node .work/filetree-smoke.test.mjs   # bundle 冒烟（exports/toRelative/activeSessionId/SSR/config 注入）
 node --check plugins/dsh-client-ui-plugin-project-explorer/lib/client.js
 ```
+
+> ⚠️ `filetree-host.test.mjs` 原先用**硬编码绝对路径**指向 `D:\opencode\001\dsh-desktop\...`（2026-09-14 冻结的旧工作区），于是它一直在测**旧副本**、看不到本仓库的任何改动。已改为相对本文件解析（HANDOVER §44.4）。
 
 ## 注意 / 风险
 

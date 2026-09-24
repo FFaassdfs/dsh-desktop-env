@@ -4,11 +4,16 @@
 // needed — pure Node, mirrors .work/host-toggle-test.mjs).
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const HOST = "D:/opencode/001/dsh-desktop/plugins/dsh-client-ui-plugin-project-explorer/lib/index.js";
-const mod = await import(pathToFileURL(HOST).href);
+// Resolve the host module RELATIVE to this file. It used to be a hardcoded
+// absolute path into `D:\opencode\001\dsh-desktop\...` (the workspace that was
+// frozen on 2026-09-14), so this suite silently kept testing a stale copy and
+// could not see any change made in the live repo. Keep it relative — the suite
+// must exercise the tree it lives in.
+const HOST = new URL("../plugins/dsh-client-ui-plugin-project-explorer/lib/index.js", import.meta.url);
+const mod = await import(HOST.href);
 if (typeof mod.apply !== "function" || !Array.isArray(mod.inject) || !mod.inject.includes("webServer")) {
   throw new Error("host module shape wrong: " + Object.keys(mod).join(","));
 }
@@ -168,6 +173,38 @@ try {
     throw new Error("N2 failed: " + JSON.stringify(r.json) + " opened=" + JSON.stringify(opened));
   }
   console.log("N open success OK (dir -> plain, file -> /select)");
+
+  // --- O: drive-root fallback must be refused, not served ----------------
+  // Regression for the "tree shows an unrelated folder" bug. When the client
+  // could not name a session, the old host returned realpath(process.cwd());
+  // a shell started from a desktop shortcut has cwd = C:\, so the panel
+  // rendered the entire C: drive as "the project folder". A drive root is never
+  // a useful project root, so it must be refused with an actionable code.
+  // The check runs in-process with an injected cwd: we temporarily chdir to the
+  // drive root and assert the route reports instead of serving it.
+  const savedCwd = process.cwd();
+  try {
+    process.chdir(join(tmp, "..")); // not a drive root; sanity below
+    process.chdir(savedCwd);
+    // A normal cwd still resolves (proves the guard is not blanket-refusing).
+    r = await call(routes[rootPath], {});
+    if (r.status !== 200 || r.json.resolvedVia !== "fallback") {
+      throw new Error("O1 failed: normal fallback should still work: " + JSON.stringify(r.json));
+    }
+    console.log("O1 fallback(normal cwd) OK ->", r.json.root);
+
+    // Now point the process cwd at the drive root and assert refusal.
+    // join("D:\\a\\b", "..") only strips one segment, so walk with parse().root.
+    const driveRoot = parse(savedCwd).root; // e.g. "D:\"
+    process.chdir(driveRoot);
+    r = await call(routes[rootPath], {});
+    if (r.status !== 409 || r.json.ok !== false || r.json.error.code !== "no-project-root") {
+      throw new Error("O2 failed: drive-root fallback must be refused: " + JSON.stringify(r.json));
+    }
+    console.log("O2 fallback(drive root) refused 409 no-project-root OK");
+  } finally {
+    process.chdir(savedCwd);
+  }
 
   console.log("\nALL HOST TESTS PASSED");
 } finally {

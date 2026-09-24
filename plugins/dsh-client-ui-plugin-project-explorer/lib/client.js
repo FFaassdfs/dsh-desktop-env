@@ -68,7 +68,7 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 		const MIME = CONFIG.dndMime;
 		const DRAG_ACTIVE_CLASS = CONFIG.dragActiveClass;
 		/** Module-level state shared between the panel and the document drop handler. */
-		const shared = { root: null, notify: function () {} };
+		const shared = { root: null, sessionId: void 0, notify: function () {} };
 		/** POST JSON to one of our host routes. */
 		function request(path, body) {
 			return fetch(path, {
@@ -77,12 +77,50 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 				body: JSON.stringify(body)
 			}).then((response) => response.json());
 		}
-		/** Current session's cwd (the project root the tree follows), or undefined. */
-		function currentSessionCwd(sessions) {
+		/**
+		* The session the main view is currently showing, or undefined.
+		*
+		* The sessions list snapshot is `{ids, byId, phase, projectionsBySession}` —
+		* it has NO `current` field. Reading `snap.current` therefore always yielded
+		* undefined, the host fell back to the dsh server's own working directory
+		* (C:\ when the shell was started from a shortcut), and the tree showed a
+		* completely unrelated folder. That was the "tree no longer matches my
+		* project" bug.
+		*
+		* The official derivation (dsh-client-ui-session's publishMain) is:
+		*   - keep the session we already follow while it is still retained by the
+		*     main view, otherwise
+		*   - take the first session whose `retainedBy.mainView` count is > 0.
+		* `retainedBy` is projected into every byId entry by the session controller,
+		* so this needs no extra service — just the right field.
+		* @param sessions - the client sessions service (may be absent early on).
+		* @param preferredId - the session id we currently follow, if any.
+		* @returns the active session id, or undefined when nothing is open.
+		*/
+		function activeSessionId(sessions, preferredId) {
 			try {
 				const snap = sessions && sessions.list ? sessions.list.getSnapshot() : null;
-				const id = snap && snap.current;
-				if (id && snap.byId && snap.byId[id]) return snap.byId[id].cwd;
+				const byId = snap && snap.byId ? snap.byId : null;
+				if (byId === null) return void 0;
+				const isMain = (id) => {
+					const entry = id === void 0 ? void 0 : byId[id];
+					return entry !== void 0 && (entry.retainedBy && entry.retainedBy.mainView ? entry.retainedBy.mainView : 0) > 0;
+				};
+				if (isMain(preferredId)) return preferredId;
+				for (const id of Object.keys(byId)) if (isMain(id)) return id;
+			} catch {}
+			return void 0;
+		}
+		/**
+		* Current session's cwd (the project root the tree follows), or undefined.
+		* @param sessions - the client sessions service.
+		* @param preferredId - the session id we currently follow, if any.
+		*/
+		function currentSessionCwd(sessions, preferredId) {
+			try {
+				const id = activeSessionId(sessions, preferredId);
+				const snap = sessions && sessions.list ? sessions.list.getSnapshot() : null;
+				if (id && snap && snap.byId && snap.byId[id]) return snap.byId[id].cwd;
 			} catch {}
 			return void 0;
 		}
@@ -219,6 +257,9 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 		function ProjectExplorerPanel({ ctx, t }) {
 			const [root, setRoot] = react.useState(null);
 			const [rootError, setRootError] = react.useState(false);
+			// Actionable text from the host (e.g. "no project folder could be
+			// determined"); empty means "show the generic message".
+			const [rootMessage, setRootMessage] = react.useState("");
 			const [tree, setTree] = react.useState({});
 			const [expanded, setExpanded] = react.useState(function () { return new Set(); });
 			const [collapsed, setCollapsed] = react.useState(function () {
@@ -230,6 +271,9 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 			});
 			const [notice, setNotice] = react.useState(null);
 			const lastCwdRef = react.useRef(void 0);
+			// The session we currently follow; used both to compute the cwd and to
+			// notice a switch (id changes) or a cwd change within the same session.
+			const lastSessionRef = react.useRef(void 0);
 			const sessions = safeGet(ctx, "sessions");
 			const loadDir = react.useCallback((dirPath) => {
 				setTree((prev) => ({ ...prev, [dirPath]: { status: "loading", entries: [], truncated: false, error: null } }));
@@ -241,12 +285,16 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 				});
 			}, []);
 			const refreshRoot = react.useCallback(() => {
-				const cwd = currentSessionCwd(sessions);
+				const sessionId = activeSessionId(sessions, lastSessionRef.current);
+				const cwd = currentSessionCwd(sessions, sessionId);
+				lastSessionRef.current = sessionId;
 				lastCwdRef.current = cwd;
 				setRootError(false);
+				setRootMessage("");
 				request("/plugin-project-explorer/root", { sessionCwd: cwd }).then((data) => {
 					if (!data.ok) {
 						setRootError(true);
+						setRootMessage(data.error && data.error.message ? data.error.message : "");
 						return;
 					}
 					const path = data.root;
@@ -262,8 +310,12 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 				refreshRoot();
 				const unsub = sessions && typeof sessions.list === "object" && typeof sessions.list.subscribe === "function"
 					? sessions.list.subscribe(() => {
-						const cwd = currentSessionCwd(sessions);
-						if (cwd !== lastCwdRef.current) refreshRoot();
+						const sessionId = activeSessionId(sessions, lastSessionRef.current);
+						const cwd = currentSessionCwd(sessions, sessionId);
+						// Re-resolve on a session switch as well as on a cwd change:
+						// two sessions can share a cwd, but the tree should still follow
+						// the newly focused one (and its relative-path base).
+						if (sessionId !== lastSessionRef.current || cwd !== lastCwdRef.current) refreshRoot();
 					})
 					: null;
 				return () => {
@@ -274,6 +326,9 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 			}, [refreshRoot, sessions]);
 			react.useEffect(() => {
 				shared.root = root ? root.path : null;
+			}, [root]);
+			react.useEffect(() => {
+				shared.sessionId = lastSessionRef.current;
 			}, [root]);
 			react.useEffect(() => {
 				shared.notify = (text, kind) => setNotice({ text, kind: kind || "info" });
@@ -347,7 +402,7 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 			]);
 			let body;
 			if (root === null) {
-				body = react.createElement("div", { className: "dshPe_hint" }, rootError ? t("root.error") : t("root.pending"));
+				body = react.createElement("div", { className: "dshPe_hint", title: rootMessage || "" }, rootError ? (rootMessage || t("root.error")) : t("root.pending"));
 			} else {
 				const rootEntry = tree[root.path];
 				const loadingRoot = rootEntry === void 0 || rootEntry.status === "loading";
@@ -404,8 +459,11 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 			if (payload === null || typeof payload.path !== "string") return;
 			const sessions = safeGet(ctx, "sessions");
 			const conversation = safeGet(ctx, "conversation");
-			const snap = sessions && sessions.list ? sessions.list.getSnapshot() : null;
-			const sessionId = snap && snap.current;
+			// Same derivation as the panel: the sessions snapshot has no `current`
+			// field, so ask for the session the main view actually retains. The
+			// panel's choice wins while it is still active, which keeps the dragged
+			// path's base identical to the tree the user is looking at.
+			const sessionId = activeSessionId(sessions, shared.sessionId);
 			if (typeof sessionId !== "string") {
 				shared.notify("drop.noSession", "error");
 				return;
@@ -536,6 +594,8 @@ body.dshPe_dragActive::after{content:"";position:fixed;inset:0;z-index:214748364
 		exports.apply = apply;
 		exports.inject = inject;
 		exports.toRelative = toRelative;
+		exports.activeSessionId = activeSessionId;
+		exports.currentSessionCwd = currentSessionCwd;
 		exports.ProjectExplorerPanel = ProjectExplorerPanel;
 		exports.TreeRow = TreeRow;
 		return module.exports;
