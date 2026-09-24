@@ -39,3 +39,14 @@ func (a *App) startDsh() error {
 func (a *App) npmInstallGlobalVersion(version string) error {
 	return exec.Command("npm", "install", "-g", "@deepseek-ai/dsh@"+version).Run()
 }
+
+// startInstaller 在非 Windows 上直接调用 pwsh（便携发行包只做 win-x64，这条路
+// 径主要是让 GOOS=linux 的 vet/编译能通过）。同样跑 .ps1 而非 .cmd。
+func (a *App) startInstaller(path string) error {
+	engine := "pwsh"
+	if _, err := exec.LookPath(engine); err != nil {
+		engine = "powershell"
+	}
+	cmd := exec.Command(engine, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path)
+	return cmd.Start()
+}

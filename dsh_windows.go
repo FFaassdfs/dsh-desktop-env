@@ -143,3 +143,16 @@ func (a *App) npmInstallGlobalVersion(version string) error {
 	}
 	return cmd.Run()
 }
+
+// startInstaller 在后台启动发行包自带的插件安装器（见 plugins_install.go）。
+//
+// 两个刻意的选择：
+//  1. **跑 .ps1，不跑 .cmd**——.cmd 末尾有 `pause`（那是给双击用的），由壳启动会
+//     永远等不到进程退出。
+//  2. **窗口可见**（不用 hiddenWindowAttr）：安装器会打印插件清单与进度，用户
+//     需要看到它到底在做什么；把它藏起来只会让人以为"点了没反应"。
+func (a *App) startInstaller(path string) error {
+	engine := firstExistingExecutable(powershellCandidates(os.Getenv))
+	cmd := exec.Command(engine, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path)
+	return cmd.Start()
+}

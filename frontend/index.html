@@ -32,6 +32,17 @@
             </div>
             <div class="coreFoot" id="coreFoot"></div>
         </div>
+        <!-- 预置插件安装：只有便携发行包（exe 同级有 install-offline.ps1）才显示 -->
+        <div class="plugins" id="pluginsBox" hidden>
+            <div class="pluginsHead">
+                <span class="pluginsLabel">预置插件</span>
+                <span class="pluginsDesc">装进 dsh，让界面多出说明/文件树/模型能力等功能</span>
+            </div>
+            <div class="pluginsRow">
+                <button class="mini primary" id="installPlugins">安装插件…</button>
+                <span class="pluginsNote" id="pluginsNote"></span>
+            </div>
+        </div>
         <div class="update" id="update">检查更新…</div>
         <div class="hint" id="hint"></div>
     </div>

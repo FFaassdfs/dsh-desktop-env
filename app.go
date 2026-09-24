@@ -657,6 +657,32 @@ func (a *App) GetUpdateStatus() string {
 	return a.update
 }
 
+// ---- 预置插件安装 ----
+
+// HasPluginInstaller 报告本机是否有发行包自带的插件安装器。没有时面板隐藏入口
+// （源码装的使用者自己跑命令更快，壳不去猜仓库在哪）。
+func (a *App) HasPluginInstaller() bool {
+	return installerPathForThisExe() != ""
+}
+
+// InstallBundledPlugins 启动发行包自带的安装器，把预置插件装进 $DSH_HOME。
+//
+// 刻意「只启动、不等待、不判断成败」：安装器自己有交互菜单与校验，壳再去解释它
+// 的结果只会引入第二套可能不一致的判断逻辑（见 plugins_install.go 的说明）。
+// 用户能看到弹出的窗口，装完自己决定要不要重启服务。
+func (a *App) InstallBundledPlugins() string {
+	path := installerPathForThisExe()
+	if path == "" {
+		return "本机没有找到插件安装器（install-offline.ps1）——只有便携发行包才带它。"
+	}
+	if err := a.startInstaller(path); err != nil {
+		debugLog("InstallBundledPlugins: cannot start %s: %v", path, err)
+		return "无法启动插件安装器：" + err.Error()
+	}
+	debugLog("InstallBundledPlugins: started %s", path)
+	return "已打开插件安装器窗口，请按提示选择要装的插件。装好后建议重启服务，让它生效。"
+}
+
 // ---- version / update ----
 
 func (a *App) installedVersion() string {

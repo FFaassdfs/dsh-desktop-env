@@ -9,6 +9,8 @@ import {
     UpdateCore,
     SkipCoreVersion,
     ClearSkippedCore,
+    HasPluginInstaller,
+    InstallBundledPlugins,
 } from '../wailsjs/go/main/App';
 
 const statusEl = document.getElementById('status');
@@ -23,6 +25,9 @@ const coreInstalledEl = document.getElementById('coreInstalled');
 const coreListEl = document.getElementById('coreList');
 const coreFootEl = document.getElementById('coreFoot');
 const coreRefreshBtn = document.getElementById('coreRefresh');
+const pluginsBox = document.getElementById('pluginsBox');
+const installPluginsBtn = document.getElementById('installPlugins');
+const pluginsNoteEl = document.getElementById('pluginsNote');
 
 // coreBusy 期间的点击一律忽略：安装/下载是一次性的重活，重复点击只会互相打架
 let coreBusy = false;
@@ -205,3 +210,24 @@ GetUpdateStatus().then((s) => {
 }).catch(() => {});
 
 refreshCore();
+
+// ---- 预置插件安装 ----
+//
+// 只有便携发行包（exe 同级有 install-offline.ps1）才显示这一区：源码装的使用者
+// 自己跑命令更快，壳不去猜仓库在哪。壳只负责把安装器**窗口打开**，不判断成败
+// ——安装器自己有交互菜单与校验，用户装完自行决定要不要重启服务。
+HasPluginInstaller().then((has) => {
+    if (has) pluginsBox.hidden = false;
+}).catch(() => {});
+
+installPluginsBtn.addEventListener('click', async () => {
+    installPluginsBtn.disabled = true;
+    try {
+        const msg = await InstallBundledPlugins();
+        pluginsNoteEl.textContent = msg || '';
+    } catch (err) {
+        pluginsNoteEl.textContent = String(err);
+    } finally {
+        installPluginsBtn.disabled = false;
+    }
+});

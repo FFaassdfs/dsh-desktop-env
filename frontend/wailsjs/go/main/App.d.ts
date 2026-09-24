@@ -8,6 +8,10 @@ export function GetCoreVersions():Promise<main.coreVersionsView>;
 
 export function GetUpdateStatus():Promise<string>;
 
+export function HasPluginInstaller():Promise<boolean>;
+
+export function InstallBundledPlugins():Promise<string>;
+
 export function OpenBrowser():Promise<void>;
 
 export function Quit():Promise<void>;

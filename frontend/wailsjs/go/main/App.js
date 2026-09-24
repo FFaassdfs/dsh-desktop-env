@@ -14,6 +14,14 @@ export function GetUpdateStatus() {
   return window['go']['main']['App']['GetUpdateStatus']();
 }
 
+export function HasPluginInstaller() {
+  return window['go']['main']['App']['HasPluginInstaller']();
+}
+
+export function InstallBundledPlugins() {
+  return window['go']['main']['App']['InstallBundledPlugins']();
+}
+
 export function OpenBrowser() {
   return window['go']['main']['App']['OpenBrowser']();
 }
