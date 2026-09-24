@@ -136,7 +136,9 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-height: 92px;
+    /* 面板放大到 500x560 后给列表更多空间：通道通常只有 2-3 行，留足余量
+       以免再多一条通道时出现滚动条 */
+    max-height: 130px;
     overflow-y: auto;
 }
 

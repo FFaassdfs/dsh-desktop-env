@@ -9,10 +9,17 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// 与 main.go 中窗口 MinWidth/MinHeight 保持一致
+// 面板尺寸的唯一来源是 main.go 的 panelWidth/panelHeight。
+//
+// 注意：minWindowWidth/minWindowHeight 只在 restoreWindowState 的「尺寸是否
+// 有效」校验里用到，而 restoreWindowState / captureWindowState 自 §23 把窗口
+// 改成固定尺寸后就**不再被调用**（main.go 没有 OnBeforeClose，也没有调用点）。
+// 保留它们只是为了不破坏 windowstate_test.go 覆盖的还原逻辑；数值刻意与
+// main.go 对齐，避免注释说"保持一致"而实际早已漂移（2026-09-24 修正：
+// 旧值是 400x260，与当时的 440x400 并不一致）。
 const (
-	minWindowWidth  = 400
-	minWindowHeight = 260
+	minWindowWidth  = panelWidth
+	minWindowHeight = panelHeight
 )
 
 // WindowState 记录窗口大小、位置与最大化状态，用于跨启动还原。
