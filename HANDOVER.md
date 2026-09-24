@@ -1,7 +1,7 @@
 # HANDOVER.md — dsh-desktop 交接文档
 
 > **用途**：让不同会话/协作者在不共享记忆的情况下，快速知道这个仓库里发生过什么、怎么复现、有哪些注意点、要避开哪些坑。
-> **最后更新**：**§40 壳的「核心版本选择器」：只提示、按通道选、可跳过（2026-09-24）**——用户问「官方核心已到 0.1.7，为什么壳只刷到 0.1.5rc3」，并要求**能比较版本号、用按钮选择更新、也可以暂时不更新**。查明两层原因：①上游把 `0.1.7-rc.1` 发在 **`next`**，而 `latest` 仍钉在 `0.1.5-rc.3`（壳只读 `latest`）；②旧逻辑是 **`installed == latest` 字符串等值** + 静默 `npm i -g`（**会把用户手装的更新版本降级回去**，且无开关）。改法：改用 semver 比较（**复用既有的 `compareDshVersions`，不写第二份**）、**只提示绝不自动装**、面板按通道列出最新版（rc 0.1.7-rc.1 / alpha 0.1.7-alpha.2，**无正式版**）并逐行给「更新·重装」「跳过」（跳过落盘，可恢复提醒）；安装只在用户点按钮时发生（便携包走 `stageBundledRuntime(指定版本)`）。Go 套件 39 用例全绿（含默认跳过的联网用例 `TestFetchRegistryLive`）。**待办**：换壳（`dsh-desktop.new.exe` 已暂存，需在 dsh web 停止时换，见 §40.6）。**§39 vekenllm 的两个内网网关（集团 / 技术）与第二条预置（2026-09-23）**——用户提示 vekenllm 有两个 url（集团内网 / 技术内网）且**要说明**。URL 不用问：两份 vekenllm 快照文档的 §4 早已列出（`192.168.100.63:4000` = 集团大楼内网、`192.168.15.137:4000` = 维科技术）。**实测（本机）**：两个地址都能连（13ms / 5ms），都是 LiteLLM，**但同一 key 只在一个网关上有效**——集团 key 请求技术网关得 `401 token_not_found_in_db` ⇒ 两套独立 token 库。**因此新增第二条预置 `vekenllm-tech` 并各用独立凭据引用**（否则两边 key 互相覆盖），技术那条的模型清单照集团复制并标「未实测」；新增界面专用 `note` 字段。断言 184 → **205**。**§38 🔴 预置供应商面板「静默不渲染」——list 座位缺少必填 `id`（2026-09-23）**——用户在本机与另一台机器都**复现**了"装好插件、重启壳也找不到面板"。宿主侧全绿（补丁条目在、`dsh --dump-config` 有该条目、6/6 已是最新、dsh web 确为新进程），问题在**客户端座位注册**：`settings.models.footer` 是 **list** 座位，官方注册表的契约把 **`id` 标为 required**，而首版只传了 `{name}` → **注册被拒且页面无报错、不渲染**（「模型同步」用的 keyed 座位只需 `key`，所以它一直正常）。**修法**：`register({name, id: "provider-presets"})`；并新增**座位契约断言**（从 `dsh-cordis-client-runner` 读 `registerOptions`，逐条断言 required 字段都提供了）→ 184 断言。**客户端 bundle 改动只需刷新页面**（宿主按内容算 rev）。**§36.5 仓库简介 About 已完成（2026-09-23）**——description 改中文、并新增 7 个 topics（用户提供 classic PAT；token 只落在 gitignored 的 `.cache/gh-pat.txt`，脚本从不打印、用完立即删除并全仓扫描确认无残留）。**两个 API 坑**：`GITHUB_TOKEN` **没有 administration** 权限（改 About 只能 PAT/网页）；**`topics` 放进 repository PATCH 会被静默忽略**（200 OK 但结果为空，带 mercy preview 媒体类型也一样）→ 必须用 `PUT /repos/{owner}/{repo}/topics`。**§37 包内 `README.txt` 中文化 + 修掉两个隐 bug（2026-09-23）**——用户要求包内 README 也翻中文。顺带发现**存在已久**的两个 bug：`pack-release.ps1` 用**双引号 here-string** 生成它，于是 `` `tar … `` 被转义成 **TAB**（解压那一行自 0.1.3 起就是坏的）、未定义的 `$DSH_HOME` 被**内插成空**。改为**单引号 here-string + `__PKG__`/`__CATALOGUE__` 占位符**，并把落盘改成**带 BOM 的 UTF-8**（无 BOM 的中文 `.txt` 在旧记事本乱码）。`.work/ps51-encoding.test.ps1` 新增 7 项 README 断言 → **38 项**。**§36 GitHub 文案中文化（2026-09-23）**——用户要求「github 上的说明和 release 说明都用中文更新一下」。**Release 说明模板**改为中文（含 6 插件表 / 快速开始 / 注意事项；标题加「便携包 · Windows x64」）；**已有 10 个 Release（0.1.0–0.1.9）的正文与标题**经 CI 一次性（幂等）改写为中文——本机**无 gh CLI 也无有效 PAT**，而改 Release 只需 `contents: write` ⇒ 用仓库内置 `GITHUB_TOKEN`（工具 `.work/localize-release-notes.mjs`）。**关键设计**：能力按**版本 + 提交证据**判定，不照英文正文字面翻译（英文正文从未提过 `runtime.zip`，照译会给 0.1.3–0.1.9 写成"无需解压"这种错话）。⚠️ **仓库简介 About 仍未改**——需要 administration 权限，`GITHUB_TOKEN` 不具备，只能 PAT 或网页手工设置（文案已备好）。**§34.7 `.cmd` 包装器到底跑哪个引擎（2026-09-23）**——用户追问"两个 PowerShell 都有，怎么跑到 PS7？默认 cmd 跑哪个？"。实测：**`powershell` 永远是 5.1**（PS7 只提供 `pwsh.exe`），`where powershell` 也只列 5.1。**加固**：两个 `.cmd` 的引擎解析改为 **Program Files 的 PS7 → PATH 的 `pwsh` → 5.1 兜底**（显式查安装位置，覆盖"PS7 装好后没重开 cmd、PATH 陈旧"这一成因），并加 `--which-shell` 自检；`.work/ps51-encoding.test.ps1` 新增 **E 段 10 项**（假 Program Files + 剥 PATH 跑真实包装器；断言 `.cmd` 纯 ASCII）→ 套件 **27 项**。**§35 行尾（CRLF/LF）与插件载荷哈希（2026-09-23）**——验证 0.1.9 发布资产时发现包内 `lib/client.js` 是 34290 字节、仓库里是 33624，差值 666 = 行数：本仓库 `core.autocrlf=true` 且**无 `.gitattributes`** ⇒ git 检出 CRLF、本地构建 LF，**内容逐字节一致**。而 `payloadHash()` 按原始字节算哈希 ⇒ 从包安装的插件与源码树**内容相同却哈希不同** → `update-plugins.ps1` 永远报「待更新」并每次重写。**修复**：哈希前做 CRLF→LF 归一（latin1 逐字节，不碰 BOM）；`.work/plugin-selection.test.ps1` **+2 项**（套件 59）。已反证旧算法必然误报（LF≠CRLF 字节哈希）。**§34 🔴 Windows PowerShell 5.1 的两个"只在干净 Windows 上发作"的坑（2026-09-23）**——用户在另一台**只有 PS 5.1** 的电脑上跑发行包，报 `update-plugins` 的 `ConvertFrom-Json` 解析失败、且 `install-offline` 菜单**没有中文功能说明**。两个**互相掩盖**的 5.1 差异：**(A)** 5.1 用**控制台代码页**（zh-CN = 936/GBK）解码子进程 stdout → 中文乱码到**吞掉 JSON 收尾引号**；**(B)** 5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作**一个对象**（`@(...)` 得 1 行而非 N 行）→ 菜单静默退回"只有目录名"兜底、更新器只显示 1 行并打印 `System.Object[]`。**修复三处**：`setup-plugins.mjs` 新增 **`--ascii`**（输出转义成纯 ASCII，任何代码页都解析得出）、两个脚本开头**钉 `[Console]::OutputEncoding` = UTF-8**、所有 JSON 解析改为 `@(...) | ForEach-Object { $_ }` **形状归一**（3 个脚本）。**新增套件 `.work/ps51-encoding.test.ps1`（17 项）**：用真实 `powershell.exe` 5.1 子进程 + 钉死 936 代码页跑**真实脚本**，含 BOM 守卫——本机 13 个套件全在 `pwsh` 下跑，所以这类 bug **一路绿灯**；顺带补了 3 个 `.ps1` 的 BOM。同期发布 **0.1.9**（§35）。**§33 路径Q：预置供应商插件 `provider-presets`（2026-09-23）**——把 vekenllm / 电信算力两条 provider profile 做成**随插件分发的预置**（端点/协议/compat/模型清单，**零密钥**），在「设置 → 模型」**底部**一键启用/停用/重置 + 就地填 key；密钥只走官方 `credentials.set`（**只写**通道），**脚本、发行包、仓库全程不携带密钥**。插件数 **5→6**（`provider-presets` = 编号 **6**，短名字母序仍成立）；新增单测 **180 断言** + SSR 冒烟 **19 断言**；顺带修掉 `setup-plugins.mjs --check-only` 在"尚未安装"机器上必然失败的**三处**老毛病（`plugin-selection.test.ps1` 53→**57 项**，已实测包内安装器在全新 home 上干跑通过），并记录了本会话一次**自己造成的安装事故**（`rmSync` 已删包目录、`mkdir` 被沙箱拒 → `core-version` 包目录丢失，已恢复）。已发布 **0.1.8**（tag `desktop-v0.1.8`，CI **run #14 success**，资产 98.6 MB；`verify-release.mjs` **27/27**；本地留存包在 `D:\dsh\app\packages\`，SHA256 `D50C2235…A09AF`）。**§32 开发目录整理 + 多会话约定（2026-09-23）**——清理仓库根 5 个误入库的垃圾目录（`2, 4` 等，根因＝漏 `-Plugins` 标志导致值被位置绑定到 `-AppDir`）；加三道护栏（`-AppDir` 必须绝对路径、两个测试套件断言"仓库根干净"、AGENTS.md 新增目录约定）；**本地发行包固定 `D:\dsh\app\packages\` 且打包时只留最新一份 + 写 `LATEST.txt`**；把发布验证/CI 监视升级为入库工具 `.work\verify-release.mjs` / `.work\watch-release.mjs`。**§30 独立插件更新脚本 `update-plugins.ps1`（2026-09-22）**——用户要"单独弄个插件安装脚本，方便直接更新已安装的老版本"：新增 `scripts/update-plugins.ps1` + `.cmd`（默认只更新**已装**插件、`-CheckOnly` 只报告不写、**内容哈希**判定 missing/outdated/current、**先备份失败自动回滚**、只加不减），并随发行包发布到包根；`setup-plugins.mjs` 新增 `--status` 作为判定的单一来源；测试 `.work\update-plugins.test.ps1` **26 项全通过**（含"源变更→检出并更新"与"源损坏→回滚"两条真实路径）。**§29.9 复核路径P 插件并发布 0.1.6（2026-09-22）**——独立复核（bundle 可复现 / 64 断言 / 真实 models.dev 端到端 / 安装链路 3a–3d）；补齐连带影响（`.work/plugin-selection.test.ps1` 改为**期望值由 `--describe` 推导**，5 插件下 **51/51 通过**；README/packer/facts 的"4 个插件"同步为 5）；修正 5 个 `build.mjs` 的字节口径（`bundle.length` 字符数 → `Buffer.byteLength(...,"utf8")`，bundle 内容零变化）；**0.1.6 发布（run #10，资产 98.5 MB）并通过发布资产端到端验证**（包内安装器菜单列出 5 个插件、`2,4` → explainer+model-sync、`--extract-runtime` 实跑通过）。⚠️ 0.1.5 的包只含 4 个插件（tag 早于插件提交）。**§29 路径P：模型同步插件（2026-09-22）**——按提供商刷新模型列表与参数：从 **models.dev / OpenRouter / 该商自己的 `/models` 端点**拉候选，逐字段 diff 后经**官方 `remote.settings.mutate`** 写回 `settings.yaml`（路径寻址 + revision 围栏 + 写后回读验证）；UI 挂**官方 `settings.models.provider-card` slot**，**host 半区为空**（数据面全走官方 Remote，不自建路由）。测试 **64 断言 + 真实 models.dev 数据端到端**通过；插件数 **4→5**（编号按短名字母序，`model-sync` = **4**，`project-explorer` 顺延为 **5**）。⚠️ 本节含一次**基于过期读取写入**的事故复盘（§29.5 坑 1）。**§28 插件安装体验（2026-09-21）**——安装菜单显示**中文功能说明**、**编号多选（`2,4`）**、**输入无效则不装任何插件**；说明由 `setup-plugins.mjs --describe` 单一数据源供给菜单/包内 README/仓库表格。顺带修掉两个真实 bug：**相对 `-DSHome` 导致 mjs `createRequire` 抛错 → 只装第一个插件就崩（半装状态）**、**`install-offline.ps1` 缺 UTF-8 BOM（含中文后 5.1 会乱码）**。测试 `.work\plugin-selection.test.ps1` **42 项全通过**（真实装到临时 DSH_HOME）。**§27.11 运行时改为单文件 `runtime.zip` + 首次启动解压（2026-09-21）**——用户实测反馈"包里文件很碎、拷贝慢"，实测确认是**文件数**问题（解压后 27,413 个文件、89% 小于 8 KB；单线程拷贝 88.8s vs `robocopy /MT:16` 15.9s）。方案 A：把 `runtime\` 打成**单个 `runtime.zip`**（103.2 MB / 31,074 条目），**壳首次启动自动解压**（42s、幂等、含 zip-slip 防护与原子落位），并加 CLI `dsh-desktop.exe --extract-runtime`；**新包只剩 35 个文件**，整个包拷贝 15.9s。打包器的运行时/npm 自检闸门照旧在松散目录上执行，另加"压缩包内必须含 dsh 入口与 npm"的校验。测试 28/28 通过。**§27.10 覆盖升级注意事项 + 版本保护（0.1.2）**——① 壳新增**便携运行时解析**（`runtime.go`：`$DSH_DESKTOP_RUNTIME` → `<exeDir>\runtime` → `<exeDir>` → 原有 shim 回退；便携模式**跳过 npm 自更新**）② **`scripts/pack-release.ps1`** 打出 `dsh-desktop-<shell>-dsh<ver>-win-x64.zip`（实测 **106.2 MB**，原始 312.6 MB/25,482 文件）+ `install-offline.ps1` ③ **`.github/workflows/release-desktop.yml`**：打 `desktop-v*` tag 自动构建并发 Release（用内置 `GITHUB_TOKEN`，无需 PAT）④ 实测：离线树 `node ...bin.js --version` → `0.1.5-rc.2`、离线安装器对临时 DSH_HOME `SETUP OK`、**17/17 Go 测试通过**；⚠️ 本机因 `SingleInstanceLock` 无法做实机便携启动（需目标机验证）。**§26 统一启动入口 + 版本锚点刷新（2026-09-20）**——① 抽出 **`scripts/deploy-shell.ps1`** 作为部署唯一实现，`setup.ps1`（新增 5b 步）与 `update.ps1` 共用 → **唯一启动入口 = `D:\dsh\app\current\dsh-desktop.exe`**（`build\bin\` 只是中间产物），并给 `setup.ps1`/`deploy.ps1` 加 `-AppDir`；② 发现环境已升到 **`0.1.5-rc.2`**（`npm latest` 同版本），把锁版/文档/事实源从 rc.1 统一刷新；③ **rc.2 下插件复验通过**（3 条 host 路由 200、patch 4 条目、`--check-only` 全过）；④ 核对 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md` 完全一致（v2.17）。**§25 其他电脑「一条命令更新壳」（2026-09-15）**——修复被 §24 打断的构建路径：`setup.ps1` 第 5 步从「clone fork 构建 `desktop/`」改为**在本仓库根 `wails build`**；新增 **`update.ps1`**（`git pull` → 刷新插件 → `wails build` → 部署到应用区，含 dated 归档 + `VERSION.txt`，exe 被锁时自动暂存 `.new.exe`；支持 `-SkipPull/-SkipPlugins/-SkipFrontend/-SkipBuild/-NoDeploy/-AppDir/-CheckOnly`）与 **`.work/verify-fresh-clone.ps1`**（回归验证：新克隆能否构建）。**实跑验证**：克隆 HEAD `7f5291d` → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节且含 P0-3 标记；`update.ps1` 部署/`-CheckOnly` 两条路径均正确。**§24 fork 处置 B + `SYNC_TOKEN` 全部完成**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
+**§42 🔴 便携包「整个 harness 崩溃」真相：`0.1.5-rc.2` 装了插件就启动即崩（2026-09-24）**——用户报「做到一半整个 harness 全崩溃、重装解压第一次也起不来、在线更新后才正常、会话全丢」。日志给出完整证据链：`dsh web` 启动即抛 `Error: dsh: user patch-layer watching requires the Cordis HMR service`（`dsh-app-boot/lib/index.js:1112`）并退出 → 壳自动重启 3 次耗尽预算 → 服务永久起不来。**触发条件 = profile 存在用户 patch 层（即装了任何插件）**，而**便携包默认预装 6 个插件** ⇒ 该组合**从设计上就是坏的**。**`0.1.7-rc.1` 起已修复**（实测同一 `DSH_HOME` 换版本即正常）——这解释了"在线更新后才正常"。**同时它就是 §41 的答案**：§41 当时猜"首次启动 >30s 超时"，**方向错了**（已就地标注推翻；150s 加固本身无害故保留）。修复：壳新增 `knownStartupFault()` 把该签名翻成可操作指引（**优先于"端口被占用"提示**，两者处理方式相反）+ `TestKnownStartupFault` 断言不得误判；换入失败时清理 `.update` 暂存（伴发现象，实测确认 **runtime 数据未损坏**——回滚成功，我第一轮曾误判，靠实测纠正）；**版本锚点全线更正**（`deploy.ps1` 锁版 `0.1.5-rc.2` → **`0.1.7-rc.1`**、闸门推进到 `2026-09-24`、F2/F10/F17 与新增 **F25**、AGENTS/HANDOVER 状态行）。Go 套件 **42 用例**（41 PASS / 0 FAIL / 1 SKIP）、`wails build -s` 成功。**待办**：①换壳（应用区已有**旧的** .new.exe，注意别覆盖新的）②便携包 `$pinned` 抬到 rc.1（根治项，待定发版策略）③`$DSH_HOME` 无任何备份（会话丢失的教训，建议加备份）。**§41 新电脑首次运行「启动服务失败」——诊断加固（2026-09-24）**（其结论已被 §42 修正）。**§40 壳的「核心版本选择器」：只提示、按通道选、可跳过（2026-09-24）**——用户问「官方核心已到 0.1.7，为什么壳只刷到 0.1.5rc3」，并要求**能比较版本号、用按钮选择更新、也可以暂时不更新**。查明两层原因：①上游把 `0.1.7-rc.1` 发在 **`next`**，而 `latest` 仍钉在 `0.1.5-rc.3`（壳只读 `latest`）；②旧逻辑是 **`installed == latest` 字符串等值** + 静默 `npm i -g`（**会把用户手装的更新版本降级回去**，且无开关）。改法：改用 semver 比较（**复用既有的 `compareDshVersions`，不写第二份**）、**只提示绝不自动装**、面板按通道列出最新版（rc 0.1.7-rc.1 / alpha 0.1.7-alpha.2，**无正式版**）并逐行给「更新·重装」「跳过」（跳过落盘，可恢复提醒）；安装只在用户点按钮时发生（便携包走 `stageBundledRuntime(指定版本)`）。**§39 vekenllm 的两个内网网关（集团 / 技术）与第二条预置（2026-09-23）**——用户提示 vekenllm 有两个 url（集团内网 / 技术内网）且**要说明**。URL 不用问：两份 vekenllm 快照文档的 §4 早已列出（`192.168.100.63:4000` = 集团大楼内网、`192.168.15.137:4000` = 维科技术）。**实测（本机）**：两个地址都能连（13ms / 5ms），都是 LiteLLM，**但同一 key 只在一个网关上有效**——集团 key 请求技术网关得 `401 token_not_found_in_db` ⇒ 两套独立 token 库。**因此新增第二条预置 `vekenllm-tech` 并各用独立凭据引用**（否则两边 key 互相覆盖），技术那条的模型清单照集团复制并标「未实测」；新增界面专用 `note` 字段。断言 184 → **205**。**§38 🔴 预置供应商面板「静默不渲染」——list 座位缺少必填 `id`（2026-09-23）**——用户在本机与另一台机器都**复现**了"装好插件、重启壳也找不到面板"。宿主侧全绿（补丁条目在、`dsh --dump-config` 有该条目、6/6 已是最新、dsh web 确为新进程），问题在**客户端座位注册**：`settings.models.footer` 是 **list** 座位，官方注册表的契约把 **`id` 标为 required**，而首版只传了 `{name}` → **注册被拒且页面无报错、不渲染**（「模型同步」用的 keyed 座位只需 `key`，所以它一直正常）。**修法**：`register({name, id: "provider-presets"})`；并新增**座位契约断言**（从 `dsh-cordis-client-runner` 读 `registerOptions`，逐条断言 required 字段都提供了）→ 184 断言。**客户端 bundle 改动只需刷新页面**（宿主按内容算 rev）。**§36.5 仓库简介 About 已完成（2026-09-23）**——description 改中文、并新增 7 个 topics（用户提供 classic PAT；token 只落在 gitignored 的 `.cache/gh-pat.txt`，脚本从不打印、用完立即删除并全仓扫描确认无残留）。**两个 API 坑**：`GITHUB_TOKEN` **没有 administration** 权限（改 About 只能 PAT/网页）；**`topics` 放进 repository PATCH 会被静默忽略**（200 OK 但结果为空，带 mercy preview 媒体类型也一样）→ 必须用 `PUT /repos/{owner}/{repo}/topics`。**§37 包内 `README.txt` 中文化 + 修掉两个隐 bug（2026-09-23）**——用户要求包内 README 也翻中文。顺带发现**存在已久**的两个 bug：`pack-release.ps1` 用**双引号 here-string** 生成它，于是 `` `tar … `` 被转义成 **TAB**（解压那一行自 0.1.3 起就是坏的）、未定义的 `$DSH_HOME` 被**内插成空**。改为**单引号 here-string + `__PKG__`/`__CATALOGUE__` 占位符**，并把落盘改成**带 BOM 的 UTF-8**（无 BOM 的中文 `.txt` 在旧记事本乱码）。`.work/ps51-encoding.test.ps1` 新增 7 项 README 断言 → **38 项**。**§36 GitHub 文案中文化（2026-09-23）**——用户要求「github 上的说明和 release 说明都用中文更新一下」。**Release 说明模板**改为中文（含 6 插件表 / 快速开始 / 注意事项；标题加「便携包 · Windows x64」）；**已有 10 个 Release（0.1.0–0.1.9）的正文与标题**经 CI 一次性（幂等）改写为中文——本机**无 gh CLI 也无有效 PAT**，而改 Release 只需 `contents: write` ⇒ 用仓库内置 `GITHUB_TOKEN`（工具 `.work/localize-release-notes.mjs`）。**关键设计**：能力按**版本 + 提交证据**判定，不照英文正文字面翻译（英文正文从未提过 `runtime.zip`，照译会给 0.1.3–0.1.9 写成"无需解压"这种错话）。⚠️ **仓库简介 About 仍未改**——需要 administration 权限，`GITHUB_TOKEN` 不具备，只能 PAT 或网页手工设置（文案已备好）。**§34.7 `.cmd` 包装器到底跑哪个引擎（2026-09-23）**——用户追问"两个 PowerShell 都有，怎么跑到 PS7？默认 cmd 跑哪个？"。实测：**`powershell` 永远是 5.1**（PS7 只提供 `pwsh.exe`），`where powershell` 也只列 5.1。**加固**：两个 `.cmd` 的引擎解析改为 **Program Files 的 PS7 → PATH 的 `pwsh` → 5.1 兜底**（显式查安装位置，覆盖"PS7 装好后没重开 cmd、PATH 陈旧"这一成因），并加 `--which-shell` 自检；`.work/ps51-encoding.test.ps1` 新增 **E 段 10 项**（假 Program Files + 剥 PATH 跑真实包装器；断言 `.cmd` 纯 ASCII）→ 套件 **27 项**。**§35 行尾（CRLF/LF）与插件载荷哈希（2026-09-23）**——验证 0.1.9 发布资产时发现包内 `lib/client.js` 是 34290 字节、仓库里是 33624，差值 666 = 行数：本仓库 `core.autocrlf=true` 且**无 `.gitattributes`** ⇒ git 检出 CRLF、本地构建 LF，**内容逐字节一致**。而 `payloadHash()` 按原始字节算哈希 ⇒ 从包安装的插件与源码树**内容相同却哈希不同** → `update-plugins.ps1` 永远报「待更新」并每次重写。**修复**：哈希前做 CRLF→LF 归一（latin1 逐字节，不碰 BOM）；`.work/plugin-selection.test.ps1` **+2 项**（套件 59）。已反证旧算法必然误报（LF≠CRLF 字节哈希）。**§34 🔴 Windows PowerShell 5.1 的两个"只在干净 Windows 上发作"的坑（2026-09-23）**——用户在另一台**只有 PS 5.1** 的电脑上跑发行包，报 `update-plugins` 的 `ConvertFrom-Json` 解析失败、且 `install-offline` 菜单**没有中文功能说明**。两个**互相掩盖**的 5.1 差异：**(A)** 5.1 用**控制台代码页**（zh-CN = 936/GBK）解码子进程 stdout → 中文乱码到**吞掉 JSON 收尾引号**；**(B)** 5.1 的 `ConvertFrom-Json` 把顶层 JSON 数组当作**一个对象**（`@(...)` 得 1 行而非 N 行）→ 菜单静默退回"只有目录名"兜底、更新器只显示 1 行并打印 `System.Object[]`。**修复三处**：`setup-plugins.mjs` 新增 **`--ascii`**（输出转义成纯 ASCII，任何代码页都解析得出）、两个脚本开头**钉 `[Console]::OutputEncoding` = UTF-8**、所有 JSON 解析改为 `@(...) | ForEach-Object { $_ }` **形状归一**（3 个脚本）。**新增套件 `.work/ps51-encoding.test.ps1`（17 项）**：用真实 `powershell.exe` 5.1 子进程 + 钉死 936 代码页跑**真实脚本**，含 BOM 守卫——本机 13 个套件全在 `pwsh` 下跑，所以这类 bug **一路绿灯**；顺带补了 3 个 `.ps1` 的 BOM。同期发布 **0.1.9**（§35）。**§33 路径Q：预置供应商插件 `provider-presets`（2026-09-23）**——把 vekenllm / 电信算力两条 provider profile 做成**随插件分发的预置**（端点/协议/compat/模型清单，**零密钥**），在「设置 → 模型」**底部**一键启用/停用/重置 + 就地填 key；密钥只走官方 `credentials.set`（**只写**通道），**脚本、发行包、仓库全程不携带密钥**。插件数 **5→6**（`provider-presets` = 编号 **6**，短名字母序仍成立）；新增单测 **180 断言** + SSR 冒烟 **19 断言**；顺带修掉 `setup-plugins.mjs --check-only` 在"尚未安装"机器上必然失败的**三处**老毛病（`plugin-selection.test.ps1` 53→**57 项**，已实测包内安装器在全新 home 上干跑通过），并记录了本会话一次**自己造成的安装事故**（`rmSync` 已删包目录、`mkdir` 被沙箱拒 → `core-version` 包目录丢失，已恢复）。已发布 **0.1.8**（tag `desktop-v0.1.8`，CI **run #14 success**，资产 98.6 MB；`verify-release.mjs` **27/27**；本地留存包在 `D:\dsh\app\packages\`，SHA256 `D50C2235…A09AF`）。**§32 开发目录整理 + 多会话约定（2026-09-23）**——清理仓库根 5 个误入库的垃圾目录（`2, 4` 等，根因＝漏 `-Plugins` 标志导致值被位置绑定到 `-AppDir`）；加三道护栏（`-AppDir` 必须绝对路径、两个测试套件断言"仓库根干净"、AGENTS.md 新增目录约定）；**本地发行包固定 `D:\dsh\app\packages\` 且打包时只留最新一份 + 写 `LATEST.txt`**；把发布验证/CI 监视升级为入库工具 `.work\verify-release.mjs` / `.work\watch-release.mjs`。**§30 独立插件更新脚本 `update-plugins.ps1`（2026-09-22）**——用户要"单独弄个插件安装脚本，方便直接更新已安装的老版本"：新增 `scripts/update-plugins.ps1` + `.cmd`（默认只更新**已装**插件、`-CheckOnly` 只报告不写、**内容哈希**判定 missing/outdated/current、**先备份失败自动回滚**、只加不减），并随发行包发布到包根；`setup-plugins.mjs` 新增 `--status` 作为判定的单一来源；测试 `.work\update-plugins.test.ps1` **26 项全通过**（含"源变更→检出并更新"与"源损坏→回滚"两条真实路径）。**§29.9 复核路径P 插件并发布 0.1.6（2026-09-22）**——独立复核（bundle 可复现 / 64 断言 / 真实 models.dev 端到端 / 安装链路 3a–3d）；补齐连带影响（`.work/plugin-selection.test.ps1` 改为**期望值由 `--describe` 推导**，5 插件下 **51/51 通过**；README/packer/facts 的"4 个插件"同步为 5）；修正 5 个 `build.mjs` 的字节口径（`bundle.length` 字符数 → `Buffer.byteLength(...,"utf8")`，bundle 内容零变化）；**0.1.6 发布（run #10，资产 98.5 MB）并通过发布资产端到端验证**（包内安装器菜单列出 5 个插件、`2,4` → explainer+model-sync、`--extract-runtime` 实跑通过）。⚠️ 0.1.5 的包只含 4 个插件（tag 早于插件提交）。**§29 路径P：模型同步插件（2026-09-22）**——按提供商刷新模型列表与参数：从 **models.dev / OpenRouter / 该商自己的 `/models` 端点**拉候选，逐字段 diff 后经**官方 `remote.settings.mutate`** 写回 `settings.yaml`（路径寻址 + revision 围栏 + 写后回读验证）；UI 挂**官方 `settings.models.provider-card` slot**，**host 半区为空**（数据面全走官方 Remote，不自建路由）。测试 **64 断言 + 真实 models.dev 数据端到端**通过；插件数 **4→5**（编号按短名字母序，`model-sync` = **4**，`project-explorer` 顺延为 **5**）。⚠️ 本节含一次**基于过期读取写入**的事故复盘（§29.5 坑 1）。**§28 插件安装体验（2026-09-21）**——安装菜单显示**中文功能说明**、**编号多选（`2,4`）**、**输入无效则不装任何插件**；说明由 `setup-plugins.mjs --describe` 单一数据源供给菜单/包内 README/仓库表格。顺带修掉两个真实 bug：**相对 `-DSHome` 导致 mjs `createRequire` 抛错 → 只装第一个插件就崩（半装状态）**、**`install-offline.ps1` 缺 UTF-8 BOM（含中文后 5.1 会乱码）**。测试 `.work\plugin-selection.test.ps1` **42 项全通过**（真实装到临时 DSH_HOME）。**§27.11 运行时改为单文件 `runtime.zip` + 首次启动解压（2026-09-21）**——用户实测反馈"包里文件很碎、拷贝慢"，实测确认是**文件数**问题（解压后 27,413 个文件、89% 小于 8 KB；单线程拷贝 88.8s vs `robocopy /MT:16` 15.9s）。方案 A：把 `runtime\` 打成**单个 `runtime.zip`**（103.2 MB / 31,074 条目），**壳首次启动自动解压**（42s、幂等、含 zip-slip 防护与原子落位），并加 CLI `dsh-desktop.exe --extract-runtime`；**新包只剩 35 个文件**，整个包拷贝 15.9s。打包器的运行时/npm 自检闸门照旧在松散目录上执行，另加"压缩包内必须含 dsh 入口与 npm"的校验。测试 28/28 通过。**§27.10 覆盖升级注意事项 + 版本保护（0.1.2）**——① 壳新增**便携运行时解析**（`runtime.go`：`$DSH_DESKTOP_RUNTIME` → `<exeDir>\runtime` → `<exeDir>` → 原有 shim 回退；便携模式**跳过 npm 自更新**）② **`scripts/pack-release.ps1`** 打出 `dsh-desktop-<shell>-dsh<ver>-win-x64.zip`（实测 **106.2 MB**，原始 312.6 MB/25,482 文件）+ `install-offline.ps1` ③ **`.github/workflows/release-desktop.yml`**：打 `desktop-v*` tag 自动构建并发 Release（用内置 `GITHUB_TOKEN`，无需 PAT）④ 实测：离线树 `node ...bin.js --version` → `0.1.5-rc.2`、离线安装器对临时 DSH_HOME `SETUP OK`、**17/17 Go 测试通过**；⚠️ 本机因 `SingleInstanceLock` 无法做实机便携启动（需目标机验证）。**§26 统一启动入口 + 版本锚点刷新（2026-09-20）**——① 抽出 **`scripts/deploy-shell.ps1`** 作为部署唯一实现，`setup.ps1`（新增 5b 步）与 `update.ps1` 共用 → **唯一启动入口 = `D:\dsh\app\current\dsh-desktop.exe`**（`build\bin\` 只是中间产物），并给 `setup.ps1`/`deploy.ps1` 加 `-AppDir`；② 发现环境已升到 **`0.1.5-rc.2`**（`npm latest` 同版本），把锁版/文档/事实源从 rc.1 统一刷新；③ **rc.2 下插件复验通过**（3 条 host 路由 200、patch 4 条目、`--check-only` 全过）；④ 核对 `global/AGENTS.md` 与 `~/.dsh/AGENTS.md` 完全一致（v2.17）。**§25 其他电脑「一条命令更新壳」（2026-09-15）**——修复被 §24 打断的构建路径：`setup.ps1` 第 5 步从「clone fork 构建 `desktop/`」改为**在本仓库根 `wails build`**；新增 **`update.ps1`**（`git pull` → 刷新插件 → `wails build` → 部署到应用区，含 dated 归档 + `VERSION.txt`，exe 被锁时自动暂存 `.new.exe`；支持 `-SkipPull/-SkipPlugins/-SkipFrontend/-SkipBuild/-NoDeploy/-AppDir/-CheckOnly`）与 **`.work/verify-fresh-clone.ps1`**（回归验证：新克隆能否构建）。**实跑验证**：克隆 HEAD `7f5291d` → 21 个必需文件齐全 → `npm install` 13s + `wails build` 22s → exe 11,333,632 字节且含 P0-3 标记；`update.ps1` 部署/`-CheckOnly` 两条路径均正确。**§24 fork 处置 B + `SYNC_TOKEN` 全部完成**——① fork 独有根级 `desktop/` 已删除并推送（`41aaec8`，顶层条目 60→59）② **`SYNC_TOKEN` 已换新并端到端验证**：run #49 `workflow_dispatch` → `success`，且 `compare` 显示 **`behind_by = 0`**（fork 已含上游当天 03:16Z 的 `0d1f500`）→ 证明 #49 真的走了「合并上游 + 推送」这条路（此前 #47/#48 因 token 失效而失败）③ 新增巡检工具 `.work/sync-status.mjs`（无需本地 fork 克隆；异常时退出码 1）；**路径教训**：blobless 偏克隆无法提交（`write-tree`/`mktree` 都校验对象存在性）→ 大仓库操作用**后台全量浅克隆**（113 MB/约 15 分钟）再本地提交推送（5.4 秒）；**重大发现：上游已有一方官方桌面端 `apps/desktop/`（Electron，implemented）且不提供 `webServer`** → 我们 4 个插件的 host 路由在官方 Desktop profile 下会失效（§24.5）。**§23 壳加固 ②③（2026-09-14）**——崩溃自愈改为**指数退避**（15s→45s→120s 封顶）+ **稳定运行 5 分钟才重置预算**，并修掉两个真实缺陷（原「连续 3 次」预算因就绪即清零而几乎失效；原自动重启未就绪时监测会永久休眠）；日志加**上限轮转**（`dsh.log` 5 MiB / `debug.log` 1 MiB）且报错改为**只读文件尾 64 KiB**（原整文件读入内存）。新增 `logutil.go` + 6 个单测（**9/9 通过**，`go vet` 与 `GOOS=linux vet` 均 0），`wails build -s` 产出新 exe（11,333,632 字节）；因运行中的壳持有 exe 文件锁，**替换与重启留给用户**（`.work\swap-desktop-exe.ps1` 已重写；① 端口避让未做）。**§22 单一事实源（P0-2）与文档版本收口（2026-09-14）**——新增 `project-facts-v1.0.md` 作为端口/核心版本/同步频率/锁版/插件清单的唯一索引（代码与配置才是权威源，文档只引用）；本轮勘误：①官方同步「每小时」→ 实为**每天 08:00 `0 0 * * *`**（读 fork workflow 源码；且 Actions run 47（09-14）已 `failure` → `SYNC_TOKEN` 失效）②核心版本 0.1.2-rc.1 → **0.1.5-rc.1** ③跨机锁版 0.1.0-rc.7 → **0.1.5-rc.1** ④版本徽标位置「顶部右侧」→ **左下角** ⑤clone 目录 → `D:\dsh\dsh-desktop-env`；同时 §21.3 关闭「client 半区目视确认」——**4 个插件界面用户复核全部可见，无需重启**；**§21 dsh 核心升级到 0.1.5-rc.1 的适配与 4 插件验证（2026-09-14）**——实测核心已从 0.1.2-rc.1 升到 **0.1.5-rc.1**（2026-09-10 安装，文档此前未记录），并修好升级带来的三处断裂：①客户端冒烟测试 react 源（0.1.5 不再在 dsh 内自带 react → 新增 `.work/lib/react-source.mjs`，7 套件全绿）②4 插件声明了已废弃的注入边 `@deepseek-ai/dsh-client-runtime`（0.1.5 里被 0 个官方包引用）→ 已删除并在 `setup-plugins.mjs` 加死链检查 ③profile junction 农场 126/607 断链（脏数据，不影响插件）。同时 **core-version 已纳入 `scripts/setup-plugins.mjs`（现 4 插件）**，并实测 4 插件 host 半区在 0.1.5 实例全部活跃、**client 半区 4 个界面已用户复核可见（无需重启）**，详见 §21；§20 工作区迁移与应用区分离（2026-09-14）——源码迁至 `D:\dsh\dsh-desktop-env`、应用产物迁至 `D:\dsh\app\current`、旧工作区冻结（含快照与 fork 补丁归档，见 §20）；**§20.7 记录推送坑：旧 PAT 已失效（401），改用 SSH 443（22 不通），remote 已换、迁移提交已推送**；路径H v8——vekenllm 两份配置文档按**全量实测**同步升级（**v1.8** 双模型 + **v3.5** flash 单模型）：auto 支持思考且默认开启、flash 实测能识图、thinking-disabled 与 effort=none 均能真正关闭思考、代理接受 medium/max——详见 §16.3 八条结论与 §18.4 第 6 条；路径H v7——vekenllm 双模型配置文档升至 **v1.7**（auto 输出长度以 API 实测 393216 为准 + §5 新增实测命令与「推荐值+要求实测」约定）；路径I v1——DSH 落地 vekenllm auto（条目级 input、flash maxTokens 勘误）；路径G v1——litellm 中转 auto 视觉路由调研+方案；**并补回被并行会话覆盖丢失的 §16–§18**，新增 **§19 覆盖事故与「写入前必须刷新重读」防覆盖约定（全局强制）**；路径E v2——已对官方仓库 master 核实（§15.7：版本 0.1.2-rc.1=latest、`buildModelCatalog` 丢 `inputModalities` 在 master 依旧、官方刻意 advisory 目录、无相关 issue/PR → 插件是长期方案）；路径E v1——「模型能力」设置分区插件（Settings > 模型能力：列出每个提供商/模型的输入模态、上下文窗口、推理等级；宿主只读路由 `/plugin-model-capabilities/list` 用 `ctx.llm.resolveModelInfo` 补回官方 `buildModelCatalog` 丢掉的 `inputModalities`，见 §15）；路径D v2——opencode 一键部署（`DEPLOY.md` + `deploy.ps1` + `OPENCODE_PROMPT.md`）；路径D 坑清单补全至 §12.6 共 14 条（openssl 免提权推送、数组 splatting、curl JSON、GOTELEMETRY 等，2026-08-18）；路径D v1 完成——环境同步仓库 `FFaassdfs/dsh-desktop-env`（公开）：setup.ps1 一键复刻 + 插件安装脚本 + PAT 明文脱敏；清理遗留垃圾——删除 `.work\hermes-agent`（失败克隆残留，见 §13）；路径C v1 完成——「项目文件树侧栏」插件（右侧面板 + 拖文件插路径，见 §11）；路径B 桌面壳 16 项功能完善 + 代码迁入 fork + GitHub Action 每小时自动同步（见 §10）；已建 harness 全局预设 `~/.dsh/AGENTS.md`（默认中文 + 更新 HANDOVER 约定 + 常见坑）。
 
 ---
 
@@ -13,7 +13,7 @@
 | 应用区（exe） | `D:\dsh\app\current\dsh-desktop.exe`（历史版本在 `D:\dsh\app\versions\`） |
 | 旧工作区 | `D:\opencode\001\dsh-desktop` **已冻结**（见其 `FROZEN.md`），勿再写入 |
 | 当前壳 | **launcher @ 43080**（状态面板 + node 直启 + 带 token URL 交系统浏览器） |
-| 核心版本 | **`@deepseek-ai/dsh 0.1.5-rc.2`**（全局 npm；`npm dist-tags.latest` 同版本；2026-09-20 实测）——文档里旧记的 `0.1.2-rc.1`/`0.1.5-rc.1` 均为过时快照，见 §21/§26 |
+| 核心版本 | **`@deepseek-ai/dsh 0.1.7-rc.1`**（全局 npm；**2026-09-24 实测**）——⚠️ **`dsh --version` ≠ `dist-tags.latest`**（`latest` 仍钉 `0.1.5-rc.3`，0.1.7-rc.1 发在 `next`）。🔴 **`0.1.5-rc.2` 是坏版本：profile 里装了插件就「启动即崩」**，见 §42 / F25 |
 | 进行中 | 路径Q「预置供应商」插件已交付（§33）：**180 断言 + 19 断言（SSR）全过**、预置通过**宿主自己的 pi-ai schema** 校验、已装入真实 `$DSH_HOME`（6/6 已是最新）；**待用户重启 dsh web 后目视验收**（「设置 → 模型」底部应出现「预置供应商」面板）。路径P（§29）/路径E（§21.3）均已交付。**6 个插件**均已纳入 `scripts/setup-plugins.mjs`（编号 1–6，`model-sync` = 4、`project-explorer` = 5、`provider-presets` = 6） |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
 | 下一步（建议） | **P0 全部关闭** ✅ 且**多机更新链已修好**（§25：`update.ps1` 一条命令 + 新克隆构建已实测）。可选下一步：①**等官方发布后再评估官方桌面端**（现在只留了评估交接：`D:\dsh\official-desktop-eval\`，结论=未发布、只能自行构建）②HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`）③壳加固 ①端口保留段避让（已按用户决定暂缓，§23.5） |
@@ -2348,7 +2348,11 @@ Check -RuntimeMode / -RuntimeSource: hoisted layouts need -RuntimeMode full-node
 
 （另外核对本机 `debug.log`：本机换壳后的每次启动都以 `bootstrap: ready` 结束，**没有**失败/重启记录；用户报的是**新机器**。）
 
-### 41.2 最可能的原因（待用户日志确认）
+### 41.2 ~~最可能的原因（待用户日志确认）~~ → 🔴 **已由 §42 推翻，结论错误**
+
+> **2026-09-24 追记**：本节当时猜「首次启动远慢于 30 秒」，**方向错了**。当天的事故复现并定位了真实原因：`dsh web` 因 `watchUserPatches` 缺陷**启动即退出**（与耗时无关），见 **§42**。
+> 150s 超时加固本身**无害且保留**（`waitReady` 一就绪即返回，放宽只影响"多久才放弃"），第 41.3 节的其它四条加固（解压失败不再误导、node 预检、进度显示、失败分类）也都有独立价值——**它们不是白做的，只是没能解决当时那个症状**。
+> 教训：**当时手上没有日志就下了结论**（§41.4 要的"决定性证据"才是关键）。下次遇到"新机器起不来"，**先拿日志再猜**。
 
 **首次启动远慢于 30 秒**：便携包要先解压 `runtime.zip`（~40s；这一步是**有等待**的，`bootstrap` 里 `<-a.runtimeReady`），接着**第一次** `dsh web` 要在该机器上创建整个 profile 树（数百个 junction + 2.5 万个文件，还要被杀毒扫描）——**这第二段完全可能超过 30 秒**，于是壳在 30 秒时报「等待启动超时」，而**服务其实还在起**。此时用户手动打开浏览器 → **连接被拒**（页面无法访问）✓ 与报告吻合，也解释了为什么只有"**刚开始**运行的时候"才出问题（profile 建好后后续启动只要几秒）。
 
@@ -2376,6 +2380,171 @@ Check -RuntimeMode / -RuntimeSource: hoisted layouts need -RuntimeMode full-node
 4. 顺带确认：解压目录里 `runtime\` 是否存在、`runtime\node.exe` 在不在（即**解压是否成功**）。
 
 ⚠️ 那台机器现在装的壳**仍是 0.1.12（30s 超时）**；本次加固的构建已暂存为本机应用区的 `dsh-desktop.new.exe`（等下一次换壳生效），**新机器要拿到诊断能力需要新的便携包（0.1.13）** —— 建议拿到日志定位后**一起发**（若日志证实是超时，0.1.13 即修复版）。
+
+---
+
+## §42 🔴 便携包「整个 harness 崩溃」真相：`0.1.5-rc.2` 装了插件就启动即崩（2026-09-24）
+
+> **来源（用户报告）**：「刚才做到一半，未知原因，整个本地 harness 全崩溃了。我知道重新下载解压，并且第一次一样是服务起不来，重新在线更新后才正常起来，但**所有会话和过程全丢了**」。
+>
+> **本节同时是 §41 的答案**：§41 当时猜「首次启动 >30s 超时」——方向错了，真正的原因在这里。
+
+### 42.1 定位过程：日志里有完整证据链
+
+`%APPDATA%\dsh-desktop\debug.log` 的死亡过程（逐行可查）：
+
+```
+resolveDshWeb: using bundled runtime at D:\dsh-desktop\runtime      ← 解压到 D:\dsh-desktop
+ensureRuntimeExtracted: unpacked in 41s                             ← 首次解压 runtime.zip
+bootstrap: port 43080 closed, spawning dsh web
+scanMainOutput: captured authenticated URL
+bootstrap: ready                                                    ← 确实起来过（与用户描述一致）
+healthMonitor: child exited, restart 1/3 in 15s                     ← 但立刻退出
+healthMonitor: child exited, restart 2/3 in 45s
+healthMonitor: child exited, restart 3/3 in 2m0s                    ← 三次自动重启全失败
+```
+
+`dsh.log` 里三次重启是**同一个报错**——这就是根因：
+
+```
+Error: dsh: user patch-layer watching requires the Cordis HMR service
+    at watchUserPatches (file:///D:/dsh-desktop/runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1112:28)
+    at runProfile (.../dsh/lib/profile-boot-Dk-7KqJc.js:329:9)
+    at async runCli (.../dsh/lib/bin.js:146:4)
+Node.js v24.20.0
+```
+
+对应源码（`dsh-app-boot/lib/index.js:1112`）：
+
+```js
+if (hmr === void 0) throw new Error(`${binName}: user patch-layer watching requires the Cordis HMR service`);
+```
+
+### 42.2 根因：`patchReload: "live"` + **便携布局才解析得到 `cordis-plugin-hmr`** = 启动即崩
+
+**先看触发链**（`profiles/web/package.json` 里本来就有这一行，实测确认）：
+
+```json
+{ "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"],
+                        "patchReload": "live" } } }
+```
+
+| 要素 | 值 |
+|---|---|
+| 触发条件 | `patchReload: "live"`（profile 模板自带）**且** `@deepseek-ai/cordis-plugin-hmr` 能被解析 |
+| 坏的核心版本 | **`0.1.5-rc.2`**（`0.1.5-rc.3` 家族同线） |
+| 好的核心版本 | **`0.1.7-rc.1`**（实测：同一 `DSH_HOME`、同样 6 个插件，换成它即正常启动） |
+| 现象 | `dsh web` 一启动就抛 `requires the Cordis HMR service` 退出 → 壳自动重启 3 次耗尽预算 → 服务**永久**起不来 |
+
+🔴 **为什么偏偏是便携包中招（这是最难查的一环）**——同一份 harness 版本，两种布局表现相反：
+
+| 布局 | `@deepseek-ai/cordis-plugin-hmr` | 结果 |
+|---|---|---|
+| **便携包**：`runtime\node_modules\@deepseek-ai\`（**嵌套**） | ✅ **存在**（实测） | 解析成功 → 走 live-patch-reload 路径 → **崩** |
+| **全局 npm**：`<node>\node_modules\@deepseek-ai\`（**提升**，实测只有 2 个包） | ❌ **不存在**（只有 `dsh-client-hmr` / `dsh-hmr`，**名字不同**） | 解析失败 → 该路径被跳过 → **正常** |
+
+⇒ **同一个 bug 在开发机上被"顺带躲过"了**：本机既有全局装、又有便携包时，壳走全局就没事，于是"本地全绿"。**只有目标机（干净 Windows、无全局装、纯便携）才会暴露。** 这正是它拖到用户报障才被发现的原因，也是本仓库一贯强调的「**本机全绿 ≠ 目标机可用**」的又一实例（对照 §34 的 PS 5.1 坑）。
+
+🔴 **与便携包设计直接冲突**：便携包**预装 6 个插件**（`install-offline.cmd` 默认 `all`）⇒ 用户 patch 层必然存在 ⇒ 配合上面的布局差异**必然触发**。所以「便携包内置 rc.2」这条组合**从设计上就是坏的**。
+
+
+### 42.3 为什么「在线更新后才正常」（用户观察的正确解释）
+
+| 阶段 | 发生了什么 |
+|---|---|
+| 便携包首次启动 | 包内运行时 = `0.1.5-rc.2` → 命中本缺陷 → 起不来 |
+| 用户 `npm i -g` 更新 | 全局装上 `0.1.7-rc.1`（含修复） |
+| 壳改用全局运行时 | 日志尾部可见 `resolveDshWeb` 不再指向 `D:\dsh-desktop\runtime`，而走 `C:\Users\veken\nodejs\...\node_modules\@deepseek-ai\dsh\lib\bin.js` → `bootstrap: ready` ✅ |
+
+⇒ **「在线更新后才正常」不是巧合，是当时唯一能好的路径。** 用户的重装解压之所以"第一次一样起不来"，是因为新解压出来的包里**还是 rc.2**。
+
+### 42.4 本次修复
+
+**A. 壳侧（已实现，本次改动）**——让故障可诊断，不再让用户看天书：
+
+| 文件 | 改动 |
+|---|---|
+| `app.go` | 新增 `hmrFaultSignature` 常量 + **`knownStartupFault(logTail)`**：把上述签名翻成**可操作的中文指引**（升级核心到 0.1.7-rc.1 / 换新便携包 / 临时移除插件三条出路） |
+| `app.go` | `healthMonitor` 的「连续 3 次重启失败」分支改为**先认已知故障 → 再退回通用提示**。🔴 **顺序要紧**：在壳看来「一启动就退出」与「端口被占用」长得一样，但处理方式**相反**（升级核心 vs 腾端口），误报会把用户引到错误方向 |
+| `app.go` | `applyPendingRuntimeUpdate` 换入失败时**清理 `.update` 暂存树**并提示（见 42.5） |
+| `app_test.go` | 新增 **`TestKnownStartupFault`**：命中真实日志片段；断言指引含 `0.1.7-rc.1`/`重启服务`/`cordis.patch.yml`；**断言不得误判端口冲突**；空日志与"只提到 HMR"的无关文本不得命中 |
+
+验证：`gofmt` 干净、`go vet` 干净、**`go test ./...` 42 用例（41 PASS / 0 FAIL / 1 SKIP）**、`wails build -s` 成功（11,533,312 字节）。
+
+**A2. 发布验证器新增「真的能启动」闸门（`.work/verify-release.mjs`，已实现）**——这是**防止同类问题再次发出去的关键**：
+
+原来 `verify-release.mjs` 只验到「解压出的 `dsh --version` 能打印版本号」，**这根本证明不了它能启动**（崩在启动阶段的 bug 完全测不出来）。新增第 10 步：
+
+```
+10) the bundled runtime boots against a fresh DSH_HOME
+```
+
+做法：用**全新的空 `DSH_HOME`**（`<scratch>/boot-home`）启动包内运行时（`--port 0` 让系统分配），断言两件事——**进程保持存活**（没崩）且**HTTP 有响应**（`401` 即正常，浏览器认证围栏）；再断言 profile 模板**没有** opt-in `"patchReload": "live"`。stdout/stderr 写**文件而非管道**（沙箱禁命名管道，且文件能在崩溃后留下现场）。
+
+> **为什么必须在「干净 DSH_HOME + 便携布局」下测**：如上表所示，本机有全局装时这个 bug 会被**静默躲过**。**测试环境必须复刻失败条件，而不是复刻成功条件**——这与 §34.6-2 的教训（写复现脚本要主动构造目标环境条件）是同一条。
+
+**B. 版本锚点更正（已实现）**——用户已手动升到 0.1.7-rc.1，文档沿用旧值会让**跨机构建又装回坏的 rc.2**：
+
+| 位置 | 旧值 | 新值 |
+|---|---|---|
+| `deploy.ps1` 的 `-HarnessVersion` 默认值（**F10 权威源**） | `0.1.5-rc.2` | **`0.1.7-rc.1`** |
+| `setup.ps1` 的 `-HarnessBefore` 默认值 | `2026-09-22T05:00:00.000Z` | **`2026-09-24T00:00:00.000Z`** |
+| `project-facts` F2 / F10 / F17 + 新增 **F25** | — | 同步更正 |
+| `AGENTS.md` 状态行、本文件状态表 | — | 同步更正 |
+
+⚠️ **闸门日期必须晚于所钉版本的发布时间**，否则解析永远看不到它（F17 早已警告过这条）。`setup.ps1` 的 `-HarnessVersion` 默认值**保持 `""`（不锁版）**——锁版权威源只有 `deploy.ps1` 一处，避免制造第二个锚点。
+
+**C. 便携包钉版（⏳ 待办，未做）**——`.github/workflows/release-desktop.yml` 的 `$pinned = "0.1.5-rc.2"` 仍在打包坏的版本。**这是根治项**，但涉及发版策略（会让下一个包与 `D:\dsh\app\packages\` 里现有的 0.1.12 不一致），需单独决定后再改 `$pinned` + `$before`，并**实跑一次打包**验证（`pack-release.ps1` 的运行时自检闸门会挡）。
+
+### 42.5 伴发现象：便携自更新换入失败（同一个时间窗，非主因）
+
+同一份日志里还有一条：
+
+```
+applyPendingRuntimeUpdate: swap failed: cannot install the staged runtime:
+  rename D:\dsh-desktop\.update\node_modules D:\dsh-desktop\runtime\node_modules: Access is denied.
+```
+
+**原因**：`rename(live → backup)` 后 `rename(staged → live)` 失败——`dsh web` 正在运行，**持有 `runtime\node_modules` 里的文件句柄**（Windows 不允许替换被打开的文件）。
+
+**实测排除「数据被搞坏」**（这点一度被误判，特此记录）：
+
+| 检查 | 结果 |
+|---|---|
+| `runtime\node_modules` | **存在**（回滚成功） |
+| `runtime\node_modules.old` | **不存在**（备份已归位，非残留） |
+| 时间线 | `runtime\` 最后写入 10:19:41（回滚），壳 10:20:54 才启动 |
+
+⇒ `runtime.go:171-176` 的失败分支**确实**把 backup 改回了 live，**数据安全无虞**。真实缺陷只是：**失败后 `.update` 残留**（实测 `D:\dsh-desktop\.update` 一直在），于是**每次启动都重试一次**、日志反复刷同一条。本次修复 = 失败时丢弃暂存树。
+
+> 教训：**同一份日志里的事件未必同源**。本次「换入失败」与「启动即崩」时间窗重叠，但前者是伴发、后者才是主因——**先把两条线索各自独立验证，再下结论**（我第一轮就误判成"换入失败搞坏了 runtime"，是靠实测文件状态纠正的）。
+
+### 42.6 会话丢失：与本次缺陷的关系
+
+用户报告「所有会话和过程全丢了」。实测 `$DSH_HOME` 状态：
+
+```
+sessions\
+  --C-Users-veken-Documents-deepseek-harness-默认工作区--\   1 个文件
+  --D-dsh--\                                                  1 个文件
+  --D-dsh-dsh-desktop-env--\                                  4 个文件（均 2026-09-24 10:26+ 新建）
+```
+
+`storages\workspace.json` 里所有 `createdAt` 都是**事故当天 10:12 / 10:23 / 10:24** ⇒ **整个 `$DSH_HOME` 是当天重建的**。
+
+**诚实结论**：本次缺陷（`dsh web` 起不来）**本身不会删除会话数据**——它只是让服务启动失败。会话丢失更可能是用户**重装/重新解压过程中的连带操作**（例如换了 `DSH_HOME`、或清理了 `~/.dsh`）所致。**这一点没有决定性证据**（用户选择不再追查），故如实记录、不作臆断。
+
+⚠️ **教训（值得写进全局约定）**：`$DSH_HOME`（`%USERPROFILE%\.dsh`，含 `sessions\`、`storages\`、`.credentials.yaml`）**不在本仓库、不受版本控制、没有任何备份**。而"重新下载解压"这类恢复动作很容易顺手把它一起清掉。**建议**：对 `$DSH_HOME` 做定期备份（至少 `sessions\` 与 `.credentials.yaml`），这是目前唯一没有兜底的重要数据。
+
+### 42.7 待办
+
+1. **换壳**：§41.3 与 §42.4-A 的构建都在 `build\bin\`；应用区已有旧暂存的 `dsh-desktop.new.exe`（11,532,288 字节，09:53，**不含 §42.4-A**）——**注意别让旧的覆盖新的**（本次新构建 = 11,533,312 字节）。换壳须在 dsh web 停止时做（`dsh web` 正是当前会话宿主）。
+2. **便携包钉版抬到 rc.1**（42.4-C）+ 实跑打包验证。`verify-release.mjs` 的新闸门（42.4-A2）**必须对 0.1.13 及以后的每个包跑**——它是唯一能提前抓到"包能解压但起不来"的检查。
+3. **§41.4 的日志请求可以撤回**——本次已在**本机**拿到决定性证据（同一台机器的 `dsh.log`）。
+4. 评估给 `$DSH_HOME` 加备份建议/脚本（42.6）。
+5. **上游 bug 存档**（可选）：`patchReload: "live"` 在 `0.1.5-rc.2` 上启动即崩、且**只在便携（嵌套依赖）布局下暴露**——这是个干净的可复现上游缺陷，值得提 issue（复现方式：`DSH_HOME=<空目录> node <嵌套树的>/dsh/lib/bin.js web --no-open --port 0`）。
+
+
 
 
 

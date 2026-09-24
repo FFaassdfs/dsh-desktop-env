@@ -394,6 +394,38 @@ func dshLogPath() string {
 	return filepath.Join(dir, "dsh-desktop", "dsh.log")
 }
 
+// hmrFaultSignature 是"内置核心过旧导致启动即崩"的日志签名。
+//
+// 2026-09-24 事故（用户报告「整个本地 harness 全崩溃」）：便携包内置
+// harness 0.1.5-rc.2 在 profile 存在**用户 patch 层**（cordis.patch.yml 有内容，
+// 即装了插件）时，dsh web 启动即抛下面这条错误并退出；壳只报"服务反复启动
+// 失败"+日志尾部，用户看到的是天书，不知道该做什么。
+//
+//	Error: dsh: user patch-layer watching requires the Cordis HMR service
+//	    at watchUserPatches (.../dsh-app-boot/lib/index.js:1112:28)
+//
+// 上游 0.1.7-rc.1 起已修复（实测：同一 DSH_HOME 换成 0.1.7-rc.1 后正常启动）。
+// 便携包**默认预装 6 个插件** ⇒ 必然命中，所以这不是罕见路径。
+const hmrFaultSignature = "user patch-layer watching requires the Cordis HMR service"
+
+// knownStartupFault 把"启动即崩"的已知签名翻成可操作的中文指引（无匹配返回 ""）。
+//
+// 为什么必须优先于"端口被占用"提示：在壳看来「一启动就退出」与「端口冲突」
+// 长得一样，但两者的处理方式完全相反——端口冲突要用户去腾端口，而这个故障
+// 要用户升级核心。误报会把用户引到错误的方向上。
+func knownStartupFault(logTail string) string {
+	if strings.Contains(logTail, hmrFaultSignature) {
+		return "检测到已知的 harness 缺陷（内置核心版本过旧）：\n" +
+			"当前内置核心在「已配置插件」时会因缺少 Cordis HMR 服务而启动即退出。\n" +
+			"该问题在 0.1.7-rc.1 及以后已修复。\n\n" +
+			"解决办法（任选其一）：\n" +
+			"① 在状态面板「核心版本」里把核心更新到 0.1.7-rc.1 或更新，再点「重启服务」；\n" +
+			"② 下载新版便携发行包，解压覆盖本目录；\n" +
+			"③ 想先用起来：把 profiles\\web\\cordis.patch.yml 里的插件条目临时删掉。"
+	}
+	return ""
+}
+
 // probeRuntimeNode runs "<node> --version" so a bundled runtime that cannot
 // execute at all (blocked by policy/antivirus, wrong architecture, ...) is
 // reported as such, with the raw error, before dsh is even involved.
@@ -505,7 +537,15 @@ func (a *App) healthMonitor() {
 		a.mu.Unlock()
 		if restarts > maxRestarts {
 			a.emitStatus("服务反复启动失败，已停止自动重启")
-			a.fail(a.winCtx, fmt.Sprintf("服务进程连续 %d 次自动重启仍失败，已停止自动重启。\n请检查端口 %s 是否被占用或系统保留（如 Hyper-V/WSL/winnat），然后点「重启服务」。\n\n%s", maxRestarts, dshPort, a.tailDshLog()))
+			// 先认已知故障，再退回通用提示：两者在壳看来都是"进程一启动就退出"，
+			// 但处理方式相反（升级核心 vs 腾端口），不能混为一谈。
+			tail := a.tailDshLog()
+			hint := knownStartupFault(tail)
+			if hint == "" {
+				hint = fmt.Sprintf("请检查端口 %s 是否被占用或系统保留（如 Hyper-V/WSL/winnat），然后点「重启服务」。", dshPort)
+			}
+			a.fail(a.winCtx, fmt.Sprintf("服务进程连续 %d 次自动重启仍失败，已停止自动重启。\n\n%s\n\n%s",
+				maxRestarts, hint, tail))
 			return
 		}
 		delay := restartBackoff(restarts)
@@ -778,6 +818,11 @@ func (a *App) applyPendingRuntimeUpdate() {
 	rollback, err := swapRuntimeModules(rt.Root, staging)
 	if err != nil {
 		debugLog("applyPendingRuntimeUpdate: swap failed: %v", err)
+		// 换入失败几乎总是因为 dsh 正在运行、runtime\node_modules 被占用
+		//（Windows 不允许替换被打开的文件）。swapRuntimeModules 已把原树放回
+		// 原处，这里只需丢弃暂存树——否则每次启动都会重试一次、日志反复刷同一条。
+		_ = os.RemoveAll(staging)
+		a.emitUpdate("内置运行时更新未生效（文件被占用），已放弃本次更新")
 		return
 	}
 	if got := probeRuntimeVersion(rt.NodeExe, filepath.Join(rt.Root, runtimeEntryRel)); got != want {

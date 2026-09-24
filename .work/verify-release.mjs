@@ -15,13 +15,17 @@
 //      asserting it writes nothing,
 //   6. runs the SHIPPED updater (-CheckOnly) and asserts it writes nothing,
 //   7. runs `dsh-desktop.exe --extract-runtime` and probes the unpacked
-//      dsh + npm versions.
+//      dsh + npm versions,
+//   8. **boots the packaged runtime against a FRESH DSH_HOME** and asserts it stays
+//      alive and serves HTTP (regression guard for the 0.1.5-rc.2 HMR boot crash —
+//      see HANDOVER §42; packages up to 0.1.12 shipped a harness that could not start
+//      on a brand-new machine).
 //
 // Requires: node, pwsh/powershell, tar.exe (all present on a normal Windows box).
 // Scratch lives in .cache/verify-<version>/ (gitignored) - see HANDOVER §32.
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
 import { join } from "node:path";
 
 const REPO = "FFaassdfs/dsh-desktop-env";
@@ -212,6 +216,59 @@ const npmOut = execFileSync(node, [npmCLI, "--version"], { encoding: "utf8" }).t
 console.log(`   unpacked dsh: ${dshOut}   npm: ${npmOut}`);
 check(`unpacked dsh reports ${EXPECTED}`, EXPECTED !== "" && dshOut === EXPECTED, `got ${dshOut}`);
 check("unpacked npm runs", /^\d+\.\d+\.\d+/.test(npmOut), `got ${npmOut}`);
+
+// --- 10. the bundled runtime must actually BOOT --------------------------------
+//
+// Regression guard (2026-09-24, HANDOVER §42): every package up to 0.1.12 bundled
+// harness 0.1.5-rc.2, whose `dsh web` writes `"patchReload": "live"` into
+// profiles/web/package.json. In a PORTABLE layout cordis-plugin-hmr IS resolvable, so
+// the boot's live-patch-reload path runs, fails with "requires the Cordis HMR service"
+// and the process exits 1 — a brand-new machine (no global install) could never start.
+// It went unnoticed because on a machine WITH a global npm install that plugin happens
+// not to resolve, so the very same error is swallowed. Hence: boot it here, against a
+// fresh DSH_HOME, exactly like a first run does.
+console.log("10) the bundled runtime boots against a fresh DSH_HOME");
+const bootHome = join(root, "boot-home");
+rmSync(bootHome, { recursive: true, force: true });
+mkdirSync(bootHome, { recursive: true });
+const bootOutPath = join(root, "boot-out.txt");
+const bootErrPath = join(root, "boot-err.txt");
+// stdio goes to FILES, never pipes: a pipe would need named pipes, which some sandboxes
+// refuse, and a file also survives a crash for post-mortem reading.
+const bootChild = spawn(node, [entry, "web", "--no-open", "--port", "0"], {
+  env: { ...process.env, DSH_HOME: bootHome },
+  stdio: ["ignore", openSync(bootOutPath, "w"), openSync(bootErrPath, "w")],
+  windowsHide: true
+});
+let bootPort = "";
+let bootUp = false;
+const bootDeadline = Date.now() + 90000;
+while (Date.now() < bootDeadline) {
+  if (bootChild.exitCode !== null) break;
+  await new Promise((r) => setTimeout(r, 1000));
+  const text = existsSync(bootOutPath) ? readFileSync(bootOutPath, "utf8") : "";
+  const found = /dsh web: http:\/\/127\.0\.0\.1:(\d+)\//.exec(text);
+  if (!found) continue;
+  bootPort = found[1];
+  try {
+    const res = await fetch(`http://127.0.0.1:${bootPort}/`, { signal: AbortSignal.timeout(3000) });
+    bootUp = res.status > 0; // 401 is the expected answer (browser-trust fence)
+    if (bootUp) break;
+  } catch { /* still coming up */ }
+}
+const bootAlive = bootChild.exitCode === null;
+try { bootChild.kill(); } catch { /* already gone */ }
+check("bundled runtime stays alive (no boot crash)", bootAlive, `exit=${bootChild.exitCode}`);
+check("bundled runtime serves HTTP on its announced port", bootUp, bootPort ? `port ${bootPort}` : "no URL captured");
+if (!bootAlive && existsSync(bootErrPath)) {
+  const tail = readFileSync(bootErrPath, "utf8").split("\n").filter(Boolean).slice(0, 5);
+  for (const line of tail) console.log(`   stderr: ${line.slice(0, 160)}`);
+}
+const profilePkg = join(bootHome, "profiles", "web", "package.json");
+const profileText = existsSync(profilePkg) ? readFileSync(profilePkg, "utf8") : "";
+check("profile template does not opt into live patch reload",
+  !/"patchReload"\s*:\s*"live"/.test(profileText),
+  profileText.replace(/\s+/g, " ").slice(0, 140));
 
 console.log("");
 console.log(`RESULT: ${pass} passed, ${fail} failed  (${TAG})`);

@@ -57,3 +57,37 @@ func TestDshLogPath(t *testing.T) {
 		t.Errorf("unexpected log path: %s", p)
 	}
 }
+
+// knownStartupFault 是"启动即崩"的分类器：命中的必须是真故障，且不能误伤
+// 那些看起来相似、但处理方式完全相反的失败（端口冲突）。
+func TestKnownStartupFault(t *testing.T) {
+	// 命中：2026-09-24 事故 dsh.log 里的真实片段（逐字取自现场日志）
+	real := "file:///D:/dsh-desktop/runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1112\n" +
+		"\tif (hmr === void 0) throw new Error(`${binName}: user patch-layer watching requires the Cordis HMR service`);\n" +
+		"Error: dsh: user patch-layer watching requires the Cordis HMR service\n" +
+		"    at watchUserPatches (file:///D:/dsh-desktop/runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1112:28)\n" +
+		"Node.js v24.20.0"
+	hint := knownStartupFault(real)
+	if hint == "" {
+		t.Fatal("the HMR start-up fault must be recognised")
+	}
+	// 指引必须自带可操作的出路，否则等于没说
+	for _, want := range []string{"0.1.7-rc.1", "重启服务", "cordis.patch.yml"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint should mention %q, got:\n%s", want, hint)
+		}
+	}
+
+	// 不命中：端口冲突在处理方式上与它相反，误判会把用户引向错误方向
+	portErr := "Error: listen EACCES: permission denied 127.0.0.1:43080\n    at Server.setupListenHandle"
+	if got := knownStartupFault(portErr); got != "" {
+		t.Errorf("a port conflict must not be classified as the HMR fault, got:\n%s", got)
+	}
+
+	// 不命中：空日志 / 无关错误 / 只提到 HMR 但语句不同的情况
+	for _, s := range []string{"", "Node.js v24.20.0", "Error: dsh: HMR service ready"} {
+		if got := knownStartupFault(s); got != "" {
+			t.Errorf("unexpected classification for %q: %s", s, got)
+		}
+	}
+}

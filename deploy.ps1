@@ -6,7 +6,7 @@
 #
 # Usage:
 #   pwsh -File deploy.ps1                                  # check + full deploy
-#   pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2       # pin dsh version
+#   pwsh -File deploy.ps1 -HarnessVersion 0.1.7-rc.1       # pin dsh version
 #   pwsh -File deploy.ps1 -AppDir D:\dsh\app\current       # where the shell exe lands
 #   pwsh -File deploy.ps1 -SkipDesktopBuild                # plugins only
 #   pwsh -File deploy.ps1 -CheckOnly                       # dry run, no writes
@@ -14,7 +14,12 @@
 # NOTE: ASCII-only output on purpose (Windows PowerShell 5.1 misreads
 # BOM-less UTF-8 and garbles CJK in scripts).
 param(
-  [string]$HarnessVersion = "0.1.5-rc.2",
+  # 2026-09-24: raised from 0.1.5-rc.2. That version aborts on start-up with
+  # "user patch-layer watching requires the Cordis HMR service" whenever the
+  # profile carries a user patch layer (i.e. any installed plugin) - see
+  # HANDOVER section 42. 0.1.7-rc.1 is the first line that works; upstream has
+  # never published a stable release.
+  [string]$HarnessVersion = "0.1.7-rc.1",
   [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipDesktopBuild,
   [switch]$CheckOnly

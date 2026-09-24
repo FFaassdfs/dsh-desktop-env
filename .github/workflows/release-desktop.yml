@@ -75,9 +75,20 @@ jobs:
           # @deepseek-ai/dsh-client-ui-sidebar-documentpreview; since rc.2 declares
           # caret ranges (^0.1.5-rc.2), a plain install of rc.2 now resolves rc.3
           # sub-packages -> ETARGET (this broke release run #11). --before keeps
-          # resolution at the rc.2-era registry state.
-          $before = "2026-09-22T05:00:00.000Z"
-          $pinned = "0.1.5-rc.2"
+          # resolution at the chosen registry state.
+          #
+          # RAISED to 0.1.7-rc.1 on 2026-09-24 (HANDOVER 42): 0.1.5-rc.2 aborts on
+          # start-up with "user patch-layer watching requires the Cordis HMR
+          # service" whenever @deepseek-ai/cordis-plugin-hmr is resolvable - which
+          # it IS in this portable (nested) layout, but NOT in a hoisted global
+          # npm install. So the failure only ever appeared on a clean target
+          # machine, never on the dev box. Every package up to 0.1.12 shipped a
+          # runtime that could not start on a fresh machine.
+          #
+          # NOTE: $before must sit AFTER the pinned version's publish date,
+          # otherwise resolution can never see it.
+          $before = "2026-09-24T00:00:00.000Z"
+          $pinned = "0.1.7-rc.1"
           $dsh = "${{ inputs.dsh_version }}"
           if (-not $dsh) { $dsh = $pinned }
           Write-Host "bundling @deepseek-ai/dsh@$dsh (registry state before $before)"
@@ -109,6 +120,53 @@ jobs:
             throw "npm was not staged next to node.exe; the package would not be able to self-update"
           }
           "NODE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # Gate: the staged runtime must actually BOOT, not merely print a version.
+      # Regression guard for HANDOVER 42: every package up to 0.1.12 bundled a
+      # harness that crashed on start-up in this exact (nested) layout, yet passed
+      # the version probe and shipped. Boot it against an empty DSH_HOME here so a
+      # start-up crash can never reach a Release again.
+      - name: Verify the staged runtime boots
+        shell: pwsh
+        run: |
+          $home_ = Join-Path $env:RUNNER_TEMP "boot-home"
+          New-Item -ItemType Directory -Force -Path $home_ | Out-Null
+          $out = Join-Path $env:RUNNER_TEMP "boot-out.txt"
+          $err = Join-Path $env:RUNNER_TEMP "boot-err.txt"
+          $env:DSH_HOME = $home_
+          # --port 0 lets the OS pick a free port; stdio goes to files so a crash
+          # still leaves evidence behind.
+          $p = Start-Process -FilePath "staging\node.exe" `
+            -ArgumentList "staging\node_modules\@deepseek-ai\dsh\lib\bin.js","web","--no-open","--port","0" `
+            -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
+          $deadline = (Get-Date).AddSeconds(120)
+          $up = $false
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            if ($p.HasExited) { break }
+            if (-not (Test-Path $out)) { continue }
+            $m = [regex]::Match((Get-Content $out -Raw), 'dsh web: http://127\.0\.0\.1:(\d+)/')
+            if (-not $m.Success) { continue }
+            try {
+              $code = (Invoke-WebRequest -Uri "http://127.0.0.1:$($m.Groups[1].Value)/" -UseBasicParsing -TimeoutSec 5).StatusCode
+              if ($code -gt 0) { $up = $true; break }   # 401 = expected (browser-trust fence)
+            } catch {
+              if ($_.Exception.Response) { $up = $true; break }   # 401 throws but IS a response
+            }
+          }
+          $alive = -not $p.HasExited
+          if ($alive) { $p.Kill() }
+          if (-not $alive) {
+            Write-Host "--- stderr tail ---"
+            if (Test-Path $err) { Get-Content $err -Tail 25 | ForEach-Object { Write-Host $_ } }
+            throw "the staged runtime EXITED during boot - do not ship this package (HANDOVER 42)"
+          }
+          if (-not $up) {
+            Write-Host "--- stdout tail ---"
+            if (Test-Path $out) { Get-Content $out -Tail 25 | ForEach-Object { Write-Host $_ } }
+            throw "the staged runtime never served HTTP - do not ship this package"
+          }
+          Write-Host "staged runtime booted and served HTTP successfully"
 
       - name: Pack the portable release
         shell: pwsh
