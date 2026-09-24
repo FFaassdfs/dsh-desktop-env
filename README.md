@@ -33,8 +33,9 @@ pwsh -File deploy.ps1 -HarnessVersion 0.1.5-rc.2   # 无 pwsh 用 powershell -Fi
   ```
   1) 把 zip 解压到任意目录（例如 D:\dsh-desktop-portable）
   2) 双击 dsh-desktop.exe   ← 首次启动会先解压内置运行时（~40 秒，状态面板显示进度），之后就快了
-  3) （可选）想让 6 个插件也进 DSH_HOME：双击 install-offline.cmd
+  3) 装插件：点壳面板上的「安装插件…」按钮，按提示选；装完点「重启服务」生效
   ```
+  - **🆕 0.1.14 起，装插件不用再手动双击 `install-offline.cmd`**——壳面板上有「**安装插件…**」按钮（仅便携包显示）。它做的事就是**把下面那个安装器窗口打开**：壳不判断成败、不解析插件清单，参数与兼容性全交给安装器自己（单一事实源）。
   - 想跳过 GUI 先解压（脚本化）：`dsh-desktop.exe --extract-runtime`
   - `install-offline.cmd` 是 `install-offline.ps1` 的**双击包装**（自动 `-ExecutionPolicy Bypass`，避免"双击 .ps1 不执行/被执行策略拦住"）；双击后会**列出每个插件的功能说明**并问你要装哪些。命令行同样支持选择：
     ```powershell

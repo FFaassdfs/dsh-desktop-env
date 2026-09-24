@@ -211,14 +211,18 @@ jobs:
             | 核心 | `@deepseek-ai/dsh ${{ env.DSH_VERSION }}`（离线内置） |
             | Node | `24.x` 便携运行时（`${{ env.NODE_VERSION }}`） |
             | npm | 已内置 —— 便携壳与源码装一样**能自更新** |
-            | 插件 | 6 个自定义插件随包（`install-offline.cmd` 里可选装哪些） |
+            | 插件 | 6 个自定义插件随包（**壳面板里点一下就能装**，见下） |
 
             **快速开始**
 
             1. 把 zip 解压到任意目录（例如 `D:\dsh-desktop`）
             2. 双击 `dsh-desktop.exe` —— 首次启动会先解压内置运行时（约 40 秒，只此一次）
-            3. （可选）双击 `install-offline.cmd`，按提示选择要装进 `%USERPROFILE%\.dsh` 的插件，装完**完全退出壳再重启**
-            4. 想跳过界面先解压运行时：`dsh-desktop.exe --extract-runtime`
+            3. **装插件**：点壳面板上的「**安装插件…**」按钮，按提示选择要装的插件（**0.1.14 起不用再去双击 `install-offline.cmd`**）
+            4. 装完点面板上的「**重启服务**」，插件即生效
+            5. 想跳过界面先解压运行时：`dsh-desktop.exe --extract-runtime`
+
+            > 也可以用命令行：`install-offline.cmd`（双击）/ `install-offline.ps1 -Plugins 2,4`（按编号选）。
+            > 面板那个按钮走的是**同一个安装器**，只是替你把窗口打开。
 
             **6 个内置插件**（安装菜单显示同一份说明，单一数据源 = `scripts\setup-plugins.mjs --describe`）
 

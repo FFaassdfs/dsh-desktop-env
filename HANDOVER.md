@@ -2890,6 +2890,70 @@ HANDOVER.md                                                            # 本节�
 
 > ⚠️ **另有一处历史遗留值得所有会话注意**：`.work/filetree-host.test.mjs` 曾长期硬编码指向 `D:\opencode\001\dsh-desktop\...`（**已冻结**的旧工作区），导致它对**本仓库 host 改动完全失明**（44.4-1 已修）。**改任何 `.work` 套件时，顺手确认它加载的是相对路径、不是别的仓库。**
 
+---
+
+## §45 壳面板新增「安装预置插件」入口 + 面板放大到 500×560（2026-09-24）
+
+> **来源（用户需求）**：「壳添加个功能，弄个选项安装预置插件，而不是手动运行目录里的 cmd 文件，因为**很多人不明白**」。
+> 用户当场定的取舍：**只装不卸**（对齐现状）、**装完建议重启服务（重不重启由用户决定）**、**「能运行就好」**——壳不判断成败。
+
+### 45.1 设计取向：壳只当"启动器"，业务全交给既有脚本
+
+核心决定来自用户的一句话：「**兼容性由 cmd 文件自行搞定，免得壳也太复杂**」。这与本项目的「单一事实源」原则一致——`install-offline.ps1`/`.cmd` **已经**解决了全部兼容性：
+
+| 已由脚本处理 | 出处 |
+|---|---|
+| PS7/5.1 四级引擎解析 | §34.7 |
+| 控制台代码页与 BOM 陷阱 | §34 |
+| 编号多选、无效即不装 | §28 |
+| 包内 node 定位 | §27 |
+
+⇒ 壳**刻意不做**：不解析插件清单、不读 `--describe`、不拼参数、**不判断成败**。新增代码约 120 行 Go + 30 行前端。
+
+### 45.2 实现
+
+| 文件 | 内容 |
+|---|---|
+| **`plugins_install.go`（新增，跨平台纯逻辑）** | `installerCandidates`/`findInstaller`（只看 `<exeDir>\install-offline.ps1`，支持 `$DSH_DESKTOP_INSTALLER` 覆盖，**找不到就返回空**）、`powershellCandidates`/`firstExistingExecutable`（PS7 优先、`powershell.exe` 兜底） |
+| `dsh_windows.go` / `dsh_other.go` | `startInstaller(path)` |
+| `app.go` | `HasPluginInstaller()` / `InstallBundledPlugins()`（**只 `cmd.Start()`，不等待**） |
+| `frontend/` | 面板新增「预置插件」区（`hidden` 直到 `HasPluginInstaller()` 为真）+ 一个按钮 |
+| `plugins_install_test.go` | 3 个用例（含负向断言） |
+
+**三个刻意的实现细节**：
+
+1. 🔴 **跑 `.ps1` 而不是 `.cmd`**——`.cmd` 末尾有 `pause`（那是给双击用的，留住窗口），**由壳启动会永远等不到进程退出**，表现为"卡死"。
+2. 🔴 **窗口故意可见**（不用 `hiddenWindowAttr`）——安装器要打印插件清单与进度，藏起来用户只会以为「点了没反应」，**比现在手动跑 cmd 更糟**。
+3. **找不到安装器就隐藏整个入口**——只在 `<exeDir>\install-offline.ps1` 存在时显示（即便携包）。源码装的使用者自己跑命令更快，壳**不去猜仓库在哪**；给一个点了没反应的按钮不如不给。
+
+### 45.3 面板尺寸 440×400 → 500×560
+
+原来是「状态 + URL + 三个按钮」时定的；后来加了「核心版本」选择器（§40）与本节这个入口，440 宽会把状态与说明文字截断。560 高在 **768p 笔记本屏**上也放得下（768 − 任务栏约 40px = 728px 可用）。
+
+- `main.go`：四个尺寸值抽成 **`panelWidth`/`panelHeight` 常量**。它们以前是**各自硬编码**的（`Width`/`MinWidth`/`MaxWidth` 各写一个 `440`），改尺寸时漏改一处就会出现「Min/Max 与实际打架」。
+- `windowstate.go`：`minWindowWidth`/`minWindowHeight` 改为**引用同一常量**，同时修掉一处**早已存在的漂移**——注释写着"与 main.go 保持一致"，实际是 `400×260` 而 main.go 当时是 `440×400`。⚠️ 注：`restoreWindowState`/`captureWindowState` 自 §23 改为固定尺寸后**就不再被调用**，保留它们只为不破坏 `windowstate_test.go`。
+- `style.css`：核心版本列表 `max-height` 92px → **130px**，用上多出来的垂直空间。
+
+### 45.4 验证
+
+| 项 | 结果 |
+|---|---|
+| `go test` | ✅ **45 用例**（44 PASS / 1 SKIP，新增 3 个） |
+| `go vet`（含 `GOOS=linux` 交叉） | ✅ 干净 |
+| 完整 `wails build` | ✅ 成功 |
+| 前端 `node --check` | ✅ |
+| **端到端**（造模拟便携包） | ✅ 引擎解析 → 桩脚本被执行 → **真实安装器 `-CheckOnly` 退出码 0** |
+| 尺寸常量读回 | ✅ 用临时断言直接读编译后的 `panelWidth/panelHeight = 500/560`，且两处常量已对齐 |
+
+**单测覆盖的负向行为**（最关键的三条）：没有安装器 → 返回空（面板隐藏而非假按钮）；环境变量指向不存在的文件 → **退回同级那份**（不因坏配置就假装没有）；空 `exeDir` → 不 panic、不凭空造路径。
+
+### 45.5 遗留与注意
+
+1. 🔴 **这个入口对源码装不可见**（只认 `exeDir` 同级）。你自己想验证，要么把安装器拷到应用区（但会因缺 `plugins\`/`scripts\` 而报"package is incomplete"），要么**用真便携包**。这是刻意的：壳不猜仓库位置。
+2. **换壳后应用区会留下** `dsh-desktop.new.exe` / `VERSION.new.txt`（`deploy-shell.ps1` 在壳运行时暂存），可手工删。
+3. **本轮发版**：`desktop-v0.1.14`（见 §45.6）。
+
+
 
 
 
