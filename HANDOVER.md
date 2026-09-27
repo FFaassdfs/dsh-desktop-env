@@ -3015,7 +3015,7 @@ HANDOVER.md                                                            # 本节�
 
 ### 46.5 待办
 
-1. ⏳ **用户动作（= 验收）**：壳状态面板点 **「重启服务」** → 会话列表里应出现「**修正插件**」(`23192189`) 与「**壳修改**」(`468b6fa9`) 两条（外加本会话）。本项目惯例：client 半区/界面效果**以用户实视为准**。
+1. ✅ **用户实视验收通过（2026-09-27 14:2x）**：用户重启服务后确认 **能看到恢复的会话**（`23192189`「修正插件」与 `468b6fa9`「壳修改」）。**本次事故恢复闭环**。恢复路径的可复现结论：备份（§43）→ `.work\restore-dsh-home.ps1` 合并式还原 → `.work\restore-on-service-restart.ps1` 保住重启窗口 → **必须重启服务**（`dsh web` 只在 boot 读一次 `storages\workspace.json`）。
 2. ✅ **已做（2026-09-27 09:33，用户确认后）**：`C:\Users\veken\{profiles,storages,.credentials.yaml,.anonymous-user-id}` 已**移入隔离区** `D:\dsh\backups\accidental-home-C-Users-veken-20260927\`（详见 46.4-3）。确认无误后可永久删除该隔离目录。⚠️ **只要还有自检脚本用默认 `DSH_HOME`，它就会再长出来**——根治是给自检显式传 `$env:DSH_HOME`。
 3. 可选：`-IncludeIdentity` 延续旧 anonymous id；或 `-IncludeConfig` 把 9/24 那份 `cordis.patch.yml` 恢复回去（**默认不恢复**，理由见 46.2）。
 4. 📌 **备份面现在闭合了**：`sessions` / `storages` / `.credentials.yaml` / `.anonymous-user-id` / `profiles\web\cordis.patch.yml` **能备份，也能还原**（§43 只做了前一半）。仍未覆盖：`profiles\web\cordis.yml`、`package.json`、`pnpm-workspace.yaml`（都可由 `scripts\setup-plugins.mjs` 再生）。
