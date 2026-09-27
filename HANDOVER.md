@@ -3024,6 +3024,7 @@ HANDOVER.md                                                            # 本节�
    - **`desktop-v0.1.14` 已经发布成功**（GitHub API 实测 `published_at = 2026-09-24T07:30:04Z` = 本地 **15:30**；资产 `dsh-desktop-0.1.14-dsh0.1.7-rc.1-win-x64.zip` = 234,601,436 B；壳 commit `25bbbfc`；Release 说明里已含「面板点一下装插件」）⇒ §45.6 **只是没来得及写**，发版本身没失败。AGENTS 状态行已同步更正。
    - **`0.1.15` 瘦身包已在本地打成**（`.cache\slimtest\dsh-desktop-0.1.15-dsh0.1.7-rc.1-win-x64.zip`，**112 MB**、`LATEST.txt` sha256 `6550D2B5…`、`runtime.zip` 230→117.2 MB）**但未发布**；对应的 `scripts\pack-release.ps1` 瘦身改动（默认丢 325 MB LibreOffice 引擎 + **删后自检闸门**）**仍在工作区、未提交**（`git status` 能看到）。要接着做：**先提交瘦身改动**再发 `desktop-v0.1.15`（AGENTS 约定：CI 从 commit 取源码，未提交的改动不会进包）。
 7. 🚫 **推送待解锁**：`~/.ssh` 需要重建（见 46.4-5）。本次恢复的提交是**本地** `8927b71`（`fix(ops): restore-dsh-home + restart guard; record the 2026-09-27 DSH_HOME wipe`），**尚未推送**。
+8. ✅ **已处理（2026-09-27 09:31）：工作区 ACL 修复**（用户先选了这一项）——`D:\dsh\dsh-desktop-env` 的 ACL 只有 `Authenticated Users: Modify`（**无 `WRITE_DAC`**），DSH 沙箱初始化直接报 `SetNamedSecurityInfoW failed (Win32 5): grantWrite(...)`，本会话前半程**每条命令都得提权**。已 `icacls D:\dsh\dsh-desktop-env /grant "DESKTOP-7BGBDVN\veken:(OI)(CI)F"`（该目录 **owner 就是 `veken`** ⇒ 隐式 `WriteDAC`，**无需提权**即可改）。**验证**：不提权的 `workspace-write` 写入正常，且**沙箱边界仍在**（写 `C:\Users\veken\.dsh\…` 被拒 `Access is denied`）。**回滚材料**：`.cache\recover-20260927\acl-before.txt` + `acl-before.sddl`（回滚 = `icacls D:\dsh /restore acl-before.sddl`）。
 
 
 
