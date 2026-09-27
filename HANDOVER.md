@@ -3009,6 +3009,9 @@ HANDOVER.md                                                            # 本节�
 3. ⚠️ **今早那次自检失败的根因不在本项目里**：`.cache\slimtest\err.txt` 报 `failed to parse overlay C:\Users\veken\profiles\web\cordis.patch.yml`——注意路径是 **`C:\Users\veken`（少了 `.dsh`）**：自检把 `DSH_HOME` 指到了**用户主目录**，在那里造出了**第二个 home**（`profiles\`、`storages\`、`.credentials.yaml`、`.anonymous-user-id`，最早 09-24 10:12 就有了），而它的 `cordis.patch.yml` 是 **`[]` + 插件列表**这种**非法 YAML**（`YAMLException: end of the stream or a document separator is expected (7:1)`）⇒ 启动即崩。
    **建议**：①跑便携包自检时**显式隔离 home**（`$env:DSH_HOME = <临时目录>`，别用默认的 `%USERPROFILE%`）；②清掉 `C:\Users\veken` 下那 5 个误建条目（**待用户确认，本次没动**）。
 4. `~/.dsh/settings.yaml` 与 `~/.dsh/AGENTS.md` **两份都不存在**（9/24 的备份里也没有）⇒ 与本次事故**无关**；但意味着**全局预设 `AGENTS.md` 目前并未生效**（仓库里那份在 `global\AGENTS.md`，需要装到 `$DSH_HOME\AGENTS.md` 才生效）。
+5. 🔴 **`~/.ssh` 整个目录又不见了（§43.2 重建的那一套）**：`Test-Path $env:USERPROFILE\.ssh` = **False**，`id_ed25519` / `config` / `known_hosts` **全不在**；C: 回收站与 D: 浅层搜索**都没有副本** ⇒ **私钥不可恢复**。后果：`git ls-remote --tags origin` 报 **`Host key verification failed`**（`git config --global user.name/email` 还在，**本地提交不受影响，推送受影响**）。
+   ⚠️ **这是"同一个事故第二次发生"，不是巧合**：`.work\backup-dsh-home.ps1` 的头注（9/24 写的）原话就是「a rebuild of `$DSH_HOME` silently wiped every session, the model-provider config (settings.yaml) **and the SSH keys**」——**会话 + 配置 + SSH 三件一起丢**是**复发模式**。**重建照 §43.2 抄**：`cmd /c 'ssh-keygen -t ed25519 -f "%USERPROFILE%\.ssh\id_ed25519" -N "" …'`（`-N` 的引号坑）、`known_hosts` 要写 `[ssh.github.com]:443` 三行（GitHub 公示指纹）、`~/.ssh/config` 带 443，**公钥必须重新加到 GitHub**。
+   🔎 一条时间线索：`C:\Users\veken` **目录本身的 mtime = 今天 08:29:39**（= 主线会话 projcache 被写入的同一秒）⇒ 那一刻**有目录项在用户主目录下被创建/删除**，很可能就是 `.ssh` 的消失时刻。**已排除**：不是 `install-offline.ps1`（只在 `$runtimeDir` 内 `Remove-Item`）、不是壳的 `runtime.go`（`RemoveAll` 只作用于 `<runtimeRoot>\node_modules` 与 `.old`/暂存）、不是壳重启（`taskkill` 只杀进程）。**根因仍未查明**（见 46.5-6）。
 
 ### 46.5 待办
 
@@ -3017,6 +3020,10 @@ HANDOVER.md                                                            # 本节�
 3. 可选：`-IncludeIdentity` 延续旧 anonymous id；或 `-IncludeConfig` 把 9/24 那份 `cordis.patch.yml` 恢复回去（**默认不恢复**，理由见 46.2）。
 4. 📌 **备份面现在闭合了**：`sessions` / `storages` / `.credentials.yaml` / `.anonymous-user-id` / `profiles\web\cordis.patch.yml` **能备份，也能还原**（§43 只做了前一半）。仍未覆盖：`profiles\web\cordis.yml`、`package.json`、`pnpm-workspace.yaml`（都可由 `scripts\setup-plugins.mjs` 再生）。
 5. 📌 **`$DSH_HOME` 何时再被清空仍未查明**：08:29:53（自检失败）到 08:38:05（home 重建）之间**没有留下日志**（壳 `debug.log` 无时间戳、`dsh.log` 是 09-24 的旧内容）。已排除的方向：不是 `install-offline.ps1`（它会保留 home）、不是壳的重启逻辑（`taskkill` 只杀进程）。**若要根治，建议**给 `debug.log` 加时间戳 + 记录"谁删了/重建了 home"。
+6. ✅ **顺手查清了两个"在途工作"的下落**（都没丢，只是文档没写完）：
+   - **`desktop-v0.1.14` 已经发布成功**（GitHub API 实测 `published_at = 2026-09-24T07:30:04Z` = 本地 **15:30**；资产 `dsh-desktop-0.1.14-dsh0.1.7-rc.1-win-x64.zip` = 234,601,436 B；壳 commit `25bbbfc`；Release 说明里已含「面板点一下装插件」）⇒ §45.6 **只是没来得及写**，发版本身没失败。AGENTS 状态行已同步更正。
+   - **`0.1.15` 瘦身包已在本地打成**（`.cache\slimtest\dsh-desktop-0.1.15-dsh0.1.7-rc.1-win-x64.zip`，**112 MB**、`LATEST.txt` sha256 `6550D2B5…`、`runtime.zip` 230→117.2 MB）**但未发布**；对应的 `scripts\pack-release.ps1` 瘦身改动（默认丢 325 MB LibreOffice 引擎 + **删后自检闸门**）**仍在工作区、未提交**（`git status` 能看到）。要接着做：**先提交瘦身改动**再发 `desktop-v0.1.15`（AGENTS 约定：CI 从 commit 取源码，未提交的改动不会进包）。
+7. 🚫 **推送待解锁**：`~/.ssh` 需要重建（见 46.4-5）。本次恢复的提交是**本地** `8927b71`（`fix(ops): restore-dsh-home + restart guard; record the 2026-09-27 DSH_HOME wipe`），**尚未推送**。
 
 
 
