@@ -2953,6 +2953,71 @@ HANDOVER.md                                                            # 本节�
 2. **换壳后应用区会留下** `dsh-desktop.new.exe` / `VERSION.new.txt`（`deploy-shell.ps1` 在壳运行时暂存），可手工删。
 3. **本轮发版**：`desktop-v0.1.14`（见 §45.6）。
 
+---
+
+## §46 🔴 `$DSH_HOME` 再次被清空 → 会话与工作区索引已恢复（2026-09-27）
+
+> **来源（用户报告）**：「之前会话丢失、配置丢失、harness 内容全清，但我记得有备份的工作做过——你读取项目的所有过程，看看能不能恢复之前的会话和内容」。
+> **结论：可以，而且已经恢复完成**。会话记录（含 1.86 MB 的主线会话「壳修改」）已**逐字节**从每日备份还原，工作区索引已**合并**回实时 home；**API key 没丢**，模型/插件配置在清空后已由 GUI 重新同步（与 9/24 备份只差模型参数）。**唯一硬损失**是清空前最后约 9 分钟的活动（见 46.4-1）。**还差用户点一下「重启服务」**（46.5-1）。
+
+### 46.1 事实链（全部实测）
+
+| # | 证据 | 结论 |
+|---|---|---|
+| 1 | 实时 `$DSH_HOME`（`C:\Users\veken\.dsh`）里 `profiles` 写于 08:38:05、`sessions` 08:38:45、`storages` 08:41:59，**全部是 2026-09-27 新建**；`dsh web` 进程 08:38:29 启动 | 08:38 前后 home 被**重建**：历史会话目录消失、profile 重装 |
+| 2 | `storages\workspace.json` 只剩今天新建的 2 个 workspace（`default-workspace`、`dsh-desktop-env`） | **工作区索引丢了**——旧 workspace `cb5bca55…`（`path = D:\dsh\dsh-desktop-env`，含 `session-23192189` + `session-468b6fa9`）**整条不见** ⇒ 界面里会话列表为空 |
+| 3 | `storages\session_projcache\sessions\session-468b6fa9….json`（121,769 B，**今天 08:29:39**）**还在** | 主线会话今早 08:29 还被打开过，**它的 transcript 目录却没了** ⇒ 内容是被删掉的，不是"从来不存在" |
+| 4 | 每日计划任务 `dsh-desktop-backup-DSH_HOME`（12:00，§43）留下 **4 份**快照，最新 `dsh-home-20260926-120002` | 会话记录**有备份可还原**——§43 那次"给 `$DSH_HOME` 加备份"的工作救回了这次 |
+| 5 | 备份里 `session-468b6fa9` 的 transcript = 1,907,339 B；解压后 **5,838,071 B / 2,533 条事件**，时间跨度 `2026-09-24 10:24 → 17:11` | 主线会话内容**完整**，最后停在 §46.4-1 那一步 |
+
+> ⚠️ **为什么`session.v4.jsonl.zstd`必须"多帧"解压**：dsh 是**追加写**，文件是**多个 zstd 帧的拼接**。`zlib.zstdDecompressSync()` 只解**第一帧**就静默返回（1.9 MB 的文件只得到 204 B 的会话头，看起来像"文件是空的"）。正确做法：`createZstdDecompress()` 流式，或按魔数 `28 B5 2F FD` 切片逐帧解（本次脚本用后者，解出 5.8 MB）。排查脚本留在 `.cache\recover-20260927\`（`inventory.mjs` / `inspect-sessions.mjs`）。
+
+### 46.2 恢复结果
+
+| 项 | 处理 | 结果 |
+|---|---|---|
+| 会话记录 `sessions\**\session.v4.jsonl.zstd` | 从最新备份**补齐缺失的**，**已存在的一律不动**（实时那份至少一样新，回滚会话会丢轮次） | **10 个**：2 个主线 + 6 个子代理 + 2 个孤儿；两个主线 `Get-FileHash` 与备份比对 = **IDENTICAL** |
+| `storages\session_projcache\sessions\*.json` | 只补缺失的（派生缓存，实时那份可能比 transcript 更新） | 9 个 |
+| `storages\workspace.json` | **合并**（绝不用备份替换）：把旧 workspace 的 `sessionIds` 并入**同一路径**的现有 workspace `329b63b7…`；`archivedSessionIds` 取并集；旧 id `cb5bca55…` **不重建**（否则同一路径出现两个分组） | `dsh-desktop-env` 下现有 3 个会话：`23192189`、`468b6fa9`、`b62acd52`（本会话）；原文件留档 `workspace.json.before-restore` |
+| `.credentials.yaml` | **不动** | `VEKENLLM_API_KEY` 与备份**逐字节相同** ⇒ **key 没丢**；只有 `client-connection/browser-session` 的 `secret` 变了（每次重建都会变，属正常） |
+| `profiles\web\cordis.patch.yml` | **默认不动**（`-IncludeConfig` 才覆盖） | 实时那份是清空后 **08:41 重新同步**出来的：6 个插件 + `llm-pi-ai`(vekenllm) + `agent-default-model` 齐全，**可用**。与 9/24 备份的差异：`deepseek-v4-flash` 的 `name`（→`deepseek-v4-flash`）/`input`（去掉 `image`）/`reasoningEfforts`（多出 `medium`/`xhigh`）、`auto` 去掉 `efforts` ⇒ 按「参数以实测为准」（AGENTS 约定 6）**不覆盖** |
+| `.anonymous-user-id` | **默认不动**（`-IncludeIdentity` 才覆盖） | 实时 `225dc4e1…`，备份 `8297a3c2…`。要延续旧身份：`pwsh -File .work\restore-dsh-home.ps1 -IncludeIdentity`（**重启服务后**才生效） |
+| 恢复前快照 | 恢复脚本**自动先备份一次** | `D:\dsh\backups\pre-restore\dsh-home-20260927-091019`（9 文件）⇒ 本次恢复**可反悔** |
+
+### 46.3 新增工具（入库，别的会话可直接用）
+
+| 文件 | 用途 |
+|---|---|
+| **`.work\restore-dsh-home.ps1`**（v1.0） | 把 `backup-dsh-home.ps1` 的快照**合并**回 `$DSH_HOME`。开关：`-CheckOnly` 干跑 / `-From <快照>` / `-StageOnly` 只写暂存 / `-IncludeConfig` / `-IncludeIdentity` / `-NoSnapshot`。**永不覆盖已存在的 transcript**；7 步校验（含"`sessionIds` 必须是 JSON **数组**"的断言）。 |
+| **`.work\restore-on-service-restart.ps1`**（v1.0） | 重启守卫：等 43080 关闭 → 每 150 ms 把暂存索引重铺一遍 → 端口恢复后收工并校验。用 `Start-Process` **分离启动**，所以能活过被它守护的那次重启。 |
+
+**两条硬语义（照做）**：
+
+1. 🔴 **必须重启服务**（壳状态面板「重启服务」）：`dsh web` **只在 boot 时读一次** `storages\workspace.json`，**刷新页面不会重新加载工作区表** ⇒ 不重启就看不到恢复的会话。
+2. ✅ **重启不会把索引刷回去**：壳的 `restartOwned()` 用 **`taskkill /F /T`**（硬杀，`app.go`），旧进程没有机会做退出前刷盘 ⇒ 合并后的索引不会被旧的内存状态覆盖。守卫脚本因此只是**双保险**。
+
+**本次踩到的两个工具坑（都靠一次 dry run 抓到）**：
+
+- 🔴 **PowerShell 的函数返回会展开数组**：`return $a` 在**单元素**时变成裸字符串 ⇒ 生成的 `workspace.json` 出现 `"sessionIds": "session-x"`（不是数组，harness 读回就是字符串）。改用 **`Write-Output -NoEnumerate $a`**，并在写盘后**回读断言**形状。`ConvertTo-Json` 本身没问题（实测保留单元素数组）。
+- 🔴 **robocopy 的退出码会泄漏进调用方的 `$LASTEXITCODE`**：`backup-dsh-home.ps1` 调 robocopy 返回 1（= 成功但有复制），让恢复脚本误判"快照失败"。改为**比对快照目录是否新增**，不要看 `$LASTEXITCODE`（真失败会 `throw`，本来就传播）。
+
+### 46.4 未恢复 / 需人确认
+
+1. ⏳ **清空前最后约 9 分钟（今天 08:29–08:38）的活动不在任何备份里**：备份停在 `09-26 12:00`，主线 transcript 的最后一次写入是 **09-24 17:11**。那段时间只有 `session_projcache` 被touch（08:29:39）和一次失败的瘦身自检（`.cache\slimtest\err.txt`，08:29:53）。
+   **丢的那个会话最后停在**：「**瘦身成功**（`runtime.zip` 230 → **117.2 MB**、成品包 223.7 → **112 MB**，删前/删后两个闸门都过），下一步做**端到端验证**」——恢复出来的 transcript 末尾正好挂着一条**待批准的 `pwsh` 调用**（解压瘦身包实测），可以从那里继续（即 §45.5 之后的工作：`desktop-v0.1.14` 发版 + `0.1.15` 瘦身包）。
+2. **两个孤儿会话**（`session-4e95e1c7` @`D:\dsh`、`session-2c8178ee` @`…\默认工作区`）transcript 已还原，但它们的 workspace 在 **09-26 的备份里就已经不在表里**（当时已被删）⇒ **不会出现在会话列表**。要显示须手工重建 workspace 条目。
+3. ⚠️ **今早那次自检失败的根因不在本项目里**：`.cache\slimtest\err.txt` 报 `failed to parse overlay C:\Users\veken\profiles\web\cordis.patch.yml`——注意路径是 **`C:\Users\veken`（少了 `.dsh`）**：自检把 `DSH_HOME` 指到了**用户主目录**，在那里造出了**第二个 home**（`profiles\`、`storages\`、`.credentials.yaml`、`.anonymous-user-id`，最早 09-24 10:12 就有了），而它的 `cordis.patch.yml` 是 **`[]` + 插件列表**这种**非法 YAML**（`YAMLException: end of the stream or a document separator is expected (7:1)`）⇒ 启动即崩。
+   **建议**：①跑便携包自检时**显式隔离 home**（`$env:DSH_HOME = <临时目录>`，别用默认的 `%USERPROFILE%`）；②清掉 `C:\Users\veken` 下那 5 个误建条目（**待用户确认，本次没动**）。
+4. `~/.dsh/settings.yaml` 与 `~/.dsh/AGENTS.md` **两份都不存在**（9/24 的备份里也没有）⇒ 与本次事故**无关**；但意味着**全局预设 `AGENTS.md` 目前并未生效**（仓库里那份在 `global\AGENTS.md`，需要装到 `$DSH_HOME\AGENTS.md` 才生效）。
+
+### 46.5 待办
+
+1. ⏳ **用户动作（= 验收）**：壳状态面板点 **「重启服务」** → 会话列表里应出现「**修正插件**」(`23192189`) 与「**壳修改**」(`468b6fa9`) 两条（外加本会话）。本项目惯例：client 半区/界面效果**以用户实视为准**。
+2. 确认无误后：删掉 `C:\Users\veken\{profiles,storages,.credentials.yaml,.anonymous-user-id}`（见 46.4-3）。
+3. 可选：`-IncludeIdentity` 延续旧 anonymous id；或 `-IncludeConfig` 把 9/24 那份 `cordis.patch.yml` 恢复回去（**默认不恢复**，理由见 46.2）。
+4. 📌 **备份面现在闭合了**：`sessions` / `storages` / `.credentials.yaml` / `.anonymous-user-id` / `profiles\web\cordis.patch.yml` **能备份，也能还原**（§43 只做了前一半）。仍未覆盖：`profiles\web\cordis.yml`、`package.json`、`pnpm-workspace.yaml`（都可由 `scripts\setup-plugins.mjs` 再生）。
+5. 📌 **`$DSH_HOME` 何时再被清空仍未查明**：08:29:53（自检失败）到 08:38:05（home 重建）之间**没有留下日志**（壳 `debug.log` 无时间戳、`dsh.log` 是 09-24 的旧内容）。已排除的方向：不是 `install-offline.ps1`（它会保留 home）、不是壳的重启逻辑（`taskkill` 只杀进程）。**若要根治，建议**给 `debug.log` 加时间戳 + 记录"谁删了/重建了 home"。
+
 
 
 
