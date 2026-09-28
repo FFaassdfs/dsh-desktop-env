@@ -3103,6 +3103,65 @@ HANDOVER.md                                                            # 本节�
 - ⚠️ **`gofmt -l .` 在本 checkout 恒报 5 个文件**（`dsh_other.go`、`dsh_windows.go`、`main.go`、`windowstate.go`、`windowstate_test.go`）：这些文件在工作区里是 **CRLF**，而 gofmt 输出 LF ⇒ 恒被判"未格式化"。**与改动无关**（其中 4 个本次根本没碰），**别为此重写行尾**（会制造整文件 diff，且 F19 已记过本仓库的 CRLF/LF 双轨）。
 - 📌 与 §45 的关系：§45 引入的入口本身没问题（"只启动、不判断成败"的设计成立），本次只是把**它的语义与文案对齐**。
 
+---
+
+## §49 desktop-v0.1.15 发布：**一次发两个包**（瘦身 + 整合），核心抬到 rc.2（2026-09-28）
+
+> 用户要求：「0.1.15 需要发布一个瘦身包和一个整合包」。两个决定由用户拍板：**资产命名 `-slim`/`-full` 都显式**；**内置核心 rc.2，且 `deploy.ps1` 锁版一起抬**。
+
+### 49.1 结果（实测）
+
+| 项 | 值 |
+|---|---|
+| Release | `desktop-v0.1.15`，**2026-09-28T07:36:56Z 发布**（非 prerelease）；标题 `dsh-desktop 0.1.15（便携包 · 瘦身/整合 双版本 · Windows x64）` |
+| CI | run **#22** `success`（tag 提交 `cf46dd2`） |
+| **瘦身包** | `dsh-desktop-0.1.15-dsh0.1.7-rc.2-win-x64-**slim**.zip` = **118.0 MB**，sha256 `966b8971e80ba1b160bd84a8671d9cece4c7732e03e7f45e3f9ddb1854f9012a` |
+| **整合包** | `dsh-desktop-0.1.15-dsh0.1.7-rc.2-win-x64-**full**.zip` = **183.1 MB**，sha256 `74a25a7ae9c315f1c5f1cad693730a2ae2557f95f192d873ac9140a83bccba24` |
+| 校验和 | `SHA256SUMS.txt`（**两行**，按文件名对应；`verify-release.mjs` 已改为按名字取行） |
+| 内置核心 | **`@deepseek-ai/dsh 0.1.7-rc.2`**（两个包一致；CI `$pinned` 同步抬到 rc.2） |
+| 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（指向两个）+ 合并 `SHA256SUMS.txt`；**旧 0.1.13 包已按 F7 剪除** |
+
+### 49.2 两个变体差什么（**直接量过**，不照脚本日志）
+
+| 资产 | 外层 zip | 内含 `runtime.zip` | 条目数 | `libreoffice-kit` 加载器 | **平台引擎包** |
+|---|---|---|---|---|---|
+| slim | 118.0 MB | 121.7 MB | 31,405 | 有（67 条） | **0 条** ⇒ 引擎已剔除 ✅ |
+| full | 183.1 MB | 187.6 MB | 32,229 | 有 | **824 条**（`…/libreoffice-kit-win32-x64/…`）⇒ 引擎在 ✅ |
+
+核对方式（**不解压、不跑包内代码**）：`tar -tf <包>\runtime.zip | Select-String 'libreoffice-kit'`。
+
+⚠️ 与 0.1.14（234.6 MB）相比 full 小了约 50 MB——原因是核心 rc.1→rc.2 的依赖树、Node 24.20→24.21、npm 解析差异；**不是把引擎弄丢了**（上表 824 条 + §49.5 的变体不变量双重为证）。
+
+### 49.3 实现（改了哪些地方）
+
+| 文件 | 改动 |
+|---|---|
+| `scripts/pack-release.ps1` | `-WithLibreOffice` 开关 → **`-Variant slim\|full`**（默认 `slim`）；**变体名进包名**；`VERSION.txt` 增 `variant:` 行、包内 `README.txt` 增"本版本"行（`__VARIANT__` 占位符）；**剪除只针对同变体**（`-Filter "dsh-desktop-*-win-x64-$Variant.zip"`）；头注写明"瘦身删的是**包内 runtime 副本**（`$rt = <pkgDir>\runtime`）⇒ 不影响源 `staging\`"，所以 CI 能「先瘦身、再整合」连打两次 |
+| `.github/workflows/release-desktop.yml` | `$pinned` → `0.1.7-rc.2`、`$before` → `2026-09-25T00:00:00.000Z`；打包步骤改为**两个变体各打一次到 `dist\<variant>`**，再把 zip 提到 `dist\` 并**合并一份 `SHA256SUMS.txt`**；Release 说明新增「两个包怎么选」表 + 把「按提示选择插件」改成「**一键装好全部 6 个插件**」（与 §48 的壳文案一致） |
+| `.work/verify-release.mjs` | **按变体**：`<tag> [slim\|full]`（默认 slim）；断言**两个资产都在**（少一个就是发布缺陷）；校验和**按文件名取行**；**新增变体不变量**（slim 必须**没有**引擎 / full 必须**有**）；**子进程输出改走文件 stdio**（见 49.4） |
+| `deploy.ps1` / `setup.ps1` | 锁版 `0.1.7-rc.1` → **`0.1.7-rc.2`**；闸门 `2026-09-24` → **`2026-09-25`**（F17：闸门必须晚于所钉版本发布时间） |
+
+### 49.4 两个坑（都会伪装成"包坏了"）
+
+1. 🔴 **沙箱里 Node 的管道 stdio 会 `EPERM`**：第一次跑验证时步骤 5–8 全部 `exit=1`、步骤 9 直接抛 `spawnSync powershell EPERM`（脚本中途死掉 ⇒ **变体不变量根本没跑到**）。原因：Node 默认 piped stdio 需要**命名管道**，沙箱拒绝；而 `execFileSync` 把 EPERM 包成 `err.status ?? 1` ⇒ 表面看像"安装器退出码 1"。
+   **修法（已验证）**：子进程 stdout/stderr/stdin 一律换成**真实文件**（`spawnSync` + `stdio:[inFd,outFd,errFd]`，stdin 也写文件再以 `r` 打开）。这把戏本仓库 boot 闸门早就用过（§42 时期就注明"stdio 走文件，因为管道要命名管道，有些沙箱会拒"）。
+2. 🔴 **`Start-Process -NoNewWindow` 在"无真控制台"下静默失败**：改成文件 stdio 后，`powershell -Command "Start-Process … -NoNewWindow -Wait -PassThru; exit $p.ExitCode"` 里 `$p` 变成 `$null` ⇒ `exit $null` = **退出码 0 但什么都没解压**（`runtime\` 不存在）⇒ 看起来像"便携包解压坏了"。**修法**：**直接调用 exe**（`spawnSync(exe, ["--extract-runtime"])`；实测 53 s、打印 `runtime ready in 53s`、幂等）。
+   **教训**：`exit $null` / `err.status ?? 1` 这类兜底会把"环境拒绝"伪装成"程序失败（或成功）"；**断言要落在产物上**（`runtime\node.exe` 存在吗），不要只信退出码。
+
+### 49.5 端到端验证（`verify-release.mjs`，**两个变体各 34/34 通过**）
+
+```
+RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant slim)
+RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant full)
+```
+覆盖：资产存在性 + SHA256（对 `SHA256SUMS.txt` 的**对应行**）+ 包内布局 + **随包安装器**干跑/交互菜单（喂 `2,4`）/`-Command` 形式 + **随包更新器** `-CheckOnly`（均断言"什么都没写"）+ `--extract-runtime`（`runtime\node.exe` 真出现、解出 **dsh 0.1.7-rc.2 + npm 11.19.0**）+ **变体不变量** + **对着全新 `DSH_HOME` 真启动并服务 HTTP**（§42 的回归闸门：profile 不得 opt-in live patch reload）。
+
+### 49.6 待办 / 提醒
+
+1. ✅ **§48 的壳文案修正已随本次发布进包**（用户确认"0.1.15 的包里生效就行"）——两个包里的 exe 都是新文案。
+2. 📌 用户当前跑的是 `D:\dshdesktop\`（0.1.14 便携包）。要换 0.1.15：把新 zip 解压到新目录即可（`DSH_HOME` 不受影响），或覆盖旧目录（先关壳）。
+3. 📌 想**自己挑插件**：双击 `install-offline.cmd`，或用 `-Plugins ask`；面板按钮固定"一键装全部"（F28）。
+
 
 
 
