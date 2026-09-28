@@ -3162,6 +3162,64 @@ RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant full)
 2. 📌 用户当前跑的是 `D:\dshdesktop\`（0.1.14 便携包）。要换 0.1.15：把新 zip 解压到新目录即可（`DSH_HOME` 不受影响），或覆盖旧目录（先关壳）。
 3. 📌 想**自己挑插件**：双击 `install-offline.cmd`，或用 `-Plugins ask`；面板按钮固定"一键装全部"（F28）。
 
+---
+
+## §50 🔴 「更新核心」提示"没有 npm"的真相：换入自更新把包内 npm 一起换掉了（2026-09-29，0.1.16 修复）
+
+> 用户提问：「为什么有时候运行壳、更新核心版本时会提示没有 npm，然后就不更新？**有的电脑就直接开始更新了**？」——并补充：**不是他本机**（本机能更新），是**其他电脑**。
+
+### 50.1 先分清两条更新路径（症状完全不同）
+
+| 安装形态 | 用什么装 | 失败时用户看到的话 |
+|---|---|---|
+| **便携包**（exe 同级有 `runtime\`） | **包内 npm**：`node.exe <包>\runtime\node_modules\npm\bin\npm-cli.js install --prefix <包>\.update @deepseek-ai/dsh@<v>` | npm 不在 ⇒ **「本包未内置 npm，无法自更新；请下载新版发行包」** ← 用户说的"提示没有 npm" |
+| **源码装/应用区**（无可识别的便携运行时） | **系统 npm**：`cmd /C npm install -g @deepseek-ai/dsh@<v>` | 那台机器没装 Node.js/npm ⇒ 「安装失败：…（也可手动执行 `npm i -g …`）」 |
+
+⇒ **"有的电脑直接就开始更新"** = 那台机器要么便携包里的 npm 还在，要么是源码装且装了 Node.js（走系统 npm）。
+
+### 50.2 根因（代码级；三段串起来是个永久性 bug）
+
+1. `stageBundledRuntime`（app.go）用包内 npm 把新核心装进 `<包>\.update` —— `npm install --prefix … @deepseek-ai/dsh@<v>` **只装这个包与它的依赖，npm 本身不是 dsh 的依赖** ⇒ 暂存树里**没有 npm**。
+2. `swapRuntimeModules`（runtime.go）换入时是 `rename runtime\node_modules → runtime\node_modules.old` + `rename .update\node_modules → runtime\node_modules` —— **整目录替换** ⇒ npm 被留在旧树里。
+3. `cleanupRuntimeBackup` 在新运行时启动成功后删掉 `node_modules.old` ⇒ **包内 npm 永久消失** ⇒ 之后 `UpdateCore` 里 `bundledNpmCLI(rt.Root) == ""` ⇒ 永远返回「本包未内置 npm」。
+
+⇒ 症状因此呈**"有的电脑能、有的不能"**：**成功换入过自更新的机器坏，刚解压还没更新过的机器好**；同一台机器上表现为"第一次能更新，之后就永远说没有 npm"。
+
+### 50.3 现场证据（2026-09-29，用户机器 `D:\dshdesktop`）
+
+| 观察 | 值 | 含义 |
+|---|---|---|
+| `runtime\node_modules\npm\bin\npm-cli.js` | **在** | 所以这台机器**还能**更新（与用户描述一致） |
+| `.update\node_modules`（当天 07:44 点更新生成） | 有 `@deepseek-ai/dsh`（**0.2.0-rc.1**）、**没有 npm** | 直接证明"暂存树不含 npm"（§50.2 第 1 步） |
+| `runtime\node_modules.old` | **不存在** | 换入尚未成功 ⇒ 一旦成功，这台机器也会立刻变成"没有 npm" |
+| `debug.log` | `applyPendingRuntimeUpdate: swap failed: … rename … Access is denied` | 历史上那次换入因文件被占用失败（另一个已知故障：更新被丢弃、版本不变） |
+
+### 50.4 修复（0.1.16，三处，全部有单测）
+
+| 位置 | 改动 |
+|---|---|
+| `swapRuntimeModules` + `carryBundledNpm`（runtime.go） | 换入后把旧树里的 `node_modules\npm` **拷**进新树。**用拷贝而非搬移**，这样 `node_modules.old` 仍是完整可回滚的树 |
+| `syncRuntimeFromArchive` + `restoreBundledNpm` / `extractZipSubtree`（runtime.go） | "保留现役运行时"的分支里先检查 npm：**缺失就从 `runtime.zip` 只解回 `node_modules/npm`**（新增结果 `runtimeSyncNpmRestored`）——**保留用户实际在跑的核心版本**，不为修 npm 把核心回退到包内版本。`-NoNpm` 包归档里没有 npm ⇒ 不触发、不报错 |
+| `applyPendingRuntimeUpdate`（app.go） | 换入后**断言 npm 仍在**：缺失则写日志 + 面板明确提示（"下次启动会尝试从发行包补回"），不再静默留下一个永远不能更新的运行时 |
+
+- 回归：`go test ./...` **48 用例全绿**（新增 `TestSwapRuntimeModulesKeepsBundledNpm` / `TestSyncRuntimeFromArchiveRestoresMissingNpm` / `TestSyncRuntimeFromArchiveLeavesNoNpmPackageAlone`）；`gofmt`、`go vet` 干净。facts **F29** 记录该不变量。
+
+### 50.5 已经坏掉的机器怎么救（按省事排序）
+
+1. **只换 exe（~11 MB）**：用 0.1.16 的 `dsh-desktop.exe` 覆盖 `<包>\dsh-desktop.exe`；**下次启动会自动从 `runtime.zip` 把 npm 补回**（面板提示"内置运行时缺少的 npm 已按发行包补回"）。适合远距离、不想重下整包的机器。
+2. **手工补 npm**：`cd <包>` 然后 `tar -xf runtime.zip -C runtime "./node_modules/npm"`；放回后**重启壳**再点更新。
+3. **换 0.1.16 的包**：解压到新目录（`$DSH_HOME` 不受影响），或覆盖旧目录（先关壳）。
+
+> ⚠️ `dsh-desktop.exe --extract-runtime` **修不了**已丢 npm 的运行时：现役运行时不比归档旧时它直接"保留不重解"（`syncRuntimeFromArchive: keeping unpacked runtime …`）——这正是 0.1.16 新增 `runtimeSyncNpmRestored` 分支要解决的问题。
+
+### 50.6 发布
+
+| 项 | 值 |
+|---|---|
+| Release | `desktop-v0.1.16`（**双包 `-slim` / `-full`**） |
+| 资产 | 见 50.7（CI 出结果后回填） |
+| 说明 | Release 模板新增一条：自更新**换入保留包内 npm**，并能从 `runtime.zip` 自动补回已丢失的 npm |
+
 
 
 
