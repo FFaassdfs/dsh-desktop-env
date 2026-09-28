@@ -3031,6 +3031,42 @@ HANDOVER.md                                                            # 本节�
    - ⚠️ **临时通道的取舍**：API 推送**绕过**本地 `pre-push`/钩子、也**不触发** `git` 的凭据刷新；每次推送都要重跑脚本（约 20 秒）。**SSH 已恢复 ⇒ 日常请用常规 `git push`**；`.work\push-via-api.ps1` 留作"SSH 又坏 / github.com 443 改走 API"时的备用通道。
 8. ✅ **已处理（2026-09-27 09:31）：工作区 ACL 修复**（用户先选了这一项）——`D:\dsh\dsh-desktop-env` 的 ACL 只有 `Authenticated Users: Modify`（**无 `WRITE_DAC`**），DSH 沙箱初始化直接报 `SetNamedSecurityInfoW failed (Win32 5): grantWrite(...)`，本会话前半程**每条命令都得提权**。已 `icacls D:\dsh\dsh-desktop-env /grant "DESKTOP-7BGBDVN\veken:(OI)(CI)F"`（该目录 **owner 就是 `veken`** ⇒ 隐式 `WriteDAC`，**无需提权**即可改）。**验证**：不提权的 `workspace-write` 写入正常，且**沙箱边界仍在**（写 `C:\Users\veken\.dsh\…` 被拒 `Access is denied`）。**回滚材料**：`.cache\recover-20260927\acl-before.txt` + `acl-before.sddl`（回滚 = `icacls D:\dsh /restore acl-before.sddl`）。
 
+---
+
+## §47 状态更正：核心已到 `0.1.7-rc.2`；官方桌面端**仍未发布**（2026-09-27）
+
+> 来由：用户问「官方的壳发布了么」+ 会话中发现版本锚点（`0.1.7-rc.1`）与现实脱节。本节是**实测快照**，后续会话直接引用即可（遵守 F 表纪律：数值只写在 `project-facts-v1.0.md`，这里只记证据与来由）。
+
+### 47.1 本机核心版本：`0.1.7-rc.1` → **`0.1.7-rc.2`**（实测）
+
+| 证据 | 值 |
+|---|---|
+| 全局 `package.json`（`C:\Users\veken\nodejs\node-v24.16.0-win-x64\node_modules\@deepseek-ai\dsh`） | `version = 0.1.7-rc.2` |
+| `node …\dsh\lib\bin.js --version` | `0.1.7-rc.2` |
+| **升级发生的时间（新发现）** | `package.json` mtime = **2026-09-27 08:34:40**、包目录 08:34:43 ⇒ **正好落在 §46 那个事故窗口内**（08:29:53–08:38:05）有人执行了 `npm i -g`（升到 rc.2）。这与 §42「在线更新后才正常」是同一模式：**重装/升级核心** 与 **home 被清空** 在同一段操作里 |
+| npm `dist-tags` | `latest` = `next` = **`0.1.7-rc.2`**（2026-09-24 14:18 发布）；`alpha` = 0.1.7-alpha.2；**仍无正式版** |
+| ⚠️ **旧注失效** | 「`dsh --version` ≠ `dist-tags.latest`」**自 2026-09-24 起不再成立**（`latest` 已从 `0.1.5-rc.3` 前进到 rc.2）——F2/F24 里那句话要按此理解 |
+| 应用区 `VERSION.txt` | 仍写 `core: 0.1.7-rc.1`——那是**部署时快照**（2026-09-24 12:42），不是实时值；下次换壳会重写 |
+
+### 47.2 官方桌面端（上游 `apps/desktop/`，Electron）：**仍未发布**（四渠道实测）
+
+| 渠道 | 2026-09-27 实测 |
+|---|---|
+| 上游 releases（`deepseek-ai/deepseek-harness`） | **22 个 release，带资产的 0 个，资产总数 0**；最新 = `dsh-v0.1.7-rc.2`（2026-09-24 14:10，prerelease） |
+| tags | **23 个**，**无任何 `desktop-*` / `app-*`** 命名 |
+| npm | `@deepseek-ai/dsh-desktop` / `@deepseek-ai/dsh-app-desktop` / `@deepseek-ai/desktop` → **全部 404** |
+| 上游 README | 本次抓取因我的 base64 解析 bug **未复核**（9/15 评估时为「2440 字节、全文不含 desktop/download」）——不影响结论 |
+
+⇒ **与 2026-09-15 评估（当时 17 releases / 0 assets）结论一致：官方桌面端「已实现已合入、分发为零」**。判定「已发布」的三个信号（① 新的 npm 包 ② `desktop-*` tag ③ release 里出现 `.exe`/`.dmg` 资产）**至今全空** ⇒ eval 的决策（**维持自研 Wails launcher、不构建不迁移、等官方发布后再评估**）**继续有效**。
+
+- 复核工具（现成的，别重写）：`D:\dsh\official-desktop-eval\probes\check-availability.mjs`（+ `.work\probe-release-state.mjs`）；当时的证据表在该目录 `HANDOVER.md` §11。
+- 本次未复核项：上游 `apps/desktop/` 目录现状与 CHANNEL 是否仍为空（接口响应异常）。
+
+### 47.3 待办
+
+1. ⏳ **决策项（未改代码）**：跨机锁版 `deploy.ps1 -HarnessVersion` 仍是 **`0.1.7-rc.1`**（facts F10），而本机全局与 npm `latest` 都已是 `0.1.7-rc.2`。**要不要抬高？** 抬的话按 F17 纪律核对闸门：rc.2 发布于 `2026-09-24T14:18`，现存闸门 `2026-09-24T00:00:00.000Z` **早于**该发布时间 → **必须推进闸门**（例如 `2026-09-25T00:00:00.000Z`），否则解析看不到 rc.2。
+2. 📌 若上游发布桌面端：先按 eval 的 §11 复核（尤其「**不提供 `webServer`** ⇒ 我们 5 个插件的 host 自定义路由在该 profile 下不可用」这一条），再决定是否迁移；迁移会动**日常入口**，属高风险，按 §46 纪律先备份 `$DSH_HOME`。
+
 
 
 
