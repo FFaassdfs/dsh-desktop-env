@@ -30,8 +30,8 @@
 // Requires: node, pwsh/powershell, tar.exe (all present on a normal Windows box).
 // Scratch lives in .cache/verify-<version>-<variant>/ (gitignored) - see HANDOVER §32.
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { execFileSync, spawn } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 const REPO = "FFaassdfs/dsh-desktop-env";
@@ -203,16 +203,37 @@ console.log("5) shipped installer (-CheckOnly dry run)");
 for (const dir of [homeDir, updaterHome]) { rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); }
 const installer = join(pkgDir, "install-offline.ps1");
 const updater = join(pkgDir, "update-plugins.ps1");
-function runFile(file, args, opts = {}) {
-  try {
-    return {
-      out: execFileSync("pwsh", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, ...args],
-        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...opts }),
-      code: 0,
-    };
-  } catch (err) {
-    return { out: (err.stdout || "") + (err.stderr || ""), code: err.status ?? 1 };
+// Sandbox-friendly capture. Node's default piped stdio needs NAMED PIPES, which
+// some sandboxes refuse ("spawnSync powershell EPERM" - measured 2026-09-28, which
+// silently failed steps 5-8 and killed step 9 before the variant check could run).
+// Handing the child real FILES for stdout/stderr - and for stdin when we must feed
+// input, since a stdin pipe is a pipe too - works everywhere. The boot gate below
+// has always used this same trick for the same reason.
+let scratchSeq = 0;
+function runCapture(cmd, args, opts = {}) {
+  scratchSeq += 1;
+  const tag = `${process.pid}-${scratchSeq}`;
+  const outPath = join(root, `child-${tag}.out.txt`);
+  const errPath = join(root, `child-${tag}.err.txt`);
+  let inFd = "ignore";
+  if (opts.input !== undefined) {
+    const inPath = join(root, `child-${tag}.in.txt`);
+    writeFileSync(inPath, opts.input);
+    inFd = openSync(inPath, "r");
   }
+  const res = spawnSync(cmd, args, {
+    env: opts.env,
+    stdio: [inFd, openSync(outPath, "w"), openSync(errPath, "w")],
+    windowsHide: true,
+  });
+  const read = (p) => (existsSync(p) ? readFileSync(p, "utf8") : "");
+  return { out: read(outPath) + read(errPath), stdout: read(outPath), stderr: read(errPath), code: res.status ?? 1, error: res.error };
+}
+
+function runFile(file, args, opts = {}) {
+  const r = runCapture("pwsh", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, ...args],
+    { input: opts.input, env: opts.env });
+  return { out: r.out, code: r.code };
 }
 const dry = runFile(installer, ["-CheckOnly", "-Plugins", "2,4", "-DSHome", homeDir]);
 check("installer dry run exits 0", dry.code === 0, `exit=${dry.code}`);
@@ -230,13 +251,9 @@ check("menu answer 2,4 selects exactly two", /would install : \S+,\S+\s*$|would 
 check("menu wrote nothing", !existsSync(join(homeDir, "profiles", "node_modules")));
 
 console.log("7) -Command invocation (PowerShell array-splits 2,4 -> \"2 4\")");
-let cmdOut = "";
-try {
-  cmdOut = execFileSync("pwsh", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-    `& '${installer}' -CheckOnly -Plugins 2,4 -DSHome '${homeDir}'; exit $LASTEXITCODE`],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-} catch (err) { cmdOut = (err.stdout || "") + (err.stderr || ""); }
-check("-Command form is tolerated", /would install : \S+/.test(cmdOut));
+const cmdRun = runCapture("pwsh", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+  `& '${installer}' -CheckOnly -Plugins 2,4 -DSHome '${homeDir}'; exit $LASTEXITCODE`]);
+check("-Command form is tolerated", /would install : \S+/.test(cmdRun.out));
 
 // --- 5. shipped updater -------------------------------------------------------
 console.log("8) shipped updater (-CheckOnly must not write)");
@@ -248,14 +265,22 @@ check("updater -CheckOnly wrote nothing", !existsSync(join(updaterHome, "profile
 
 // --- 6. runtime ---------------------------------------------------------------
 console.log("9) first-run path: --extract-runtime");
-execFileSync("powershell", ["-NoProfile", "-Command",
-  `$p = Start-Process -FilePath '${join(pkgDir, "dsh-desktop.exe")}' -ArgumentList '--extract-runtime' -Wait -PassThru -NoNewWindow; exit $p.ExitCode`],
-  { encoding: "utf8" });
+// Invoke the exe DIRECTLY: it unpacks its bundled runtime.zip (~50 s on this box,
+// idempotent) and prints "runtime ready in Ns". The previous version wrapped this in
+// `powershell -Command "Start-Process -NoNewWindow ..."`, which needs a real console;
+// with the file-based stdio this script now uses for sandbox compatibility that fails
+// SILENTLY ($p stays null -> `exit $null` -> exit code 0 with nothing extracted, which
+// on 2026-09-28 looked exactly like a shipped-package defect).
+const extractRun = runCapture(join(pkgDir, "dsh-desktop.exe"), ["--extract-runtime"]);
+check("--extract-runtime exits 0", extractRun.code === 0,
+  `exit=${extractRun.code} ${extractRun.stderr.split(/\r?\n/).filter(Boolean).slice(-1)[0] || ""}`);
+check("--extract-runtime produced runtime\\node.exe", existsSync(join(pkgDir, "runtime", "node.exe")),
+  "no runtime\\node.exe after extraction");
 const node = join(pkgDir, "runtime", "node.exe");
 const entry = join(pkgDir, "runtime", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const npmCLI = join(pkgDir, "runtime", "node_modules", "npm", "bin", "npm-cli.js");
-const dshOut = execFileSync(node, [entry, "--version"], { encoding: "utf8" }).trim();
-const npmOut = execFileSync(node, [npmCLI, "--version"], { encoding: "utf8" }).trim();
+const dshOut = runCapture(node, [entry, "--version"]).stdout.trim();
+const npmOut = runCapture(node, [npmCLI, "--version"]).stdout.trim();
 console.log(`   unpacked dsh: ${dshOut}   npm: ${npmOut}`);
 check(`unpacked dsh reports ${EXPECTED}`, EXPECTED !== "" && dshOut === EXPECTED, `got ${dshOut}`);
 check("unpacked npm runs", /^\d+\.\d+\.\d+/.test(npmOut), `got ${npmOut}`);
