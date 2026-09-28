@@ -667,9 +667,14 @@ func (a *App) HasPluginInstaller() bool {
 
 // InstallBundledPlugins 启动发行包自带的安装器，把预置插件装进 $DSH_HOME。
 //
-// 刻意「只启动、不等待、不判断成败」：安装器自己有交互菜单与校验，壳再去解释它
+// 刻意「只启动、不等待、不判断成败」：安装器自己有校验与默认选择，壳再去解释它
 // 的结果只会引入第二套可能不一致的判断逻辑（见 plugins_install.go 的说明）。
 // 用户能看到弹出的窗口，装完自己决定要不要重启服务。
+//
+// ⚠️ 语义是**一键安装全部预置插件**：这里不传 `-Plugins`，安装器默认 `all`，
+// 因此**没有交互菜单**（详见 dsh_windows.go 的 startInstaller 第 3 条）。
+// 返回值必须与之一致——2026-09-28 用户实踩：文案写着"请按提示选择要装的插件"，
+// 实际却是一闪装完，看起来像坏了。
 func (a *App) InstallBundledPlugins() string {
 	path := installerPathForThisExe()
 	if path == "" {
@@ -680,7 +685,7 @@ func (a *App) InstallBundledPlugins() string {
 		return "无法启动插件安装器：" + err.Error()
 	}
 	debugLog("InstallBundledPlugins: started %s", path)
-	return "已打开插件安装器窗口，请按提示选择要装的插件。装好后建议重启服务，让它生效。"
+	return "一键安装全部插件；脚本自动退出后请重启服务，让它生效。"
 }
 
 // ---- version / update ----

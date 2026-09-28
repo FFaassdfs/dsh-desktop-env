@@ -146,11 +146,20 @@ func (a *App) npmInstallGlobalVersion(version string) error {
 
 // startInstaller 在后台启动发行包自带的插件安装器（见 plugins_install.go）。
 //
-// 两个刻意的选择：
+// 三个刻意的选择：
 //  1. **跑 .ps1，不跑 .cmd**——.cmd 末尾有 `pause`（那是给双击用的），由壳启动会
 //     永远等不到进程退出。
 //  2. **窗口可见**（不用 hiddenWindowAttr）：安装器会打印插件清单与进度，用户
 //     需要看到它到底在做什么；把它藏起来只会让人以为"点了没反应"。
+//  3. **刻意不传 `-Plugins`**——`install-offline.ps1` 的参数默认值是 `all`，也就是
+//     「一键装全部预置插件」，跑完脚本自己退出：**没有菜单、不需要控制台输入**。
+//     面板文案按这个语义写（见 app.go 的 InstallBundledPlugins）。
+//     ⚠️ 2026-09-28 实测过这个困惑：用户点「安装预置插件」只看到 PowerShell 窗口
+//     一闪（因为默认 `all` 一秒装完就退出），而当时的面板文案却写着"请按提示选择
+//     要装的插件"。**已定为一键安装**（用户决定，文案同步改写），所以：
+//     **不要"顺手"在这里补 `-Plugins ask`**——那会变成"要点两次 + 必须与控制台
+//     交互"，是另一个产品形态。要看菜单的用户请双击包里的 `install-offline.cmd`
+//     （带菜单 + `pause`），或自行加 `-Plugins ask`。
 func (a *App) startInstaller(path string) error {
 	engine := firstExistingExecutable(powershellCandidates(os.Getenv))
 	cmd := exec.Command(engine, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path)

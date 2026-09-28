@@ -3067,6 +3067,42 @@ HANDOVER.md                                                            # 本节�
 1. ⏳ **决策项（未改代码）**：跨机锁版 `deploy.ps1 -HarnessVersion` 仍是 **`0.1.7-rc.1`**（facts F10），而本机全局与 npm `latest` 都已是 `0.1.7-rc.2`。**要不要抬高？** 抬的话按 F17 纪律核对闸门：rc.2 发布于 `2026-09-24T14:18`，现存闸门 `2026-09-24T00:00:00.000Z` **早于**该发布时间 → **必须推进闸门**（例如 `2026-09-25T00:00:00.000Z`），否则解析看不到 rc.2。
 2. 📌 若上游发布桌面端：先按 eval 的 §11 复核（尤其「**不提供 `webServer`** ⇒ 我们 5 个插件的 host 自定义路由在该 profile 下不可用」这一条），再决定是否迁移；迁移会动**日常入口**，属高风险，按 §46 纪律先备份 `$DSH_HOME`。
 
+---
+
+## §48 「安装预置插件」入口的语义 = **一键装全部**（不是菜单）+ 文案更正（2026-09-28）
+
+### 48.1 现象与定位（用户实报）
+
+**现象**：在 0.1.14 便携包里点面板的「安装预置插件」→ 只看到 **PowerShell 窗口一闪**，没有出现任何安装界面。
+
+**结论：不是故障——6 个插件确实装上了**，"一闪"是这条代码路径的正常表现：
+
+| 环节 | 事实 |
+|---|---|
+| 壳启动安装器的命令（`dsh_windows.go` → `startInstaller`） | `pwsh -NoProfile -ExecutionPolicy Bypass -File <exeDir>\install-offline.ps1` —— **一个参数都不传** |
+| 安装器参数默认值（`install-offline.ps1` L25） | `[string]$Plugins = "all"` ⇒ **非交互：装完全部 6 个预置插件就退出** |
+| 交互菜单的唯一触发条件（同脚本 L211 `Read-Host`） | 只有 **`-Plugins ask`**（脚本自己的注释也写 `-Plugins ask # interactive menu (needs a console)`） |
+
+⇒ 点按钮 = 约 1 秒装完 6 个然后窗口关闭 = 用户看到的"一闪"。**而当时的面板文案却写着"请按提示选择要装的插件"**——文案与行为不符，这才是让人以为"坏了"的原因。
+
+**实测证据**（用户机器，2026-09-28；用户跑的是便携包目录 `D:\dshdesktop\`，**不是应用区**）：
+- `$DSH_HOME\profiles\node_modules\` 下 6 个插件目录 mtime **全部 = 2026-09-28 14:37:09**（壳 14:32:51 启动之后）；
+- 包内 `node scripts\setup-plugins.mjs --status --ascii` 报告 **6/6 `installed=true`、`patchEntry=true`、`state=current`**；
+- 壳 `debug.log` 有 `InstallBundledPlugins: started D:\dshdesktop\install-offline.ps1`。
+
+### 48.2 处置（**用户决定：保持一键安装**）
+
+- **不改参数、不弹菜单**，只把面板文案改成实话：`一键安装全部插件；脚本自动退出后请重启服务，让它生效。`（`app.go` 的 `InstallBundledPlugins`）。
+- 在 `startInstaller` 的注释里把「**刻意不传 `-Plugins`**」写死成约定（含本次教训），防止后人"顺手"补 `-Plugins ask` 把产品形态改回去；`InstallBundledPlugins` 的函数注释也同步写明语义与返回值必须一致。
+- **想要菜单的两条现成路径**（无需改代码）：双击包里的 `install-offline.cmd`（带菜单 + 结尾 `pause` 留住窗口），或 `pwsh -NoProfile -File install-offline.ps1 -Plugins ask`。
+
+### 48.3 其他记录
+
+- **生效条件**：这是**壳源码**改动 ⇒ 需 `wails build` + 换 exe 才生效；用户当前跑的是便携包里的 exe（换文件要先关壳，会掐断当前 GUI 会话）。仅为文案，不急——**可并入 0.1.15**。
+- ✅ 回归：`go vet ./...` 干净、`go test ./...` 通过（2.3s）。
+- ⚠️ **`gofmt -l .` 在本 checkout 恒报 5 个文件**（`dsh_other.go`、`dsh_windows.go`、`main.go`、`windowstate.go`、`windowstate_test.go`）：这些文件在工作区里是 **CRLF**，而 gofmt 输出 LF ⇒ 恒被判"未格式化"。**与改动无关**（其中 4 个本次根本没碰），**别为此重写行尾**（会制造整文件 diff，且 F19 已记过本仓库的 CRLF/LF 双轨）。
+- 📌 与 §45 的关系：§45 引入的入口本身没问题（"只启动、不判断成败"的设计成立），本次只是把**它的语义与文案对齐**。
+
 
 
 
