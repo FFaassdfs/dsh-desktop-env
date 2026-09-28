@@ -19,7 +19,8 @@
 # node.exe is a complete runtime.
 #
 # Usage:
-#   pwsh -File scripts\pack-release.ps1                        # full package
+#   pwsh -File scripts\pack-release.ps1                        # slim package (default since 0.1.15)
+#   pwsh -File scripts\pack-release.ps1 -Variant full          # full package (keeps Office preview)
 #   pwsh -File scripts\pack-release.ps1 -NoNode                # without the bundled Node (needs Node on target)
 #   pwsh -File scripts\pack-release.ps1 -RuntimeMode full-node-modules   # force copying the whole node_modules
 #   pwsh -File scripts\pack-release.ps1 -SkipZip               # stage only
@@ -31,6 +32,29 @@
 #   auto picks by layout: nested deps inside @deepseek-ai/dsh -> dsh-tree;
 #   hoisted deps (npm install --prefix) -> full-node-modules. Either way the
 #   staged runtime is executed once as a gate, so a wrong layout cannot ship.
+#
+# SLIM PACKAGE (default since 0.1.15): the harness drags in a COMPLETE
+# LibreOffice engine (@deepseek-ai/libreoffice-kit-win32-x64, 325 MB unpacked -
+# 56% of the whole runtime tree) purely so the sidebar can render Office
+# documents as PDF. Dropping it takes the package from ~224 MB to ~95 MB.
+#
+# Measured 2026-09-24 (see HANDOVER 46) - dropping it is safe:
+#   * upstream ships it in optionalDependencies of @deepseek-ai/libreoffice-kit
+#     ("install failure is not an error"), and
+#   * createConverter() is LAZY - only called when an Office document is actually
+#     converted; the start-up path never touches it, and
+#   * with it missing the call raises a catchable
+#     ConversionError(code="unavailable", "...native package is missing: ...")
+#     instead of crashing.
+# Verified: boots clean (empty stderr) with 6 plugins installed, all plugin host
+# routes work, and reinstalling the package restores conversion.
+#
+# VARIANTS (since 0.1.15): the variant is part of the package/zip name, so BOTH can
+# be published in the same release (0.1.15 ships slim AND full):
+#   -Variant slim -> dsh-desktop-<shell>-dsh<dsh>-win-x64-slim.zip   (default)
+#   -Variant full -> dsh-desktop-<shell>-dsh<dsh>-win-x64-full.zip   (keeps engine)
+# Pruning only ever removes zips of the SAME variant, so packing into one folder
+# does not delete the other variant.
 #
 # NOTE: ASCII-only on purpose (Windows PowerShell 5.1 misreads BOM-less UTF-8
 # scripts with non-ASCII content).
@@ -49,6 +73,12 @@ param(
   [switch]$SkipZip,
   [switch]$KeepStaging,
   [switch]$KeepOldPackages,
+  # Package variant (since 0.1.15). slim = default: drop the 325 MB LibreOffice
+  # engine that only the Office document preview uses (see the SLIM note in the
+  # header). full = keep it, so Office documents still render. The variant is part
+  # of the package name, which is what lets both ship in one release.
+  [ValidateSet("slim", "full")]
+  [string]$Variant = "slim",
   [switch]$CheckOnly
 )
 $ErrorActionPreference = "Stop"
@@ -95,7 +125,7 @@ if (-not $NoNode) {
 }
 $nodeVersion = if ($NoNode) { "(none)" } else { (& $NodeExe --version) }
 
-$pkgName = "dsh-desktop-$ShellVersion-dsh$DshVersion-win-x64"
+$pkgName = "dsh-desktop-$ShellVersion-dsh$DshVersion-win-x64-$Variant"
 $staging = Join-Path $OutDir "staging"
 $pkgDir = Join-Path $staging $pkgName
 $zipPath = Join-Path $OutDir "$pkgName.zip"
@@ -177,6 +207,44 @@ if (-not $NoNode) {
   }
   Ok "runtime self-check passed: bundled dsh reports $probeFirst"
   $global:LASTEXITCODE = 0
+
+  # --- SLIM: drop the bundled LibreOffice engine ------------------------------
+  #
+  # It exists only so the sidebar can render Office documents as PDF, it lives in
+  # optionalDependencies upstream, and it is loaded lazily - so removing it is
+  # safe (measured, see HANDOVER 46). It is 325 MB unpacked: more than half the
+  # runtime tree.
+  if ($Variant -eq "slim") {
+    $loDirs = @(Get-ChildItem -Path (Join-Path $rt "node_modules") -Recurse -Directory -Filter "libreoffice-kit-*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -ne "libreoffice-kit" })
+    if ($loDirs.Count -eq 0) {
+      Warn "slim mode: no libreoffice-kit platform package found (nothing to drop)"
+    } else {
+      $freed = 0
+      foreach ($d in $loDirs) {
+        $freed += (DirSize $d.FullName)
+        Remove-Item $d.FullName -Recurse -Force
+      }
+      Ok ("slim: dropped {0} libreoffice platform package(s), freed {1} MB" -f $loDirs.Count, [math]::Round($freed/1MB,1))
+    }
+
+    # GATE: removing packages must not break start-up. Re-run the SAME strict
+    # probe as above; a deletion that breaks the runtime fails the build here
+    # rather than shipping (HANDOVER 27.7: "CI green != package works").
+    $reprobeRaw = (& (Join-Path $rt "node.exe") $rtEntry --version 2>&1 | Out-String)
+    $reprobeExit = $LASTEXITCODE
+    $reprobeFirst = (($reprobeRaw -split "`r?`n") | Where-Object { $_.Trim() -ne "" } | Select-Object -First 1)
+    if ($null -eq $reprobeFirst) { $reprobeFirst = "" }
+    $reprobeFirst = $reprobeFirst.Trim()
+    if ($reprobeExit -ne 0 -or $reprobeFirst -ne $DshVersion) {
+      throw ("slim runtime is NOT runnable after dropping libreoffice (exit=$reprobeExit, first line='$reprobeFirst', expected='$DshVersion'). " +
+        "Re-run with -Variant full to ship the full package.")
+    }
+    Ok "slim self-check passed: stripped runtime still reports $reprobeFirst"
+    $global:LASTEXITCODE = 0
+  } else {
+    Ok "keeping the bundled LibreOffice engine (full package)"
+  }
 
   # Bundle npm as well, so the portable shell can self-update into its own runtime
   # (same user-visible behaviour as the script install: check the registry, fetch
@@ -262,6 +330,7 @@ harness:   @deepseek-ai/dsh $DshVersion (bundled, offline)
 node:      $(if ($NoNode) { 'not bundled' } else { "$nodeVersion (bundled)" })
 npm:       $(if ($NoNode -or $NoNpm) { 'not bundled (no self-update)' } else { 'bundled (enables in-package self-update)' })
 plugins:   $pluginCount package(s)
+variant:   $Variant ($(if ($Variant -eq "slim") { "no LibreOffice engine / no Office document preview" } else { "includes the LibreOffice engine / Office preview works" }))
 port:      43080 (fixed; bare URL answers 401 until the token URL is opened)
 contents:  dsh-desktop.exe, runtime.zip (unpacked on first start), plugins\, scripts\, install-offline.ps1 (+ .cmd wrapper)
 "@
@@ -298,6 +367,7 @@ dsh-desktop 便携发行包（__PKG__）
 
 本包自带全部依赖：目标机不需要 Node.js、npm、Go 或 Wails。
 没有安装步骤 —— 解压即用。
+本版本：__VARIANT__
 
 快速开始
 --------
@@ -383,7 +453,9 @@ Windows PowerShell 5.1。注意 "powershell" 永远是 5.1（PowerShell 7 只提
 所以 dsh 运行中不会被替换。你也可以随时把新版包解压覆盖到本目录；你的 DSH home
 （$DSH_HOME，默认 %USERPROFILE%\.dsh：会话、配置、插件）是单独存放的，不受影响。
 '@
-$readmeText = $readmeText.Replace('__PKG__', $pkgName).Replace('__CATALOGUE__', $catalogueText)
+# The variant line the package README shows (single source = -Variant).
+$variantText = if ($Variant -eq "slim") { "slim（已去掉 325 MB 的 Office 文档预览引擎：包更小，侧栏不预览 .docx/.xlsx）" } else { "full（含 Office 文档预览引擎：侧栏可直接预览 .docx/.xlsx）" }
+$readmeText = $readmeText.Replace('__PKG__', $pkgName).Replace('__CATALOGUE__', $catalogueText).Replace('__VARIANT__', $variantText)
 # Write with an explicit UTF-8 BOM: `Set-Content -Encoding utf8` is BOM-less on
 # PowerShell 7, and a BOM-less UTF-8 Chinese .txt shows as mojibake in legacy Notepad.
 [IO.File]::WriteAllText((Join-Path $pkgDir "README.txt"), $readmeText, (New-Object Text.UTF8Encoding($true)))
@@ -409,10 +481,11 @@ if (-not $SkipZip) {
   "$hash  $pkgName.zip" | Set-Content -Path $sums -Encoding ascii
   Ok "SHA256 -> $sums"
 
-  # Keep exactly ONE release package in the output folder (this build), so that
-  # folder is always "the latest official build to copy" - see HANDOVER §32.
+  # Keep exactly ONE release package PER VARIANT in the output folder (this build),
+  # so that folder is always "the latest official build to copy" - see HANDOVER §32.
+  # Filtering by -Variant is what lets slim and full coexist in one folder.
   if (-not $KeepOldPackages) {
-    Get-ChildItem $OutDir -File -Filter "dsh-desktop-*.zip" |
+    Get-ChildItem $OutDir -File -Filter "dsh-desktop-*-win-x64-$Variant.zip" |
       Where-Object { $_.FullName -ne (Get-Item $zipPath).FullName } |
       ForEach-Object { Remove-Item $_.FullName -Force; Ok "removed older package $($_.Name)" }
   }

@@ -6,7 +6,7 @@
 #
 # Usage:
 #   pwsh -File deploy.ps1                                  # check + full deploy
-#   pwsh -File deploy.ps1 -HarnessVersion 0.1.7-rc.1       # pin dsh version
+#   pwsh -File deploy.ps1 -HarnessVersion 0.1.7-rc.2       # pin dsh version
 #   pwsh -File deploy.ps1 -AppDir D:\dsh\app\current       # where the shell exe lands
 #   pwsh -File deploy.ps1 -SkipDesktopBuild                # plugins only
 #   pwsh -File deploy.ps1 -CheckOnly                       # dry run, no writes
@@ -19,7 +19,12 @@ param(
   # profile carries a user patch layer (i.e. any installed plugin) - see
   # HANDOVER section 42. 0.1.7-rc.1 is the first line that works; upstream has
   # never published a stable release.
-  [string]$HarnessVersion = "0.1.7-rc.1",
+  # 2026-09-28: raised to 0.1.7-rc.2 for the 0.1.15 release - it is what npm
+  # `latest` points at and what the portable packages bundle (HANDOVER 47/49).
+  # Raising this REQUIRES raising setup.ps1's -HarnessBefore cutoff past the new
+  # version's publish date (F17); that is already satisfied (2026-09-25 vs rc.2
+  # published 2026-09-24T14:18Z).
+  [string]$HarnessVersion = "0.1.7-rc.2",
   [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipDesktopBuild,
   [switch]$CheckOnly

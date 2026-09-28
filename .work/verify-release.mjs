@@ -1,6 +1,12 @@
 // verify-release.mjs — end-to-end verification of a PUBLISHED dsh-desktop release.
 //
-//   node .work/verify-release.mjs desktop-v0.1.7
+//   node .work/verify-release.mjs desktop-v0.1.15          # verifies the slim asset
+//   node .work/verify-release.mjs desktop-v0.1.15 full     # verifies the full asset
+//
+// 0.1.15 publishes TWO assets in one release (slim + full, see HANDOVER §49). This
+// script asserts BOTH are present (a missing sibling is a release bug), then verifies
+// the requested one end to end. Older releases shipped a single unsuffixed zip and
+// still verify with the default variant (slim).
 //
 // What it does (everything against the real GitHub Release asset):
 //   1. reads the release + its assets (derives the harness version from the asset
@@ -22,7 +28,7 @@
 //      on a brand-new machine).
 //
 // Requires: node, pwsh/powershell, tar.exe (all present on a normal Windows box).
-// Scratch lives in .cache/verify-<version>/ (gitignored) - see HANDOVER §32.
+// Scratch lives in .cache/verify-<version>-<variant>/ (gitignored) - see HANDOVER §32.
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
@@ -30,12 +36,17 @@ import { join } from "node:path";
 
 const REPO = "FFaassdfs/dsh-desktop-env";
 const TAG = process.argv[2];
+const VARIANT = (process.argv[3] || "slim").toLowerCase();
 if (!TAG || !/^desktop-v/.test(TAG)) {
-  console.log("usage: node .work/verify-release.mjs <tag>       e.g. desktop-v0.1.7");
+  console.log("usage: node .work/verify-release.mjs <tag> [slim|full]    e.g. desktop-v0.1.15 full");
+  process.exit(2);
+}
+if (VARIANT !== "slim" && VARIANT !== "full") {
+  console.log(`unknown variant '${VARIANT}' (expected slim or full)`);
   process.exit(2);
 }
 const VER = TAG.replace(/^desktop-v/, "");
-const root = join(process.cwd(), ".cache", `verify-${VER}`);
+const root = join(process.cwd(), ".cache", `verify-${VER}-${VARIANT}`);
 const extractDir = join(root, "extracted");
 const homeDir = join(root, "installer-home");
 const updaterHome = join(root, "updater-home");
@@ -60,23 +71,55 @@ function check(name, ok, detail = "") {
   else { fail++; console.log(`   MISSING  ${name}${detail ? "  (" + detail + ")" : ""}`); }
 }
 
+// The published SHA256SUMS.txt carries one "<hash>  <name>" line per asset. Since
+// 0.1.15 lists TWO zips (slim + full), always resolve a hash BY NAME - taking the
+// first 64 hex chars silently compares against the other variant.
+function shaForAsset(text, name) {
+  const line = text.split(/\r?\n/).find((l) => l.trim().endsWith(name));
+  return ((line || "").match(/[0-9a-fA-F]{64}/) || [""])[0].toLowerCase();
+}
+
 // --- 1. release metadata ------------------------------------------------------
 console.log(`1) release metadata for ${TAG}`);
 const release = await api(`https://api.github.com/repos/${REPO}/releases/tags/${TAG}`).catch(() => null);
 if (!release) { console.log(`   no release for ${TAG}`); process.exit(1); }
 const zips = release.assets.filter((a) => a.name.endsWith(".zip"));
 const sumsAsset = release.assets.find((a) => a.name === "SHA256SUMS.txt");
-if (zips.length !== 1 || !sumsAsset) { console.log(`   expected exactly one zip + SHA256SUMS.txt, got ${zips.length}`); process.exit(1); }
-const asset = zips[0];
+if (!sumsAsset) { console.log("   no SHA256SUMS.txt asset in this release"); process.exit(1); }
+// 0.1.15+ names the variant in the asset; older releases shipped one plain zip.
+const variantOf = (name) => (/-win-x64-(slim|full)\.zip$/.exec(name) || [, "single"])[1];
+const byVariant = new Map(zips.map((a) => [variantOf(a.name), a]));
+if (byVariant.has("slim") || byVariant.has("full")) {
+  const missing = ["slim", "full"].filter((v) => !byVariant.has(v));
+  if (missing.length) {
+    console.log(`   this release must carry BOTH variants; missing: ${missing.join(", ")} (found: ${zips.map((a) => a.name).join(", ") || "none"})`);
+    process.exit(1);
+  }
+} else if (zips.length !== 1) {
+  console.log(`   expected exactly one zip (or the slim+full pair), got ${zips.length}`);
+  process.exit(1);
+}
+const asset = byVariant.get(VARIANT) || zips[0];
+if (!asset) { console.log(`   no asset for variant ${VARIANT}`); process.exit(1); }
 const pkgName = asset.name.replace(/\.zip$/, "");
-const EXPECTED = (asset.name.match(/-dsh(.+)-win-x64\.zip$/) || [, ""])[1];
-console.log(`   asset : ${asset.name} (${(asset.size / 1048576).toFixed(1)} MB)`);
+const EXPECTED = (asset.name.match(/-dsh(.+?)-win-x64(?:-(?:slim|full))?\.zip$/) || [, ""])[1];
+console.log(`   verifying variant: ${VARIANT}`);
+for (const [v, a] of byVariant) {
+  console.log(`   ${v === VARIANT ? "asset" : "other"}: ${a.name} (${(a.size / 1048576).toFixed(1)} MB)`);
+}
 console.log(`   harness expected inside: ${EXPECTED || "(unparsed)"}`);
-check("asset digest matches SHA256SUMS.txt", await (async () => {
-  const r = await fetch(sumsAsset.browser_download_url, { signal: AbortSignal.timeout(60000) }).catch(() => null);
-  if (!r || !r.ok) return false;
-  const claimed = ((await r.text()).match(/[0-9a-fA-F]{64}/) || [""])[0].toLowerCase();
-  return Boolean(asset.digest) && asset.digest.toLowerCase() === "sha256:" + claimed;
+
+let sumsBody = "";
+try {
+  const r = await fetch(sumsAsset.browser_download_url, { signal: AbortSignal.timeout(60000) });
+  if (r.ok) sumsBody = await r.text();
+} catch { /* leave empty: the checks below report the detail */ }
+check("SHA256SUMS.txt lists every zip asset",
+  zips.length > 0 && zips.every((a) => shaForAsset(sumsBody, a.name) !== ""),
+  `${zips.length} zip(s), ${sumsBody.split(/\r?\n/).filter(Boolean).length} line(s)`);
+check("asset digest matches its SHA256SUMS.txt line", (() => {
+  const claimed = shaForAsset(sumsBody, asset.name);
+  return claimed !== "" && Boolean(asset.digest) && asset.digest.toLowerCase() === "sha256:" + claimed;
 })());
 
 mkdirSync(root, { recursive: true });
@@ -119,8 +162,8 @@ async function download(urls, dest) {
 }
 
 console.log("2) download");
-const sumsText = await (await fetch(sumsAsset.browser_download_url, { signal: AbortSignal.timeout(60000) })).text();
-const expectedSha = (sumsText.match(/[0-9a-fA-F]{64}/) || [""])[0].toLowerCase();
+const expectedSha = shaForAsset(sumsBody, asset.name);
+if (expectedSha === "") { console.log(`   SHA256SUMS.txt has no line for ${asset.name}`); process.exit(1); }
 if (localSha() === expectedSha) {
   console.log(`   already on disk and hash matches (${(statSync(zipPath).size / 1048576).toFixed(1)} MB)`);
 } else {
@@ -271,5 +314,5 @@ check("profile template does not opt into live patch reload",
   profileText.replace(/\s+/g, " ").slice(0, 140));
 
 console.log("");
-console.log(`RESULT: ${pass} passed, ${fail} failed  (${TAG})`);
+console.log(`RESULT: ${pass} passed, ${fail} failed  (${TAG}, variant ${VARIANT})`);
 process.exit(fail === 0 ? 0 : 1);

@@ -85,10 +85,17 @@ jobs:
           # machine, never on the dev box. Every package up to 0.1.12 shipped a
           # runtime that could not start on a fresh machine.
           #
+          # RAISED to 0.1.7-rc.2 on 2026-09-28 for the 0.1.15 release: rc.2 is what
+          # npm `latest` points at and what the dev box runs (HANDOVER 47). With it
+          # $before moved to 2026-09-25 because THE GATE MUST SIT AFTER THE PINNED
+          # VERSION'S PUBLISH TIME (rc.2 was published 2026-09-24T14:18Z; the old
+          # gate at 2026-09-24T00:00Z would hide rc.2 from resolution) - see
+          # project-facts F17.
+          #
           # NOTE: $before must sit AFTER the pinned version's publish date,
           # otherwise resolution can never see it.
-          $before = "2026-09-24T00:00:00.000Z"
-          $pinned = "0.1.7-rc.1"
+          $before = "2026-09-25T00:00:00.000Z"
+          $pinned = "0.1.7-rc.2"
           $dsh = "${{ inputs.dsh_version }}"
           if (-not $dsh) { $dsh = $pinned }
           Write-Host "bundling @deepseek-ai/dsh@$dsh (registry state before $before)"
@@ -184,18 +191,42 @@ jobs:
           # The release title wants the BARE version, and a GitHub expression cannot
           # strip the tag prefix, so hand it to the publish step through the env.
           "SHELL_VERSION=$shellVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
-          pwsh -File scripts/pack-release.ps1 `
-            -RuntimeSource staging `
-            -DshVersion "$env:DSH_VERSION" `
-            -ShellVersion "$shellVersion" `
-            -OutDir dist
-          Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
+          # TWO artifacts since 0.1.15 (user decision, HANDOVER 49): slim is the
+          # default download; full keeps the 325 MB LibreOffice engine so the
+          # sidebar can preview Office documents.
+          #
+          # Each variant packs into its OWN folder (the packer only prunes zips of
+          # the same variant, and separate folders also keep one LATEST.txt per
+          # variant); both zips are then lifted into dist\ for the release step.
+          # Note the slim run does NOT strip the source runtime: pack-release.ps1
+          # copies the tree into its own package staging first ($rt =
+          # <pkgDir>\runtime), so the full run still sees the engine.
+          foreach ($variant in @("slim", "full")) {
+            Write-Host "=== packing variant: $variant ==="
+            pwsh -File scripts/pack-release.ps1 `
+              -RuntimeSource staging `
+              -DshVersion "$env:DSH_VERSION" `
+              -ShellVersion "$shellVersion" `
+              -Variant $variant `
+              -OutDir "dist\$variant"
+            if ($LASTEXITCODE -ne 0) { throw "pack-release.ps1 -Variant $variant failed (exit $LASTEXITCODE)" }
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Get-ChildItem dist -Recurse -File -Filter *.zip |
+            ForEach-Object { Move-Item $_.FullName (Join-Path "dist" $_.Name) -Force }
+          # One combined checksum file covering BOTH assets (verify-release.mjs
+          # reads it to check each asset's digest).
+          Get-ChildItem dist -File -Filter *.zip | Sort-Object Name |
+            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash, $_.Name } |
+            Set-Content -Path dist\SHA256SUMS.txt -Encoding ascii
+          Get-ChildItem dist -File | Select-Object Name, Length | Format-Table -AutoSize
+          Get-Content dist\SHA256SUMS.txt
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: dsh-desktop ${{ env.SHELL_VERSION }}（便携包 · Windows x64）
+          name: dsh-desktop ${{ env.SHELL_VERSION }}（便携包 · 瘦身/整合 双版本 · Windows x64）
           files: |
             dist/*.zip
             dist/SHA256SUMS.txt
@@ -204,6 +235,15 @@ jobs:
           # above it, the same way README.md's table is updated (HANDOVER §28).
           body: |
             **dsh-desktop 便携发行包**：解压即用，目标机**不需要** Node.js、npm、Go 或 Wails。
+
+            **两个包，按需下一个**（0.1.15 起同时发布）
+
+            | 包 | 大约 | 差别 | 建议 |
+            |---|---|---|---|
+            | `...-win-x64-slim.zip` | 112 MB | **不含** LibreOffice 引擎 ⇒ 侧栏**不能**预览 `.docx`/`.xlsx`，其余功能完全一样 | **默认选它**（下载、拷贝都快） |
+            | `...-win-x64-full.zip` | 224 MB | **含** LibreOffice 引擎 ⇒ 侧栏可直接**预览 Office 文档** | 需要看 Word/Excel 的选它 |
+
+            > 两者的壳、核心、插件、安装器完全相同，只差那一个引擎；插件装好后功能一致。
 
             | 项 | 值 |
             |---|---|
@@ -217,12 +257,12 @@ jobs:
 
             1. 把 zip 解压到任意目录（例如 `D:\dsh-desktop`）
             2. 双击 `dsh-desktop.exe` —— 首次启动会先解压内置运行时（约 40 秒，只此一次）
-            3. **装插件**：点壳面板上的「**安装插件…**」按钮，按提示选择要装的插件（**0.1.14 起不用再去双击 `install-offline.cmd`**）
-            4. 装完点面板上的「**重启服务**」，插件即生效
+            3. **装插件**：点壳面板上的「**安装全部插件**」按钮 —— 它**一键装好全部 6 个插件**然后自己退出（控制台窗口闪一下是正常的，**装完不需要按任何键**）
+            4. 脚本退出后点面板上的「**重启服务**」，插件即生效
             5. 想跳过界面先解压运行时：`dsh-desktop.exe --extract-runtime`
 
-            > 也可以用命令行：`install-offline.cmd`（双击）/ `install-offline.ps1 -Plugins 2,4`（按编号选）。
-            > 面板那个按钮走的是**同一个安装器**，只是替你把窗口打开。
+            > 想**自己挑插件**：双击 `install-offline.cmd`，或 `install-offline.ps1 -Plugins 2,4`（按编号选）/ `-Plugins ask`（交互菜单）。
+            > 面板那个按钮走的是**同一个安装器**，只是固定用 `-Plugins all`：一键装全部、没有菜单（**0.1.15 起面板文案已写明**）。
 
             **6 个内置插件**（安装菜单显示同一份说明，单一数据源 = `scripts\setup-plugins.mjs --describe`）
 
