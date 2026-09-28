@@ -366,10 +366,12 @@ func TestFirstLine(t *testing.T) {
 // zip-slip entry, returning its path.
 func makeRuntimeZip(t *testing.T, dir, nodeName string, withSlip bool) string {
 	t.Helper()
-	return makeRuntimeZipVersioned(t, dir, nodeName, "9.9.9", withSlip)
+	return makeRuntimeZipVersioned(t, dir, nodeName, "9.9.9", withSlip, false)
 }
 
-func makeRuntimeZipVersioned(t *testing.T, dir, nodeName, version string, withSlip bool) string {
+// withNpm mirrors a real release package: its runtime archive ships npm (only
+// -NoNpm builds do not).
+func makeRuntimeZipVersioned(t *testing.T, dir, nodeName, version string, withSlip, withNpm bool) string {
 	t.Helper()
 	zipPath := filepath.Join(dir, runtimeArchiveName)
 	f, err := os.Create(zipPath)
@@ -391,6 +393,10 @@ func makeRuntimeZipVersioned(t *testing.T, dir, nodeName, version string, withSl
 	add("./node_modules/@deepseek-ai/dsh/package.json", `{"name":"@deepseek-ai/dsh","version":"`+version+`"}`)
 	add("./node_modules/@deepseek-ai/dsh/lib/bin.js", "// entry")
 	add("./node_modules/commander/package.json", `{"name":"commander"}`)
+	if withNpm {
+		add("./node_modules/npm/bin/npm-cli.js", "// npm")
+		add("./node_modules/npm/package.json", `{"name":"npm"}`)
+	}
 	if withSlip {
 		add("../evil.txt", "should never be written")
 		add("nested/../../evil2.txt", "neither should this")
@@ -568,7 +574,7 @@ func TestSyncRuntimeFromArchive_KeepsEqualOrNewer(t *testing.T) {
 func TestSyncRuntimeFromArchive_UpgradesOlderRuntime(t *testing.T) {
 	const node = "node.exe"
 	pkg := t.TempDir()
-	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false)
+	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false, false)
 	writeRuntimeWithVersion(t, filepath.Join(pkg, "runtime"), node, "1.0.0")
 
 	res, err := syncRuntimeFromArchive(pkg, node, nil)
@@ -598,7 +604,7 @@ func TestSyncRuntimeFromArchive_NoArchive(t *testing.T) {
 	}
 	// An archive holding a different version than the live tree is compared by
 	// reading its manifest, not by unpacking it.
-	archive := makeRuntimeZipVersioned(t, pkg, "node.exe", "0.1.5-rc.2", false)
+	archive := makeRuntimeZipVersioned(t, pkg, "node.exe", "0.1.5-rc.2", false, false)
 	if v := archiveHarnessVersion(archive); v != "0.1.5-rc.2" {
 		t.Errorf("archiveHarnessVersion = %q", v)
 	}
@@ -616,5 +622,109 @@ func TestExtractRuntimeRequested(t *testing.T) {
 	}
 	if extractRuntimeRequested([]string{"--other"}) || extractRuntimeRequested(nil) {
 		t.Errorf("unrelated args must not trigger extraction")
+	}
+}
+
+// ---- keeping the bundled npm alive (2026-09-29) -------------------------------
+//
+// Regression tests for the bug where a portable self-update replaced the WHOLE
+// node_modules with a staged tree (produced by `npm install --prefix`, which never
+// contains npm), after which every "update core" click answered "this package does
+// not bundle npm" - permanently, because cleanupRuntimeBackup then removed the tree
+// that still had npm.
+
+// writeNpmInto lays out a minimal bundled npm inside a runtime's node_modules.
+func writeNpmInto(t *testing.T, modulesDir string) {
+	t.Helper()
+	dir := filepath.Join(modulesDir, "npm", "bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "npm-cli.js"), []byte("// npm"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modulesDir, "npm", "package.json"), []byte(`{"name":"npm"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSwapRuntimeModulesKeepsBundledNpm(t *testing.T) {
+	root := t.TempDir()
+	runtimeRoot := filepath.Join(root, "runtime")
+	writeRuntimeWithVersion(t, runtimeRoot, "node.exe", "1.0.0")
+	writeNpmInto(t, filepath.Join(runtimeRoot, "node_modules"))
+
+	// A staged tree is `npm install --prefix` output: the harness is there, npm is not.
+	staging := filepath.Join(root, ".update")
+	writeRuntimeWithVersion(t, staging, "node.exe", "2.0.0")
+
+	rollback, err := swapRuntimeModules(runtimeRoot, staging)
+	if err != nil {
+		t.Fatalf("swap failed: %v", err)
+	}
+	if bundledNpmCLI(runtimeRoot) == "" {
+		t.Errorf("the bundled npm must survive the swap")
+	}
+	got := versionFromPackageJSON(filepath.Join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json"))
+	if got != "2.0.0" {
+		t.Errorf("runtime version = %q, want the staged 2.0.0", got)
+	}
+	if !dirExists(filepath.Join(runtimeRoot, "node_modules.old")) {
+		t.Errorf("the previous tree must stay for rollback")
+	}
+
+	// npm was COPIED, so the rollback copy is still complete.
+	rollback()
+	got = versionFromPackageJSON(filepath.Join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json"))
+	if got != "1.0.0" {
+		t.Errorf("after rollback the version = %q, want 1.0.0", got)
+	}
+	if bundledNpmCLI(runtimeRoot) == "" {
+		t.Errorf("after rollback the bundled npm must still work")
+	}
+}
+
+func TestSyncRuntimeFromArchiveRestoresMissingNpm(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false, true) // the package ships npm
+	live := filepath.Join(pkg, "runtime")
+	writeRuntimeWithVersion(t, live, node, "10.0.0") // newer than the package, but no npm
+	marker := filepath.Join(live, "marker.txt")
+	if err := os.WriteFile(marker, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := syncRuntimeFromArchive(pkg, node, nil)
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if res != runtimeSyncNpmRestored {
+		t.Fatalf("expected the npm to be restored, got %v", res)
+	}
+	if bundledNpmCLI(live) == "" {
+		t.Errorf("the bundled npm must be back")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("restoring npm must not replace the runtime: %v", err)
+	}
+	got := versionFromPackageJSON(filepath.Join(live, "node_modules", "@deepseek-ai", "dsh", "package.json"))
+	if got != "10.0.0" {
+		t.Errorf("the installed harness version must be kept, got %q", got)
+	}
+}
+
+func TestSyncRuntimeFromArchiveLeavesNoNpmPackageAlone(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false, false) // -NoNpm build: no npm anywhere
+	writeRuntimeWithVersion(t, filepath.Join(pkg, "runtime"), node, "10.0.0")
+
+	res, err := syncRuntimeFromArchive(pkg, node, nil)
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if res != runtimeSyncKept {
+		t.Errorf("a package without npm must not trigger a restore, got %v", res)
 	}
 }

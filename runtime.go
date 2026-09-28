@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -174,6 +175,13 @@ func swapRuntimeModules(runtimeRoot, stagingRoot string) (func(), error) {
 		}
 		return nil, fmt.Errorf("cannot install the staged runtime: %w", err)
 	}
+	// The staged tree was produced by `npm install --prefix` and never contains npm:
+	// take it from the tree we just moved aside, otherwise this swap would delete the
+	// bundled npm and permanently disable portable self-update (2026-09-29).
+	// NOTE: backup IS the previous node_modules directory (renamed), not a parent of it.
+	if dirExists(backup) && carryBundledNpm(backup, live) {
+		debugLog("swapRuntimeModules: carried the bundled npm over to the new runtime")
+	}
 	rollback := func() {
 		_ = os.RemoveAll(live)
 		if dirExists(backup) {
@@ -186,6 +194,127 @@ func swapRuntimeModules(runtimeRoot, stagingRoot string) (func(), error) {
 // cleanupRuntimeBackup drops the rollback copy once the new runtime is known good.
 func cleanupRuntimeBackup(runtimeRoot string) {
 	_ = os.RemoveAll(runtimeBackupDir(runtimeRoot))
+}
+
+// ---- keeping the bundled npm alive -------------------------------------------
+//
+// A portable self-update stages the new harness with
+// `npm install --prefix <pkg>\.update @deepseek-ai/dsh@<v>`, so the staged tree
+// holds the harness and its dependencies but NEVER npm itself. Swapping that tree
+// in for the whole node_modules therefore deleted the bundled npm, and every later
+// "update core" click answered "this package does not bundle npm" - permanent, with
+// no way back (reported 2026-09-29 by the user: "some machines say there is no npm,
+// other machines just start updating"). The helpers below keep npm alive: carry it
+// over during a swap, and restore it from the package archive when a runtime
+// somehow lost it. A package built with -NoNpm has no npm in its archive either, so
+// those are left alone (nothing to restore, no error).
+
+// copyTree copies src into dst recursively.
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			return relErr
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		in, openErr := os.Open(path)
+		if openErr != nil {
+			return openErr
+		}
+		defer in.Close()
+		out, createErr := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		if createErr != nil {
+			return createErr
+		}
+		if _, copyErr := io.Copy(out, in); copyErr != nil {
+			_ = out.Close()
+			return copyErr
+		}
+		return out.Close()
+	})
+}
+
+// carryBundledNpm copies <fromModules>\npm into <toModules> when the destination
+// has none, and reports whether npm is in place afterwards. It COPIES on purpose:
+// fromModules is normally the rollback copy (node_modules.old), and stealing npm
+// from it would leave a rollback that cannot run.
+func carryBundledNpm(fromModules, toModules string) bool {
+	src := filepath.Join(fromModules, "npm")
+	dst := filepath.Join(toModules, "npm")
+	if !dirExists(src) || dirExists(dst) {
+		return false
+	}
+	if err := copyTree(src, dst); err != nil {
+		debugLog("carryBundledNpm: copy failed: %v", err)
+		return false
+	}
+	return true
+}
+
+// normalizedZipName mirrors extractZipEntry's path normalization so prefix checks
+// see the same shape.
+func normalizedZipName(name string) string {
+	return strings.TrimPrefix(strings.ReplaceAll(name, "\\", "/"), "./")
+}
+
+// extractZipSubtree unpacks only the entries under prefix (slash-separated, no
+// leading "./") into destDir and reports how many it wrote. Used to put just
+// node_modules/npm back without touching the rest of a live runtime.
+func extractZipSubtree(zipPath, destDir, prefix string) (int, error) {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Close()
+	want := strings.TrimSuffix(prefix, "/") + "/"
+	written := 0
+	for _, entry := range reader.File {
+		if !strings.HasPrefix(normalizedZipName(entry.Name), want) {
+			continue
+		}
+		if err := extractZipEntry(entry, destDir); err != nil {
+			return written, fmt.Errorf("%s: %w", entry.Name, err)
+		}
+		written++
+	}
+	return written, nil
+}
+
+// restoreBundledNpm puts the bundled npm back into runtimeRoot from the package
+// archive, KEEPING the harness version that is actually installed (unlike a full
+// re-extract, which would roll the core back to the packaged version). Returns true
+// when npm is present afterwards.
+func restoreBundledNpm(pkgRoot, runtimeRoot string) bool {
+	if bundledNpmCLI(runtimeRoot) != "" {
+		return false
+	}
+	archive := runtimeArchivePath(pkgRoot)
+	if !fileExists(archive) {
+		return false
+	}
+	// NOTE: the archive path already starts with node_modules/, so the destination is
+	// the runtime root itself - not runtimeRoot\node_modules (that would double it).
+	written, err := extractZipSubtree(archive, runtimeRoot, "node_modules/npm")
+	if err != nil {
+		debugLog("restoreBundledNpm: %v", err)
+		return false
+	}
+	if written == 0 {
+		return false // -NoNpm package: nothing to restore, and that is by design
+	}
+	if bundledNpmCLI(runtimeRoot) == "" {
+		debugLog("restoreBundledNpm: extracted %d entries but npm is still not runnable", written)
+		return false
+	}
+	debugLog("restoreBundledNpm: restored the bundled npm (%d entries) into %s",
+		written, filepath.Join(runtimeRoot, "node_modules"))
+	return true
 }
 
 // compareDshVersions compares dsh version strings such as "0.1.5-rc.2" or
@@ -367,10 +496,11 @@ func installRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, t
 type runtimeSyncResult int
 
 const (
-	runtimeSyncNone      runtimeSyncResult = iota // no archive next to the exe
-	runtimeSyncKept                               // unpacked runtime is the same or newer
-	runtimeSyncExtracted                          // first start: archive unpacked
-	runtimeSyncUpgraded                           // archive was strictly newer: replaced
+	runtimeSyncNone        runtimeSyncResult = iota // no archive next to the exe
+	runtimeSyncKept                                 // unpacked runtime is the same or newer
+	runtimeSyncExtracted                            // first start: archive unpacked
+	runtimeSyncUpgraded                             // archive was strictly newer: replaced
+	runtimeSyncNpmRestored                          // runtime kept, but its missing bundled npm was restored
 )
 
 // zipEntryString returns the content of a single archive entry ("" if absent).
@@ -438,6 +568,13 @@ func syncRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, tota
 		want := archiveHarnessVersion(archive)
 		have := versionFromPackageJSON(liveRuntime.Package)
 		if want == "" || have == "" || compareDshVersions(want, have) <= 0 {
+			// Keeping the runtime - but first make sure its bundled npm is still
+			// there. A self-update used to swap the whole node_modules and drop it
+			// (2026-09-29), which left those machines unable to update at all; the
+			// harness version the user actually runs is preserved (npm only).
+			if restoreBundledNpm(pkgRoot, live) {
+				return runtimeSyncNpmRestored, nil
+			}
 			debugLog("syncRuntimeFromArchive: keeping unpacked runtime %s (archive has %s)", have, want)
 			return runtimeSyncKept, nil
 		}
@@ -517,6 +654,8 @@ func RunExtractRuntime() int {
 		fmt.Println("runtime already extracted (archive is not newer)")
 	case runtimeSyncUpgraded:
 		fmt.Printf("runtime replaced by the packaged one in %s\n", time.Since(start).Round(time.Second))
+	case runtimeSyncNpmRestored:
+		fmt.Printf("runtime kept; the missing bundled npm was restored from the archive in %s\n", time.Since(start).Round(time.Second))
 	default:
 		fmt.Printf("runtime ready in %s\n", time.Since(start).Round(time.Second))
 	}

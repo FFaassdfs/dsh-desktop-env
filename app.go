@@ -130,6 +130,9 @@ func (a *App) ensureRuntimeExtracted() {
 	case runtimeSyncUpgraded:
 		debugLog("ensureRuntimeExtracted: refreshed from the package in %s", elapsed)
 		a.emitUpdate(fmt.Sprintf("内置运行时已按发行包更新（耗时 %s）", elapsed))
+	case runtimeSyncNpmRestored:
+		debugLog("ensureRuntimeExtracted: restored the bundled npm in %s", elapsed)
+		a.emitUpdate("内置运行时缺少的 npm 已按发行包补回（耗时 " + elapsed.String() + "），现在可以正常更新核心")
 	default:
 		debugLog("ensureRuntimeExtracted: unpacked runtime is current")
 	}
@@ -860,6 +863,13 @@ func (a *App) applyPendingRuntimeUpdate() {
 		debugLog("applyPendingRuntimeUpdate: swapped runtime reports %q, want %s - rolling back", got, want)
 		rollback()
 		return
+	}
+	// A staged tree never carries npm; swapRuntimeModules copies it over from the tree
+	// it replaced. If that ever fails, say so instead of silently leaving a runtime
+	// that can never self-update again (the 2026-09-29 bug).
+	if bundledNpmCLI(rt.Root) == "" {
+		debugLog("applyPendingRuntimeUpdate: warning: no bundled npm after the swap (%s)", rt.Root)
+		a.emitUpdate("内置运行时已更新，但包内 npm 缺失——下次启动会尝试从发行包补回")
 	}
 	_ = os.RemoveAll(staging)
 	debugLog("applyPendingRuntimeUpdate: applied harness %s", want)
