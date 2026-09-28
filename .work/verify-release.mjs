@@ -260,6 +260,43 @@ console.log(`   unpacked dsh: ${dshOut}   npm: ${npmOut}`);
 check(`unpacked dsh reports ${EXPECTED}`, EXPECTED !== "" && dshOut === EXPECTED, `got ${dshOut}`);
 check("unpacked npm runs", /^\d+\.\d+\.\d+/.test(npmOut), `got ${npmOut}`);
 
+// --- 9b. variant invariant: is the LibreOffice engine in there or not? ---------
+//
+// This is THE thing that separates the two assets, so assert it instead of trusting
+// the packer's log: the slim package must NOT carry the 325 MB engine, the full one
+// MUST (a "full" asset that silently lost it is a silent regression - the two zips
+// would then be identical in behaviour while differing in size claims).
+const hasVariants = byVariant.has("slim") && byVariant.has("full");
+function findLibreOfficeEngine(dir) {
+  const hits = [];
+  const walk = (d) => {
+    let entries = [];
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      // The platform package is "libreoffice-kit-<platform>"; the loader itself is
+      // "libreoffice-kit" and is expected in BOTH variants.
+      if (/^libreoffice-kit-./.test(e.name)) { hits.push(join(d, e.name)); continue; }
+      walk(join(d, e.name));
+    }
+  };
+  walk(dir);
+  return hits;
+}
+if (!hasVariants) {
+  console.log("9b) variant invariant skipped (this release has no slim/full pair)");
+} else {
+  console.log(`9b) variant invariant (${VARIANT})`);
+  const engines = findLibreOfficeEngine(join(pkgDir, "runtime"));
+  const shown = engines.map((p) => p.replace(pkgDir, "<pkg>")).join(", ");
+  if (VARIANT === "slim") {
+    check("slim package does NOT bundle the LibreOffice engine", engines.length === 0, shown);
+  } else {
+    check("full package DOES bundle the LibreOffice engine", engines.length > 0,
+      "no libreoffice-kit-<platform> under runtime\\node_modules - the full asset lost its engine");
+  }
+}
+
 // --- 10. the bundled runtime must actually BOOT --------------------------------
 //
 // Regression guard (2026-09-24, HANDOVER §42): every package up to 0.1.12 bundled
