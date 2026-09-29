@@ -85,17 +85,18 @@ jobs:
           # machine, never on the dev box. Every package up to 0.1.12 shipped a
           # runtime that could not start on a fresh machine.
           #
-          # RAISED to 0.1.7-rc.2 on 2026-09-28 for the 0.1.15 release: rc.2 is what
-          # npm `latest` points at and what the dev box runs (HANDOVER 47). With it
-          # $before moved to 2026-09-25 because THE GATE MUST SIT AFTER THE PINNED
-          # VERSION'S PUBLISH TIME (rc.2 was published 2026-09-24T14:18Z; the old
-          # gate at 2026-09-24T00:00Z would hide rc.2 from resolution) - see
-          # project-facts F17.
+          # RAISED to 0.2.0-rc.1 on 2026-09-29 for the 0.1.17 release (user request:
+          # "the next package should bundle 0.2.0-rc.1 directly"). It is the `next`
+          # channel tag - npm `latest` is still 0.1.7-rc.2 - published
+          # 2026-09-28T12:34:03Z, and it passed the core+plugins boot gate
+          # (.work/core-plugin-boot.test.ps1) BEFORE being pinned, because the stock
+          # gates only ever booted an EMPTY DSH_HOME (that hole shipped the
+          # 0.1.5-rc.2 disaster 13 times, HANDOVER 42/51).
           #
           # NOTE: $before must sit AFTER the pinned version's publish date,
           # otherwise resolution can never see it.
-          $before = "2026-09-25T00:00:00.000Z"
-          $pinned = "0.1.7-rc.2"
+          $before = "2026-09-29T00:00:00.000Z"
+          $pinned = "0.2.0-rc.1"
           $dsh = "${{ inputs.dsh_version }}"
           if (-not $dsh) { $dsh = $pinned }
           Write-Host "bundling @deepseek-ai/dsh@$dsh (registry state before $before)"

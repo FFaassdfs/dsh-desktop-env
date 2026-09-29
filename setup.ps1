@@ -14,7 +14,7 @@
 #
 # Usage:
 #   pwsh -File setup.ps1                                # full setup
-#   pwsh -File setup.ps1 -HarnessVersion 0.1.7-rc.2     # pin dsh version
+#   pwsh -File setup.ps1 -HarnessVersion 0.2.0-rc.1     # pin dsh version
 #   pwsh -File setup.ps1 -AppDir D:\dsh\app\current     # where the shell exe lands
 #   pwsh -File setup.ps1 -SkipDesktopBuild              # plugins only
 #   pwsh -File setup.ps1 -CheckOnly                     # dry run, writes nothing
@@ -26,14 +26,14 @@ param(
   # caller pins a version. deploy.ps1 is the owner of the pinned default
   # (project-facts F10); it passes -HarnessVersion through to here.
   [string]$HarnessVersion = "",
-  # Registry cutoff for resolving the harness. Raised to 2026-09-25 together
-  # with deploy.ps1's pin (now 0.1.7-rc.2, published 2026-09-24T14:18Z) so that
+  # Registry cutoff for resolving the harness. Raised to 2026-09-29 together
+  # with deploy.ps1's pin (now 0.2.0-rc.1, published 2026-09-28T12:34:03Z) so that
   # resolution can actually SEE it: the cutoff must sit AFTER the pinned
   # version's publish date. The original reason for the gate still stands -
   # upstream's incomplete 0.1.5-rc.3 family of 2026-09-22 breaks a plain install
   # of rc.2 -> ETARGET (HANDOVER 31) - and 0.1.5-rc.2 is broken anyway (HANDOVER 42).
   # Pass "" to install whatever the registry currently offers.
-  [string]$HarnessBefore = "2026-09-25T00:00:00.000Z",
+  [string]$HarnessBefore = "2026-09-29T00:00:00.000Z",
   [string]$AppDir = "D:\dsh\app\current",
   [switch]$SkipHarnessInstall,
   [switch]$SkipDesktopBuild,
