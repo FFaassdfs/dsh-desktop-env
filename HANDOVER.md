@@ -3212,13 +3212,18 @@ RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant full)
 
 > ⚠️ `dsh-desktop.exe --extract-runtime` **修不了**已丢 npm 的运行时：现役运行时不比归档旧时它直接"保留不重解"（`syncRuntimeFromArchive: keeping unpacked runtime …`）——这正是 0.1.16 新增 `runtimeSyncNpmRestored` 分支要解决的问题。
 
-### 50.6 发布
+### 50.6 发布结果（实测）
 
 | 项 | 值 |
 |---|---|
-| Release | `desktop-v0.1.16`（**双包 `-slim` / `-full`**） |
-| 资产 | 见 50.7（CI 出结果后回填） |
+| Release | `desktop-v0.1.16`，**2026-09-29T00:01:47Z 发布**；标题 `dsh-desktop 0.1.16（便携包 · 瘦身/整合 双版本 · Windows x64）` |
+| CI | run **#23** `success`（tag 提交 `6a3a53c`） |
+| **瘦身包** | `dsh-desktop-0.1.16-dsh0.1.7-rc.2-win-x64-**slim**.zip` = **117.9 MB**，sha256 `b0136ba592190c8056908da1c72087518cef8bb9c9e496ee8c649199be4072bb` |
+| **整合包** | `dsh-desktop-0.1.16-dsh0.1.7-rc.2-win-x64-**full**.zip` = **183.1 MB**，sha256 `943725201692fad8e87413cbbe4a15b98d04c9c674d1a7f22db8472a6f0bcd92` |
+| 端到端验证 | 两个变体**各 34/34**（`verify-release.mjs desktop-v0.1.16 slim\|full`；含变体不变量与"对全新 `DSH_HOME` 真启动"） |
 | 说明 | Release 模板新增一条：自更新**换入保留包内 npm**，并能从 `runtime.zip` 自动补回已丢失的 npm |
+| 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.15 已按 F7 剪除） |
+| 补丁 exe | 修复版壳 = `D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe`（11 MB，2026-09-29 07:55 构建）——可直接覆盖老机器 `<包>\dsh-desktop.exe`，启动即自动补回 npm |
 
 
 
