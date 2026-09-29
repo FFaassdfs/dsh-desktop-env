@@ -3225,6 +3225,55 @@ RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant full)
 | 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.15 已按 F7 剪除） |
 | 补丁 exe | 修复版壳 = `D:\dsh\dsh-desktop-env\build\bin\dsh-desktop.exe`（11 MB，2026-09-29 07:55 构建）——可直接覆盖老机器 `<包>\dsh-desktop.exe`，启动即自动补回 npm |
 
+---
+
+## §51 desktop-v0.1.17：内置核心抬到 `0.2.0-rc.1`（并补上一直缺的「核心+插件」启动闸门）（2026-09-29）
+
+> 用户要求：「**下一个包直接内置 0.2.0-rc.1**」。
+
+### 51.1 先补一道闸门（这是本节最重要的产出）
+
+现成的两道启动闸门——CI 的 `Verify the staged runtime boots` 与 `.work/verify-release.mjs` 第 10 步——**都只在空 `DSH_HOME` 上试启动**。而 §42 那次连发 13 个坏包的事故，恰恰是「**核心 + 已装插件**」启动即崩、单核心却完全正常。所以"升核心前"缺的正是一道带插件的闸门。
+
+**新增 `.work/core-plugin-boot.test.ps1`（9 项）**：给定核心（临时前缀或全局装）→ 临时 `DSH_HOME` 用 `setup-plugins.mjs --plugins all` 装 6 个插件 → 真启动 `dsh web --no-open --port 0` → 断言：核心报版本 / 插件装成功 / patch 层含 6 个 id / 6 个插件包在位 / **进程存活** / **服务 HTTP** / **无 §42 的 HMR 中止签名** / profile 未 opt-in live patch reload / `--profile web --dump-config` 仍列出 6 个 patch id。
+
+⚠️ 写这道闸门时踩的两个坑（已修）：
+1. **不能调 `install-offline.ps1`**：它是**包安装器**，会先校验包布局，在源码树里必然报 `package is incomplete, missing: <repo>\dsh-desktop.exe` ⇒ 直接用 `setup-plugins.mjs` + `$env:DSH_HOME`。
+2. **`--dump-config` 必须带 `--profile <name>`**：否则只回 `error: --profile <name> is required`（两个核心版本都一样）。
+
+### 51.2 兼容性预验（2026-09-29，一票否决关）
+
+| 核心 | 装法 | 结果 |
+|---|---|---|
+| **`0.1.7-rc.2`**（基线，本机全局） | 直接用 | **9 passed / 0 failed** |
+| **`0.2.0-rc.1`**（候选） | `npm install --prefix .cache\core-0.2.0rc1 --before=2026-09-29T00:00:00.000Z @deepseek-ai/dsh@0.2.0-rc.1`（542 包 / 455.9 MB，`--version` = 0.2.0-rc.1） | **9 passed / 0 failed** |
+
+⇒ **`0.2.0-rc.1` + 我们 6 个插件可以启动、可服务、patch 层被接受**，才允许把它钉进包。
+
+### 51.3 版本锚点（三处必须一起抬）
+
+| 位置 | 旧值 | 新值 |
+|---|---|---|
+| CI `$pinned`（`release-desktop.yml`） | `0.1.7-rc.2` | **`0.2.0-rc.1`** |
+| CI `$before` | `2026-09-25T00:00:00.000Z` | **`2026-09-29T00:00:00.000Z`**（必须晚于 `0.2.0-rc.1` 的 `2026-09-28T12:34:03Z`，否则解析看不到它） |
+| `deploy.ps1 -HarnessVersion`（**F10 权威源**） | `0.1.7-rc.2` | **`0.2.0-rc.1`** |
+| `setup.ps1 -HarnessBefore` | `2026-09-25…` | **`2026-09-29…`** |
+
+⚠️ **勘误（我在 §50 与汇报里说错的一句）**：`0.2.0-rc.1` **不在 `latest`，而在 `next`**——`latest` 仍是 `0.1.7-rc.2`（`alpha` = `0.1.7-alpha.2`）。所以 **F2（本机实测 `dsh --version`）不变**，它和"包/锁版内置值"本来就是两个数，不能互相覆盖。
+
+### 51.4 发布结果（实测）
+
+| 项 | 值 |
+|---|---|
+| Release | `desktop-v0.1.17`，**2026-09-29T02:34:23Z 发布**；标题 `dsh-desktop 0.1.17（便携包 · 瘦身/整合 双版本 · Windows x64）` |
+| CI | run **#24** `success`（tag 提交 `ac4ba2a`） |
+| 内置核心 | **`@deepseek-ai/dsh 0.2.0-rc.1`**（两个包一致；Release 说明的「核心」行自动显示 `0.2.0-rc.1（离线内置）`） |
+| **瘦身包** | `dsh-desktop-0.1.17-dsh0.2.0-rc.1-win-x64-**slim**.zip` = **118.6 MB**，sha256 `ac85515952bf14dc25108f2993d88b41e2b19f93872c2b2cda714a904563f412` |
+| **整合包** | `dsh-desktop-0.1.17-dsh0.2.0-rc.1-win-x64-**full**.zip` = **183.7 MB**，sha256 `e8b0a977ee5856b57398b7ed75679d6ee8b380c41938f17e94b7af26511d154f` |
+| 端到端验证 | 两个变体**各 34/34**（`verify-release.mjs desktop-v0.1.17 slim\|full`）——其中「解包 dsh = `0.2.0-rc.1`」「npm 11.19.0 可运行」「对全新 `DSH_HOME` 真启动并服务 HTTP」全部通过 |
+| 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.16 已按 F7 剪除） |
+| 说明 | 0.1.17 的**壳与 0.1.16 相同**（含 §50 的自更新 npm 修复），只换了内置核心 |
+
 
 
 
