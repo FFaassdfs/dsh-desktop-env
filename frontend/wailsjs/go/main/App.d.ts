@@ -8,6 +8,8 @@ export function GetCoreVersions():Promise<main.coreVersionsView>;
 
 export function GetUpdateStatus():Promise<string>;
 
+export function GlobalZhPresetStatus():Promise<main.zhPresetView>;
+
 export function HasPluginInstaller():Promise<boolean>;
 
 export function InstallBundledPlugins():Promise<string>;
@@ -19,6 +21,8 @@ export function Quit():Promise<void>;
 export function Restart():Promise<void>;
 
 export function Retry():Promise<void>;
+
+export function SetGlobalZhPreset(arg1:boolean):Promise<string>;
 
 export function SkipCoreVersion(arg1:string):Promise<string>;
 

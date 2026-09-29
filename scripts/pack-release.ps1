@@ -8,6 +8,9 @@
 #     runtime.zip                  ONE file: node.exe + npm + the harness tree;
 #                                  the shell unpacks it to runtime\ on first start
 #     plugins\<all bundled>        the custom plugins (listed by --describe / README.txt)
+#     global\zh-preset.md          optional "interact in Chinese" global preset
+#                                  (seeded by install-offline.ps1 on a first install;
+#                                   the shell panel button adds/removes it any time)
 #     scripts\setup-plugins.mjs    installer used by install-offline.ps1
 #     install-offline.ps1 (+ .cmd) installs plugins into $DSH_HOME (+ optional app dir)
 #     update-plugins.ps1 (+ .cmd)  refreshes ONLY the plugins already installed
@@ -317,7 +320,13 @@ Copy-Item (Join-Path $repoRoot "install-offline.cmd") (Join-Path $pkgDir "instal
 # (content-hash based, with backup + rollback) without running the full installer.
 Copy-Item (Join-Path $repoRoot "scripts\update-plugins.ps1") (Join-Path $pkgDir "update-plugins.ps1") -Force
 Copy-Item (Join-Path $repoRoot "scripts\update-plugins.cmd") (Join-Path $pkgDir "update-plugins.cmd") -Force
+# The optional global "interact in Chinese" preset. install-offline.ps1 seeds it on a
+# FIRST install only (never touching an existing ~/.dsh/AGENTS.md), and the shell panel
+# has a button that adds/removes the very same marked block at any time.
+New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir "global") | Out-Null
+Copy-Item (Join-Path $repoRoot "global\zh-preset.md") (Join-Path $pkgDir "global\zh-preset.md") -Force
 Ok "installer (install-offline.ps1 + .cmd wrapper) + update-plugins.ps1/.cmd + setup-plugins.mjs staged"
+Ok "global\zh-preset.md staged (optional Chinese-interaction preset; installer + shell panel button)"
 
 # --- metadata -----------------------------------------------------------------
 Step "2/4 writing VERSION.txt / README.txt"

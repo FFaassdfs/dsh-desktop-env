@@ -39,8 +39,20 @@
                 <span class="pluginsDesc">装进 dsh，让界面多出说明/文件树/模型能力等功能</span>
             </div>
             <div class="pluginsRow">
-                <button class="mini primary" id="installPlugins">安装插件…</button>
+                <button class="mini primary" id="installPlugins">一键安装全部插件</button>
                 <span class="pluginsNote" id="pluginsNote"></span>
+            </div>
+        </div>
+        <!-- 全局预设：把「中文交互」写进 $DSH_HOME\AGENTS.md（所有项目生效），随时可移除。
+             复用 .plugins* 的纯布局样式，避免再抄一份 CSS。 -->
+        <div class="plugins" id="presetBox">
+            <div class="pluginsHead">
+                <span class="pluginsLabel">全局预设</span>
+                <span class="pluginsDesc">默认中文交互（写进 ~/.dsh/AGENTS.md，所有项目通用）</span>
+            </div>
+            <div class="pluginsRow">
+                <button class="mini primary" id="presetToggle">添加中文交互预设</button>
+                <span class="pluginsNote" id="presetNote"></span>
             </div>
         </div>
         <div class="update" id="update">检查更新…</div>

@@ -197,6 +197,14 @@ for (const f of ["dsh-desktop.exe", "install-offline.ps1", "install-offline.cmd"
   check(`package contains ${f}`, top.includes(f));
 }
 check("runtime ships as the single runtime.zip", top.includes("runtime.zip") && !top.includes("runtime"));
+// The optional global Chinese-interaction preset travels IN the package: the installer
+// seeds it on a FIRST install, and the shell panel's 全局预设 button manages it after.
+const presetPath = join(pkgDir, "global", "zh-preset.md");
+check("package ships global\\zh-preset.md", top.includes("global") && existsSync(presetPath));
+const presetText = existsSync(presetPath) ? readFileSync(presetPath, "utf8") : "";
+check("global preset carries its manage-markers",
+  presetText.includes("dsh-desktop:zh-preset:begin") && presetText.includes("dsh-desktop:zh-preset:end"));
+check("global preset mandates Chinese interaction", /默认用中文（简体）回复与交互/.test(presetText));
 
 // --- 4. shipped installer -----------------------------------------------------
 console.log("5) shipped installer (-CheckOnly dry run)");
@@ -321,6 +329,30 @@ if (!hasVariants) {
       "no libreoffice-kit-<platform> under runtime\\node_modules - the full asset lost its engine");
   }
 }
+
+// --- 9c. the shipped installer seeds the optional global preset ---------------
+//
+// 0.1.18 added the "interact in Chinese" global preset (global\zh-preset.md) plus a
+// shell panel button that manages the very same marked block. The installer must seed
+// it on a FIRST install, and must NEVER touch an AGENTS.md the user already has (that
+// file is the user's own instruction file).
+console.log("9c) shipped installer seeds the optional global preset");
+const presetHome = join(root, "preset-home");
+rmSync(presetHome, { recursive: true, force: true });
+mkdirSync(presetHome, { recursive: true });
+const seedDry = runFile(installer, ["-CheckOnly", "-Plugins", "none", "-DSHome", presetHome]);
+check("preset dry run is announced", /global Chinese-interaction preset/.test(seedDry.out));
+check("preset dry run wrote nothing", !existsSync(join(presetHome, "AGENTS.md")));
+const seedReal = runFile(installer, ["-Plugins", "none", "-DSHome", presetHome]);
+const seededPath = join(presetHome, "AGENTS.md");
+check("first install seeds AGENTS.md with the preset",
+  existsSync(seededPath) && readFileSync(seededPath, "utf8").includes("dsh-desktop:zh-preset:begin"),
+  `exit=${seedReal.code}`);
+const mineText = "# 我自己的全局预设\n\n- 这条不要动\n";
+writeFileSync(seededPath, mineText);
+runFile(installer, ["-Plugins", "none", "-DSHome", presetHome]);
+check("an existing AGENTS.md is never touched by the installer",
+  existsSync(seededPath) && readFileSync(seededPath, "utf8") === mineText);
 
 // --- 10. the bundled runtime must actually BOOT --------------------------------
 //

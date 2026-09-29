@@ -60,6 +60,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class zhPresetView {
+	    enabled: boolean;
+	    path: string;
+	    note: string;
+	    hasFile: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new zhPresetView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.path = source["path"];
+	        this.note = source["note"];
+	        this.hasFile = source["hasFile"];
+	    }
+	}
 
 }
 

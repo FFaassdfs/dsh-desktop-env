@@ -294,6 +294,28 @@ if ($SkipPlugins) {
   }
 }
 
+# --- optional: global Chinese-interaction preset ------------------------------
+# The shell panel has a button for this (全局预设 -> add/remove at any time; it writes
+# and removes the very same marked block). Here we only seed it on a FIRST install,
+# and only when the user has no global AGENTS.md yet: an existing file is the user's
+# own instruction file and is NEVER modified by this installer.
+$presetSrc = Join-Path $pkgRoot "global\zh-preset.md"
+if (Test-Path $presetSrc) {
+  Step "optional: global Chinese-interaction preset (~/.dsh/AGENTS.md)"
+  $presetDst = Join-Path $DSHome "AGENTS.md"
+  if (Test-Path $presetDst) {
+    Warn "already exists, left untouched: $presetDst"
+    Warn "  (use the shell panel button 全局预设 to add/remove the preset)"
+  } elseif ($CheckOnly) {
+    Warn "would write the global Chinese-interaction preset -> $presetDst"
+  } else {
+    New-Item -ItemType Directory -Force -Path $DSHome | Out-Null
+    Copy-Item $presetSrc $presetDst -Force
+    Ok "preset written -> $presetDst  (every project defaults to Chinese)"
+    Ok "  (remove it any time from the shell panel: 全局预设)"
+  }
+}
+
 # --- optional app-area deploy -------------------------------------------------
 if ($AppDir) {
   Step "optional: deploying exe + runtime to $AppDir"
@@ -328,6 +350,9 @@ Write-Host "  * The shell is single-instance per user: close any other dsh-deskt
 Write-Host "  * API keys / .env are NOT part of this package - configure them per machine."
 Write-Host "  * This build is unsigned: Windows SmartScreen may warn on first run."
 Write-Host "  * Plugin changes take effect after a full shell restart."
+Write-Host "  * Global preset: the shell panel button 全局预设 adds/removes a Chinese-interaction"
+Write-Host "    preset in DSH_HOME\AGENTS.md (applies to every project; it only ever touches"
+Write-Host "    its own marked block, never the rest of that file)."
 Write-Host "  * Re-run with -Plugins <list> to change which plugins are installed,"
 Write-Host "    e.g. -Plugins 2,4  (numbers as listed above) or -Plugins explainer,project-explorer"
 Write-Host "  * Already-installed plugins are never removed by this installer: it only"

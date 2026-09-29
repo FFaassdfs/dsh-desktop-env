@@ -14,6 +14,10 @@ export function GetUpdateStatus() {
   return window['go']['main']['App']['GetUpdateStatus']();
 }
 
+export function GlobalZhPresetStatus() {
+  return window['go']['main']['App']['GlobalZhPresetStatus']();
+}
+
 export function HasPluginInstaller() {
   return window['go']['main']['App']['HasPluginInstaller']();
 }
@@ -36,6 +40,10 @@ export function Restart() {
 
 export function Retry() {
   return window['go']['main']['App']['Retry']();
+}
+
+export function SetGlobalZhPreset(arg1) {
+  return window['go']['main']['App']['SetGlobalZhPreset'](arg1);
 }
 
 export function SkipCoreVersion(arg1) {

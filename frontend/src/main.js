@@ -11,6 +11,8 @@ import {
     ClearSkippedCore,
     HasPluginInstaller,
     InstallBundledPlugins,
+    GlobalZhPresetStatus,
+    SetGlobalZhPreset,
 } from '../wailsjs/go/main/App';
 
 const statusEl = document.getElementById('status');
@@ -28,6 +30,11 @@ const coreRefreshBtn = document.getElementById('coreRefresh');
 const pluginsBox = document.getElementById('pluginsBox');
 const installPluginsBtn = document.getElementById('installPlugins');
 const pluginsNoteEl = document.getElementById('pluginsNote');
+const presetToggleBtn = document.getElementById('presetToggle');
+const presetNoteEl = document.getElementById('presetNote');
+
+// 全局中文交互预设当前是否已添加（按钮据此在「添加/移除」之间切换）
+let presetEnabled = false;
 
 // coreBusy 期间的点击一律忽略：安装/下载是一次性的重活，重复点击只会互相打架
 let coreBusy = false;
@@ -231,3 +238,35 @@ installPluginsBtn.addEventListener('click', async () => {
         installPluginsBtn.disabled = false;
     }
 });
+
+// ---- 全局中文交互预设 ----
+//
+// 往 $DSH_HOME/AGENTS.md 里加/删一个带标记的块：官方 instructions 插件会在**每个会话的第一次
+// 请求**注入该文件（所有项目生效，项目内的 AGENTS.md 仍优先）。只增删自己那一段，绝不覆盖用户
+// 已有内容；文件因此变空才删除。面板按钮 = 用户自主选择是否要这个预设。
+async function refreshPreset(note) {
+    try {
+        const v = await GlobalZhPresetStatus();
+        presetEnabled = !!(v && v.enabled);
+        presetNoteEl.textContent = note || (v && v.note) || '';
+        presetNoteEl.title = (v && v.path) || '';
+        presetToggleBtn.textContent = presetEnabled ? '移除中文交互预设' : '添加中文交互预设';
+        presetToggleBtn.classList.toggle('primary', !presetEnabled);
+    } catch (err) {
+        presetNoteEl.textContent = String(err);
+    }
+}
+
+presetToggleBtn.addEventListener('click', async () => {
+    presetToggleBtn.disabled = true;
+    try {
+        const msg = await SetGlobalZhPreset(!presetEnabled);
+        await refreshPreset(msg);
+    } catch (err) {
+        presetNoteEl.textContent = String(err);
+    } finally {
+        presetToggleBtn.disabled = false;
+    }
+});
+
+refreshPreset();
