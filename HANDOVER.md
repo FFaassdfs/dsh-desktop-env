@@ -3274,6 +3274,66 @@ RESULT: 34 passed, 0 failed  (desktop-v0.1.15, variant full)
 | 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.16 已按 F7 剪除） |
 | 说明 | 0.1.17 的**壳与 0.1.16 相同**（含 §50 的自更新 npm 修复），只换了内置核心 |
 
+---
+
+## §52 可选的「全局中文交互预设」：壳面板一个按钮 + 包内随装（2026-09-29，desktop-v0.1.18）
+
+> 用户问：「harness 安装完之后，能不能让**所有项目**都有一些全局预设指令，比如交互内容尽量中文？」并追加：「**在壳上放个按钮**，允许用户自主选择是否添加这个全局中文交互预设项。」
+
+### 52.1 机制（官方行为，实测口径）
+
+`@deepseek-ai/dsh-agent-instructions`（`dsh-base` 默认启用，预算 `maxBytes: 65536`，单文件上限 1 MiB）在**每个会话的第一次请求**注入一条持久基线：
+
+1. 先是**用户全局** `$DSH_HOME/AGENTS.md`（= `~/.dsh/AGENTS.md`）；
+2. 再按"从宽泛到具体"注入**项目指令链**：从项目根（`.git` 标记）到会话工作目录，每目录的 `AGENTS.md` / `CLAUDE.md`（外加叠加的 `AGENTS.local.md` / `CLAUDE.local.md`）。
+
+⇒ **项目内的文件优先于全局**（单个项目想用英文，就在该项目根放一个 `AGENTS.md`）；同级内容相同的文件只渲染一次；**预算超限时先丢宽泛的 ⇒ 全局文件最先被丢**，所以全局预设要短。它只在**首次请求**加载：改完对**新会话**生效，老会话要等一次 `read`/`write`/`edit` 触发刷新。⚠️ 这是**指令不是强制**：模型"尽量"遵守；要 100% 只能靠输出后处理。
+
+### 52.2 本机当时的现状（"为什么没生效"）
+
+`C:\Users\veken\.dsh\AGENTS.md` **当时不存在**——9/24、9/27 两次 `$DSH_HOME` 清空把它带走了，而恢复作业只还原了会话与工作区索引 ⇒ 只剩本仓库的项目级 `AGENTS.md` 在起作用（**换个项目目录就没有任何预设**）。已补装（52.4-4）。
+
+### 52.3 三种粒度（用户可选）
+
+| 想要的效果 | 做法 |
+|---|---|
+| **所有项目**默认中文 | `~/.dsh/AGENTS.md`（壳面板按钮 / `setup.ps1` 第 4 步 / 手动拷贝） |
+| 改"语言"规则本身 | 改权威副本 `global/AGENTS.md`，**并同步安装副本**（该文件里自己写明了这条纪律，历史漏同步过一次） |
+| 单个项目例外 | 该项目根的 `AGENTS.md`，或 `AGENTS.local.md`（本地 overlay，不进 git） |
+
+### 52.4 本次实现（0.1.18）
+
+1. **权威文本 = `global/zh-preset.md`**：夹在 `<!-- dsh-desktop:zh-preset:begin -->` / `end` 两个锚点之间，三条规则——正文 / 报错说明 / 日志 / 提交信息 / 文档一律中文；**代码标识符、命令、路径、上游英文原文与专有名词保持原样**；引用英文原文时保留原文并附中文说明。
+2. **壳面板「全局预设」按钮**（`agentpreset.go` + `frontend/index.html` / `frontend/src/main.js`）：显示"已添加 / 未添加"，一键添加或移除：
+   - 往 `$DSH_HOME/AGENTS.md` 写**带标记的块**；**只增删自己那一段，绝不覆盖用户已有内容**；文件因此变空才删除文件；原文件带 BOM 则保留 BOM。
+   - 文本**硬编码在 Go**（壳在源码装 / 便携包 / 任意路径都能用），但由 `TestZhPresetMatchesCanonicalFile` 与 `TestGlobalAgentsEmbedsPresetBlock` 两条断言与权威副本**逐字对齐**——改一处不改另一处，测试即红。
+   - 顺带修掉面板上那句仍在骗人的按钮文案「安装插件…」→「**一键安装全部插件**」（§48 的语义本来就是一键全装、无菜单）。
+3. **便携包随装**：`pack-release.ps1` 把 `global/zh-preset.md` 打进包；`install-offline.ps1` 在**首装且 `$DSH_HOME/AGENTS.md` 不存在**时写入它，**已存在则一个字都不动**（并在输出里提示改用面板按钮）。
+4. **本机已装**：`~/.dsh/AGENTS.md` 与仓库 `global/AGENTS.md` **逐字节一致**。**实证**：写入后**当前会话立刻**收到该文件作为 user-global 指令注入（"Additional instructions from: `~/.dsh/AGENTS.md`"）。
+5. `global/AGENTS.md` 文档版本 **v2.20 → v2.21**（语言规则写明确 + 变成壳可管理的带标记段落）。
+
+### 52.5 验证
+
+| 项 | 结果 |
+|---|---|
+| Go 套件 | **48 → 54 用例全绿**（+6：与权威副本逐字一致、`global/AGENTS.md` 内嵌同段、增删往返与幂等、**不覆盖用户内容**、保留 BOM、移除标记块）；`gofmt`/`go vet` 干净 |
+| `verify-release.mjs` | 每个变体 **+7 断言（34 → 41）**：包内含 `global\zh-preset.md` / 含锚点 / 含中文规则；安装器 dry-run 会说明预设且不写文件；**首装会写入**；**已存在的 `AGENTS.md` 一字不动** |
+| 前端 | **完整 `wails build`**（改了 UI ⇒ 必须重建前端 + 重新生成绑定）；产物含新按钮文案；绑定 `GlobalZhPresetStatus` / `SetGlobalZhPreset` / 模型 `zhPresetView` 已生成 |
+| 5.1 编码套件 | **38/38**；两个改过的 `.ps1`（`install-offline.ps1`、`pack-release.ps1`）BOM 已复查、PS7 + 5.1 双引擎解析自检通过 |
+
+### 52.6 发布结果（实测）
+
+| 项 | 值 |
+|---|---|
+| Release | `desktop-v0.1.18`，**2026-09-29T07:39:12Z 发布**；标题 `dsh-desktop 0.1.18（便携包 · 瘦身/整合 双版本 · Windows x64）` |
+| CI | run **#25** `success`（tag 提交 `2917a44`） |
+| 内置核心 | `@deepseek-ai/dsh 0.2.0-rc.1`（与 0.1.17 相同） |
+| **瘦身包** | `dsh-desktop-0.1.18-dsh0.2.0-rc.1-win-x64-**slim**.zip` = **118.6 MB**，sha256 `7ed29d5264817b4a8dd36839bd15b536cfa77df0feaaaea8c730dd71bdb4d0b1` |
+| **整合包** | `dsh-desktop-0.1.18-dsh0.2.0-rc.1-win-x64-**full**.zip` = **183.7 MB**，sha256 `b7817e36e256545f121ed7d00a49d2b1b9a3b4a43657c0c89a73bc99a5d02e7a` |
+| 端到端验证 | 两个变体**各 41/41**（含 7 条预设断言：包内 `global\zh-preset.md` / 锚点 / 中文规则、dry-run 说明且不写、**首装写入**、**已存在的一字不动**） |
+| 包结构变化 | 顶层新增 `global\`（`zh-preset.md`）——0.1.17 及以前没有它 |
+| 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.17 已按 F7 剪除） |
+
 
 
 
