@@ -49,33 +49,60 @@ type registryDoc struct {
 	Time     map[string]string          `json:"time"`
 }
 
-const dshRegistryURL = "https://registry.npmjs.org/@deepseek-ai/dsh"
+const dshRegistryBaseURL = "https://registry.npmjs.org"
+
+// registryDocURL 拼出某个源上 dsh 的文档地址。registry 为空 = 官方源。
+// scoped 包用 %2F 形式，官方与淘宝镜像都接受（2026-09-30 实测）。
+func registryDocURL(registry string) string {
+	base := normalizeRegistry(registry)
+	if base == "" {
+		base = dshRegistryBaseURL
+	}
+	return strings.TrimRight(base, "/") + "/@deepseek-ai%2Fdsh"
+}
 
 // registryCacheTTL 让面板反复打开时不必每次都打 registry。
 const registryCacheTTL = 5 * time.Minute
 
 // registryCached 取 registry 文档并缓存一小段时间；失败时退回上一次成功的结果。
+// 源按 corefeed.go 的配置依次尝试（官方不通就自动换淘宝镜像），并记下**实际用了哪个**，
+// 面板的「更新源」一栏会显示它。
 func (a *App) registryCached() (*registryDoc, error) {
 	a.registryMu.Lock()
 	defer a.registryMu.Unlock()
 	if a.registry != nil && time.Since(a.registryAt) < registryCacheTTL {
 		return a.registry, nil
 	}
-	doc, err := fetchRegistry()
-	if err != nil {
-		if a.registry != nil {
-			return a.registry, nil // 网络抖动不该让面板空掉
+	feed := loadCoreFeed()
+	attempts := registryAttempts(feed.Registry, feed.AutoMirror)
+	var lastErr error
+	for i, registry := range attempts {
+		doc, err := fetchRegistryFrom(registry)
+		if err == nil {
+			if i > 0 {
+				debugLog("registry: %s unavailable (%v) - used %s",
+					registryLabel(attempts[0]), lastErr, registryLabel(registry))
+			}
+			a.registry, a.registryAt, a.registryUsed = doc, time.Now(), registry
+			return doc, nil
 		}
-		return nil, err
+		lastErr = err
 	}
-	a.registry, a.registryAt = doc, time.Now()
-	return doc, nil
+	if a.registry != nil {
+		return a.registry, nil // 网络抖动不该让面板空掉
+	}
+	return nil, lastErr
 }
 
-// fetchRegistry 取 npm registry 上 dsh 的文档（完整文档仅 ~0.17 MB，带发布时间）。
+// fetchRegistry 取官方源上的 dsh 文档（保留给测试与默认调用）。
 func fetchRegistry() (*registryDoc, error) {
+	return fetchRegistryFrom("")
+}
+
+// fetchRegistryFrom 取指定源上 dsh 的文档（完整文档仅 ~0.17 MB，带发布时间）。
+func fetchRegistryFrom(registry string) (*registryDoc, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(dshRegistryURL)
+	resp, err := client.Get(registryDocURL(registry))
 	if err != nil {
 		return nil, err
 	}
@@ -274,28 +301,38 @@ func (a *App) UpdateCore(version string) string {
 			return "本包未内置 npm，无法自更新；请下载新版发行包"
 		}
 		a.emitUpdate("正在下载核心 " + version + "…")
-		if err := a.stageBundledRuntime(rt, npmCLI, version); err != nil {
+		used, err := a.stageBundledRuntime(rt, npmCLI, version)
+		if err != nil {
 			debugLog("UpdateCore: staging %s failed: %v", version, err)
 			return "下载失败：" + err.Error()
+		}
+		src := ""
+		if used != "" {
+			src = "（" + registryShortLabel(used) + "）"
 		}
 		// 已经装上这个版本了，跳过记录就没意义了
 		if loadUpdatePrefs().SkippedCore == version {
 			_ = saveUpdatePrefs(updatePrefs{})
 		}
-		a.emitUpdate("已下载核心 " + version + "，请点击「重启服务」生效")
-		return "已下载 " + version + "，重启服务后生效"
+		a.emitUpdate("已下载核心 " + version + src + "，请点击「重启服务」生效")
+		return "已下载 " + version + src + "，重启服务后生效"
 	}
 
 	a.emitUpdate("正在安装核心 " + version + "…")
-	if err := a.npmInstallGlobalVersion(version); err != nil {
+	used, err := a.npmInstallGlobalVersion(version)
+	if err != nil {
 		debugLog("UpdateCore: npm install %s failed: %v", version, err)
 		return "安装失败：" + err.Error() + "（也可手动执行 npm i -g @deepseek-ai/dsh@" + version + "）"
+	}
+	src := ""
+	if used != "" {
+		src = "（" + registryShortLabel(used) + "）"
 	}
 	if loadUpdatePrefs().SkippedCore == version {
 		_ = saveUpdatePrefs(updatePrefs{})
 	}
-	a.emitUpdate("已安装核心 " + version + "，请点击「重启服务」生效")
-	return "已安装 " + version + "，重启服务后生效"
+	a.emitUpdate("已安装核心 " + version + src + "，请点击「重启服务」生效")
+	return "已安装 " + version + src + "，重启服务后生效"
 }
 
 // SkipCoreVersion 记住"这个版本我不想装"，之后的检查只在出现更新的版本时才提示。

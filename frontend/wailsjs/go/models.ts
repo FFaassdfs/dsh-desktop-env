@@ -1,5 +1,25 @@
 export namespace main {
 	
+	export class coreFeedView {
+	    registry: string;
+	    autoMirror: boolean;
+	    label: string;
+	    used: string;
+	    note: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new coreFeedView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.registry = source["registry"];
+	        this.autoMirror = source["autoMirror"];
+	        this.label = source["label"];
+	        this.used = source["used"];
+	        this.note = source["note"];
+	    }
+	}
 	export class coreOption {
 	    channel: string;
 	    version: string;

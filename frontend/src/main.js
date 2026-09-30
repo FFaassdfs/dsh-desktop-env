@@ -13,6 +13,8 @@ import {
     InstallBundledPlugins,
     GlobalZhPresetStatus,
     SetGlobalZhPreset,
+    CoreFeedStatus,
+    SetCoreFeed,
 } from '../wailsjs/go/main/App';
 
 const statusEl = document.getElementById('status');
@@ -32,6 +34,11 @@ const installPluginsBtn = document.getElementById('installPlugins');
 const pluginsNoteEl = document.getElementById('pluginsNote');
 const presetToggleBtn = document.getElementById('presetToggle');
 const presetNoteEl = document.getElementById('presetNote');
+const feedSel = document.getElementById('feedSel');
+const feedCustomEl = document.getElementById('feedCustom');
+const feedFallbackEl = document.getElementById('feedFallback');
+const feedSaveBtn = document.getElementById('feedSave');
+const feedNoteEl = document.getElementById('feedNote');
 
 // 全局中文交互预设当前是否已添加（按钮据此在「添加/移除」之间切换）
 let presetEnabled = false;
@@ -270,3 +277,55 @@ presetToggleBtn.addEventListener('click', async () => {
 });
 
 refreshPreset();
+
+// ---- 更新源（npm registry）----
+//
+// 核心 @deepseek-ai/dsh 走的是 npm registry（**不是 GitHub**），国内直连官方源经常很慢
+// 或不通。这里让用户选源；「自动回退」勾上后，配置的源失败时会自动改用淘宝镜像重试一次，
+// 面板会显示"上次实际使用"的源（后端 corefeed.go）。
+const FEED_CUSTOM = '__custom__';
+
+function feedSelectedRegistry() {
+    return feedSel.value === FEED_CUSTOM ? feedCustomEl.value.trim() : feedSel.value;
+}
+
+async function refreshFeed(note) {
+    try {
+        const v = await CoreFeedStatus();
+        const reg = (v && v.registry) || '';
+        if (reg === 'https://registry.npmmirror.com') {
+            feedSel.value = reg;
+            feedCustomEl.hidden = true;
+        } else if (reg) {
+            feedSel.value = FEED_CUSTOM;
+            feedCustomEl.value = reg;
+            feedCustomEl.hidden = false;
+        } else {
+            feedSel.value = '';
+            feedCustomEl.hidden = true;
+        }
+        feedFallbackEl.checked = !!(v && v.autoMirror);
+        feedNoteEl.textContent = note || (v && v.note) || '';
+    } catch (err) {
+        feedNoteEl.textContent = String(err);
+    }
+}
+
+feedSel.addEventListener('change', () => {
+    feedCustomEl.hidden = feedSel.value !== FEED_CUSTOM;
+    if (!feedCustomEl.hidden) feedCustomEl.focus();
+});
+
+feedSaveBtn.addEventListener('click', async () => {
+    feedSaveBtn.disabled = true;
+    try {
+        const msg = await SetCoreFeed(feedSelectedRegistry(), !!feedFallbackEl.checked);
+        await refreshFeed(msg);
+    } catch (err) {
+        feedNoteEl.textContent = String(err);
+    } finally {
+        feedSaveBtn.disabled = false;
+    }
+});
+
+refreshFeed();

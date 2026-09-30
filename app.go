@@ -70,9 +70,10 @@ type App struct {
 	runtimeReady chan struct{}
 
 	// registry 文档缓存（见 version.go 的 registryCached）：面板可能被反复打开。
-	registryMu sync.Mutex
-	registry   *registryDoc
-	registryAt time.Time
+	registryMu   sync.Mutex
+	registry     *registryDoc
+	registryAt   time.Time
+	registryUsed string // 上一次实际成功的更新源（""=官方；见 corefeed.go）
 
 	// 首次启动解压内置运行时（runtime.zip）的结果，供 bootstrap 报准错误。
 	runtimeErr  error
@@ -790,16 +791,36 @@ func (a *App) checkUpdates() {
 
 // stageBundledRuntime installs @deepseek-ai/dsh@version into the staging prefix
 // with the bundled npm, then verifies that the staged tree actually runs.
-func (a *App) stageBundledRuntime(rt harnessRuntime, npmCLI, version string) error {
+// stageBundledRuntime 用包内 npm 把指定核心版本装进 .update 暂存目录。
+// 返回**实际使用**的更新源（""=官方 npm 默认源），供面板/日志说明来源；
+// 源不通时按 corefeed.go 的配置依次尝试（默认：官方 → 淘宝镜像）。
+func (a *App) stageBundledRuntime(rt harnessRuntime, npmCLI, version string) (string, error) {
+	feed := loadCoreFeed()
+	attempts := registryAttempts(feed.Registry, feed.AutoMirror)
+	used, err := installWithRegistryFallback(attempts, func(registry string) error {
+		return stageBundledRuntimeOnce(rt, npmCLI, version, registry)
+	})
+	if err != nil {
+		return "", err
+	}
+	a.noteRegistryUsed(used)
+	return used, nil
+}
+
+// stageBundledRuntimeOnce 用**一个**源把核心装进暂存目录。
+func stageBundledRuntimeOnce(rt harnessRuntime, npmCLI, version, registry string) error {
 	staging := updateStagingDir(rt.Root)
 	_ = os.RemoveAll(staging)
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return fmt.Errorf("cannot create %s: %w", staging, err)
 	}
-	cmd := exec.Command(rt.NodeExe, npmCLI, "install",
+	args := []string{npmCLI, "install",
 		"--prefix", staging,
-		"--no-audit", "--no-fund", "--loglevel=error",
-		"@deepseek-ai/dsh@"+version)
+		"--no-audit", "--no-fund", "--loglevel=error"}
+	args = append(args, npmRegistryArgs(registry)...)
+	args = append(args, npmFetchBudgetArgs(registry)...)
+	args = append(args, "@deepseek-ai/dsh@"+version)
+	cmd := exec.Command(rt.NodeExe, args...)
 	cmd.SysProcAttr = hiddenWindowAttr()
 	cmd.Dir = staging
 	cmd.Env = append(os.Environ(),

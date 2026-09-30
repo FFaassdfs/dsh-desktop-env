@@ -6,6 +6,10 @@ export function ClearSkippedCore() {
   return window['go']['main']['App']['ClearSkippedCore']();
 }
 
+export function CoreFeedStatus() {
+  return window['go']['main']['App']['CoreFeedStatus']();
+}
+
 export function GetCoreVersions() {
   return window['go']['main']['App']['GetCoreVersions']();
 }
@@ -40,6 +44,10 @@ export function Restart() {
 
 export function Retry() {
   return window['go']['main']['App']['Retry']();
+}
+
+export function SetCoreFeed(arg1, arg2) {
+  return window['go']['main']['App']['SetCoreFeed'](arg1, arg2);
 }
 
 export function SetGlobalZhPreset(arg1) {

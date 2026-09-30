@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function ClearSkippedCore():Promise<string>;
 
+export function CoreFeedStatus():Promise<main.coreFeedView>;
+
 export function GetCoreVersions():Promise<main.coreVersionsView>;
 
 export function GetUpdateStatus():Promise<string>;
@@ -21,6 +23,8 @@ export function Quit():Promise<void>;
 export function Restart():Promise<void>;
 
 export function Retry():Promise<void>;
+
+export function SetCoreFeed(arg1:string,arg2:boolean):Promise<string>;
 
 export function SetGlobalZhPreset(arg1:boolean):Promise<string>;
 

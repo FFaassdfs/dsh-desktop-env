@@ -136,8 +136,29 @@ func (a *App) startDsh() error {
 // 版本号始终由调用方给出：壳自己不再装 "latest"（见 version.go）——那既会漏掉
 // next/alpha 上的新版本，也可能把用户选好的版本静默降级回去。
 // npm 进程的 stdout 不捕获（落在隐藏控制台里），只以退出码判断成功与否。
-func (a *App) npmInstallGlobalVersion(version string) error {
-	cmd := exec.Command("cmd", "/C", "npm", "install", "-g", "@deepseek-ai/dsh@"+version)
+//
+// 源走 corefeed.go 的配置：先试配置的源，失败（被墙/超时）后自动改用淘宝镜像；
+// 返回值是**实际使用**的源（""=官方），面板据此说明"这次用的是哪个源"。
+func (a *App) npmInstallGlobalVersion(version string) (string, error) {
+	feed := loadCoreFeed()
+	attempts := registryAttempts(feed.Registry, feed.AutoMirror)
+	used, err := installWithRegistryFallback(attempts, func(registry string) error {
+		return npmInstallGlobalVersionOnce(version, registry)
+	})
+	if err != nil {
+		return "", err
+	}
+	a.noteRegistryUsed(used)
+	return used, nil
+}
+
+// npmInstallGlobalVersionOnce 用**一个**源做一次全局安装。
+func npmInstallGlobalVersionOnce(version, registry string) error {
+	args := []string{"/C", "npm", "install", "-g"}
+	args = append(args, npmRegistryArgs(registry)...)
+	args = append(args, npmFetchBudgetArgs(registry)...)
+	args = append(args, "@deepseek-ai/dsh@"+version)
+	cmd := exec.Command("cmd", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: 0x08000000 | 0x00000008,
 	}

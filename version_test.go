@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -176,9 +177,43 @@ func TestFetchRegistryLive(t *testing.T) {
 	if len(opts) == 0 {
 		t.Fatal("no options built from the live registry")
 	}
+
+	// 镜像路径（HANDOVER §54）：淘宝镜像的文档必须与官方等价……
+	mirrorDoc, err := fetchRegistryFrom(registryNpmmirror)
+	if err != nil {
+		t.Fatalf("fetchRegistryFrom(npmmirror): %v", err)
+	}
+	if mirrorDoc.DistTags["latest"] != doc.DistTags["latest"] {
+		t.Errorf("镜像 latest(%q) 与官方(%q) 不一致",
+			mirrorDoc.DistTags["latest"], doc.DistTags["latest"])
+	}
+	for _, name := range []string{"0.1.7-rc.2", "0.2.0-rc.1"} {
+		if _, ok := mirrorDoc.Versions[name]; !ok {
+			t.Errorf("镜像缺少官方已有的版本 %s（镜像同步可能滞后）", name)
+		}
+	}
+	t.Logf("mirror: latest=%s versions=%d (official %d)",
+		mirrorDoc.DistTags["latest"], len(mirrorDoc.Versions), len(doc.Versions))
+
+	// ……并且"配置的源不通"时必须能自动回退到镜像（corefeed.go 的默认策略）。
+	withTempConfigDir(t)
+	app := &App{}
+	if msg := app.SetCoreFeed("http://127.0.0.1:9/", true); !strings.Contains(msg, "已保存") {
+		t.Fatalf("设置一个必然不通的源失败：%q", msg)
+	}
+	fallbackDoc, err := app.registryCached()
+	if err != nil {
+		t.Fatalf("源不通时应回退到淘宝镜像，却失败了：%v", err)
+	}
+	if app.registryUsed != registryNpmmirror {
+		t.Errorf("应记录实际使用的是淘宝镜像，得到 %q", app.registryUsed)
+	}
+	if fallbackDoc.DistTags["latest"] != doc.DistTags["latest"] {
+		t.Errorf("回退取到的文档 latest=%q，官方是 %q", fallbackDoc.DistTags["latest"], doc.DistTags["latest"])
+	}
+	t.Logf("fallback: 配置 http://127.0.0.1:9/ 失败后自动用了 %s", registryLabel(app.registryUsed))
 	for _, o := range opts {
-		t.Logf("  offer %-6s %-16s published=%-16s installed=%-5v newer=%v",
-			o.Channel, o.Version, o.Published, o.Installed, o.Newer)
+		t.Logf("  offer %-6s %-16s published=%-16s installed=%-5v newer=%v", o.Channel, o.Version, o.Published, o.Installed, o.Newer)
 	}
 	// 真实数据下，"比 0.1.5-rc.2 新的通道" 必须至少有一个（否则选择器没有意义）
 	if len(newerChannels(doc, "0.1.5-rc.2", "")) == 0 {

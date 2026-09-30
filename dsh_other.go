@@ -36,8 +36,22 @@ func (a *App) startDsh() error {
 
 // npmInstallGlobalVersion 安装一个明确版本（非 Windows 路径；版本由调用方给出，
 // 壳不再自己装 latest —— 见 version.go）。
-func (a *App) npmInstallGlobalVersion(version string) error {
-	return exec.Command("npm", "install", "-g", "@deepseek-ai/dsh@"+version).Run()
+// 源走 corefeed.go 的配置：配置的源失败后自动改用淘宝镜像；返回**实际使用**的源。
+func (a *App) npmInstallGlobalVersion(version string) (string, error) {
+	feed := loadCoreFeed()
+	attempts := registryAttempts(feed.Registry, feed.AutoMirror)
+	used, err := installWithRegistryFallback(attempts, func(registry string) error {
+		args := []string{"install", "-g"}
+		args = append(args, npmRegistryArgs(registry)...)
+		args = append(args, npmFetchBudgetArgs(registry)...)
+		args = append(args, "@deepseek-ai/dsh@"+version)
+		return exec.Command("npm", args...).Run()
+	})
+	if err != nil {
+		return "", err
+	}
+	a.noteRegistryUsed(used)
+	return used, nil
 }
 
 // startInstaller 在非 Windows 上直接调用 pwsh（便携发行包只做 win-x64，这条路

@@ -55,6 +55,29 @@
                 <span class="pluginsNote" id="presetNote"></span>
             </div>
         </div>
+        <!-- 更新源：核心走 npm registry（不是 GitHub），可换国内镜像；
+             配置的源不通时可自动回退到淘宝镜像（见 corefeed.go / HANDOVER 54） -->
+        <div class="plugins" id="feedBox">
+            <div class="pluginsHead">
+                <span class="pluginsLabel">更新源</span>
+                <span class="pluginsDesc">下载/更新核心用的 npm 源（国内建议淘宝镜像）</span>
+            </div>
+            <div class="pluginsRow">
+                <select class="mini" id="feedSel">
+                    <option value="">官方 npm</option>
+                    <option value="https://registry.npmmirror.com">淘宝镜像</option>
+                    <option value="__custom__">自定义…</option>
+                </select>
+                <input class="mini" id="feedCustom" placeholder="https://…" hidden/>
+                <button class="mini primary" id="feedSave">保存</button>
+            </div>
+            <div class="pluginsRow">
+                <label class="feedChk" title="配置的源不通时，自动改用淘宝镜像重试一次">
+                    <input type="checkbox" id="feedFallback" checked/>自动回退
+                </label>
+                <span class="pluginsNote" id="feedNote"></span>
+            </div>
+        </div>
         <div class="update" id="update">检查更新…</div>
         <div class="hint" id="hint"></div>
     </div>
