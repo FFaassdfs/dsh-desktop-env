@@ -3430,7 +3430,61 @@ var zhPresetBlock string
 ### 54.3 验证
 
 - Go 套件 **55 → 56 用例全绿**；`gofmt` / `go vet` 干净；壳已重建（只改 Go ⇒ `wails build -s`）。
-- 发布：见 54.4（**待定**——等用户决定是否连同"镜像 / 自动回退"一起发一个版本）。
+- 发布：与 §55 的「更新源」功能**合并进 `desktop-v0.1.20`**（见 54.4）。
+
+### 54.4 发布结果（0.1.20，含 §55 的更新源功能）
+
+见 §55.5（同一版本，一次发完）。
+
+---
+
+## §55 「更新源」：面板可选 npm 源 + 源不通自动回退淘宝镜像（0.1.20）
+
+> 用户要求（承 §54）：「**一次性打包进 0.1.20**，包含 B+C」——B = 自更新源不通时自动回退，C = 面板加「更新源」选项。
+
+### 55.1 为什么不是一个开关就完事
+
+核心的联网不止一处，三处都得走同一个源，否则会出现"面板能列版本但装不上"这类半通状态：
+
+| 调用点 | 代码 | 说明 |
+|---|---|---|
+| ① **列版本**（面板的核心版本选择器） | `version.go` 的 `registryCached` → `fetchRegistryFrom` | 被墙时最先卡住的就是它：以前直接报「无法确认版本（registry 不可用）」 |
+| ② **便携包自更新**（下载到暂存目录） | `app.go` 的 `stageBundledRuntime` | 用包内 npm：`npm install --prefix <pkg>\.update …` |
+| ③ **源码装/应用区**（全局装） | `dsh_windows.go` / `dsh_other.go` 的 `npmInstallGlobalVersion` | `npm install -g …` |
+
+### 55.2 实现（新文件 `corefeed.go` = 单一来源）
+
+- **配置**：`os.UserConfigDir()/dsh-desktop/core-feed.json`（`{"registry":"","autoMirror":true}`）——**只写壳自己的文件，绝不碰用户的 `~/.npmrc`**；`""` = 官方源（连 `--registry` 都不传，保持用户 npm 配置）。
+- **回退链** `registryAttempts(configured, autoMirror)`：`[配置的源]`，若配置的不是淘宝且开了回退，再追加 `[registry.npmmirror.com]`。默认 = **官方 → 淘宝**。
+- **快速失败**：官方那次带 `--fetch-timeout=45000 --fetch-retries=1`（npm 默认是 5 min × 3 次，被墙时能把人等到放弃）；镜像那次只放宽超时（`300000`）。
+- **回报实际用源**：`installWithRegistryFallback` 返回**成功的那一个**，三处调用点都用它，面板显示「上次实际使用：淘宝镜像」，下载完成的提示写「已下载 0.2.0-rc.2（淘宝镜像）」。
+- **面板**：新增「更新源」一栏（官方 npm / 淘宝镜像 / 自定义…）＋「自动回退」勾选＋保存；文本校验只接受 `http(s)://` 地址（非法值**不写盘**并原样告知）。
+- 自定义源（如内网 registry）同样受"自动回退"管辖：不勾就只用你指定的源。
+
+### 55.3 验证
+
+| 项 | 结果 |
+|---|---|
+| Go 单测 | **+8 条**（源归一化/回退链/npm 参数/取数预算/回退循环/配置往返/状态与"上次用源"/文档 URL），全量 **56 → 64 用例全绿** |
+| **真网端到端**（`DSH_LIVE_REGISTRY=1 go test -run TestFetchRegistryLive -v`） | ①镜像文档与官方**等价**（`latest=0.2.0-rc.2`、版本数 **29 = 29**，且 0.1.7-rc.2 / 0.2.0-rc.1 都在）；②把源配成 `http://127.0.0.1:9/` + 开回退 ⇒ `registryCached` **真的改用淘宝镜像成功**，`registryUsed` = 淘宝镜像 ✓ |
+| 前端 | 完整 `wails build`；绑定 `CoreFeedStatus` / `SetCoreFeed` / 模型 `coreFeedView` 已生成；`dist/index.html` 含全部新控件（`feedSel` / `feedCustom` / `feedFallback` / `feedSave` / `feedNote`） |
+
+### 55.4 顺带修掉的（同版本内）
+
+- §54.2-2 的**残缺 `runtime\` 让运行时永远装不回**（`Access is denied`）——见 §54.2。
+
+### 55.5 发布结果（实测）
+
+| 项 | 值 |
+|---|---|
+| Release | `desktop-v0.1.20`，**2026-09-30T03:21:35Z 发布**；标题 `dsh-desktop 0.1.20（便携包 · 瘦身/整合 双版本 · Windows x64）` |
+| CI | run **#27** `success`（tag 提交 `7b7c825`） |
+| 内置核心 | `@deepseek-ai/dsh 0.2.0-rc.1`（未变） |
+| **瘦身包** | `dsh-desktop-0.1.20-dsh0.2.0-rc.1-win-x64-**slim**.zip` = **118.6 MB**，sha256 `ab30bcafdd95ed808579178614994893a03d1ee7231320a1e29c84406f08f544` |
+| **整合包** | `dsh-desktop-0.1.20-dsh0.2.0-rc.1-win-x64-**full**.zip` = **183.8 MB**，sha256 `640f4d4dc4a814427b8977cb0818e49403af8bbd75b9cc68649bbf74e1b997d8` |
+| 端到端验证 | 两个变体**各 42/42** |
+| Release 说明 | 新增一条「国内网络（0.1.20 起）」：面板「更新源」+ 自动回退 + GitHub 代理前缀 |
+| 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.19 已按 F7 剪除） |
 
 
 
