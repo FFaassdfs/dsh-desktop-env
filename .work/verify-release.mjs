@@ -205,6 +205,10 @@ const presetText = existsSync(presetPath) ? readFileSync(presetPath, "utf8") : "
 check("global preset carries its manage-markers",
   presetText.includes("dsh-desktop:zh-preset:begin") && presetText.includes("dsh-desktop:zh-preset:end"));
 check("global preset mandates Chinese interaction", /默认用中文（简体）回复与交互/.test(presetText));
+// 0.1.19: the same block also carries the "daily pitfalls" rules (encoding / PowerShell /
+// paths) - they are the project's real incidents written up in a portable form.
+check("global preset carries the daily-pitfall rules",
+  /UTF-8 BOM/.test(presetText) && /ConvertFrom-Json/.test(presetText) && /tar\.exe/.test(presetText));
 
 // --- 4. shipped installer -----------------------------------------------------
 console.log("5) shipped installer (-CheckOnly dry run)");

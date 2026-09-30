@@ -24,13 +24,47 @@ func mustReadFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// 壳里的预设文本必须与仓库权威副本 global/zh-preset.md 逐字一致：
-// 改了一处没改另一处，这个测试就会红。
-func TestZhPresetMatchesCanonicalFile(t *testing.T) {
-	want := strings.TrimRight(mustReadFile(t, filepath.Join("global", "zh-preset.md")), "\r\n")
+func zhFirstLine(s string) string {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func zhLastLine(s string) string {
+	parts := strings.Split(strings.TrimRight(s, "\r\n"), "\n")
+	return strings.TrimRight(parts[len(parts)-1], "\r")
+}
+
+// 内嵌的那段（= global/zh-preset.md）必须自带锚点，且确实覆盖"语言 + 日常避坑"两类内容。
+// 它由 go:embed 编进二进制，所以这里测的不是"两处是否一致"，而是"有没有被人改空/改残"。
+func TestZhPresetEmbeddedBlock(t *testing.T) {
 	got := strings.TrimRight(zhPresetBlock, "\r\n")
-	if got != want {
-		t.Errorf("zhPresetBlock 与 global/zh-preset.md 不一致:\n--- 壳内 ---\n%s\n--- 权威副本 ---\n%s", got, want)
+	if !strings.HasPrefix(got, zhPresetBegin) || !strings.HasSuffix(got, zhPresetEnd) {
+		t.Fatalf("内嵌预设必须以锚点开头/结尾，实际头部=%q 尾部=%q", zhFirstLine(got), zhLastLine(got))
+	}
+	for _, want := range []string{
+		"默认用中文（简体）回复与交互", // 语言与交互
+		"UTF-8 BOM",        // 编码：5.1 要有 BOM
+		"ConvertFrom-Json", // 5.1 把顶层数组当一个对象
+		"Start-Process",    // 静默失败，断言落在产物上
+		"tar.exe",          // 解压大 zip
+		"结尾",               // 文件名结尾的点/空格
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("内嵌预设缺少关键内容 %q（被删空了？）", want)
+		}
+	}
+	if n := len([]byte(got)); n < 1500 || n > 6000 {
+		t.Errorf("预设 %d 字节，超出预期 1500..6000：整条基线预算只有 64 KiB，"+
+			"超限时全局文件最先被丢，别让它膨胀", n)
+	}
+}
+
+// 锚点常量必须与内嵌文本里的锚点一致（改名时不会只改一半）。
+func TestZhPresetMarkersMatchConstants(t *testing.T) {
+	if !strings.Contains(zhPresetBlock, zhPresetBegin) || !strings.Contains(zhPresetBlock, zhPresetEnd) {
+		t.Errorf("zhPresetBegin/End 常量与内嵌文本里的锚点不一致")
 	}
 }
 

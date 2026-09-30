@@ -6,7 +6,7 @@ package main
 //   * 每个会话的**第一次请求**会把 $DSH_HOME/AGENTS.md 作为持久基线注入 ⇒ **所有项目**生效；
 //   * 项目目录内更具体的 AGENTS.md / CLAUDE.md 优先于它（可用 AGENTS.local.md 做本地 overlay）；
 //   * 整条基线的预算默认 64 KiB（dsh-base 的 maxBytes），超预算时**先丢宽泛的**——也就是全局文件
-//     最先被丢。所以这块只写"语言与交互"几条，不放私货。
+//     最先被丢。所以这一段只写"语言与交互 + 日常避坑"，不放私货（当前约 3 KB）。
 //
 // 设计取舍：
 //   * **带标记的块 + 只增删自己那一段**：$DSH_HOME/AGENTS.md 是**用户自己的**文件，可能已有大量
@@ -16,6 +16,7 @@ package main
 //     `TestZhPresetMatchesCanonicalFile` 逐字断言两者一致 ⇒ 改一处必须改另一处，否则测试红。
 
 import (
+	_ "embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,14 +27,17 @@ const (
 	zhPresetEnd   = "<!-- dsh-desktop:zh-preset:end -->"
 )
 
-// zhPresetBlock 是壳写入的内容，必须与 global/zh-preset.md 逐字一致。
-const zhPresetBlock = zhPresetBegin + `
-> 本段由 dsh-desktop 壳面板的「全局预设」按钮管理（添加 / 移除）；上下两行注释是锚点，请勿手改。
-
-- **默认用中文（简体）回复与交互**：正文、报错说明、日志、提交信息、文档一律中文，除非用户明确要求其他语言。
-- 代码标识符、命令、路径、上游英文原文与专有名词**保持原样**——不要为了"中文"去翻译标识符或改写命令。
-- 需要用户看的结论、表格、清单优先中文；引用上游英文原文时保留原文并附中文说明。
-` + zhPresetEnd + "\n"
+// zhPresetBlock 是壳写进 $DSH_HOME/AGENTS.md 的内容：**直接内嵌权威副本**
+// `global/zh-preset.md`（构建时编进二进制）⇒ 不存在"两处文本漂移"，也不依赖包布局
+// （源码装 / 便携包 / 任意目录都一样能用）。⚠️ 改了那个 .md 要**重新构建**壳才生效。
+//
+// 同一份文本还有两个落点，都有测试守着（agentpreset_test.go）：
+//   - `global/AGENTS.md`（本机完整全局预设）必须内嵌同一段 ⇒ 面板对"完整预设"也能
+//     正确显示已添加、并能只移除这一段；
+//   - 便携包里的 `global/zh-preset.md` 由安装器在首装时写入（已存在则一字不动）。
+//
+//go:embed global/zh-preset.md
+var zhPresetBlock string
 
 // zhPresetView 是面板要显示的状态（Wails 会据此生成 TS 模型）。
 type zhPresetView struct {
@@ -84,7 +88,7 @@ func (a *App) GlobalZhPresetStatus() zhPresetView {
 	view.HasFile = true
 	view.Enabled = strings.Contains(string(text), zhPresetBegin)
 	if view.Enabled {
-		view.Note = "已添加（所有项目默认中文交互；点「移除」可撤销）"
+		view.Note = "已添加（所有项目默认中文 + 日常避坑；点「移除」可撤销）"
 	} else {
 		view.Note = "文件已存在但没有本预设（添加只会追加一段，不会覆盖你的内容）"
 	}
@@ -123,7 +127,7 @@ func (a *App) SetGlobalZhPreset(enable bool) string {
 		if err := writeZhPreset(path, next, body); err != nil {
 			return "写入失败：" + err.Error()
 		}
-		return "已添加全局中文预设 → " + path + "（新会话生效，所有项目都适用）"
+		return "已添加全局预设 → " + path + "（新会话生效，所有项目都适用：中文交互 + 日常避坑）"
 	}
 
 	if !has {

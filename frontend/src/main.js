@@ -250,7 +250,7 @@ async function refreshPreset(note) {
         presetEnabled = !!(v && v.enabled);
         presetNoteEl.textContent = note || (v && v.note) || '';
         presetNoteEl.title = (v && v.path) || '';
-        presetToggleBtn.textContent = presetEnabled ? '移除中文交互预设' : '添加中文交互预设';
+        presetToggleBtn.textContent = presetEnabled ? '移除全局预设' : '添加全局预设';
         presetToggleBtn.classList.toggle('primary', !presetEnabled);
     } catch (err) {
         presetNoteEl.textContent = String(err);
