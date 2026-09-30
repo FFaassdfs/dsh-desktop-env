@@ -728,3 +728,47 @@ func TestSyncRuntimeFromArchiveLeavesNoNpmPackageAlone(t *testing.T) {
 		t.Errorf("a package without npm must not trigger a restore, got %v", res)
 	}
 }
+
+// 一个「存在但不可用」的 runtime 目录（半解压 / 被删残 / 拷了一半）也必须能被换掉。
+// Windows 不允许 rename 覆盖已存在的目录，先前只把"可用"的那种挪开 ⇒ 这类机器会以
+// `Access is denied` **永久装不回运行时**（2026-09-30 在复刻"残缺运行时"时实测到）。
+func TestSyncRuntimeFromArchiveReplacesUnusableRuntime(t *testing.T) {
+	const node = "node.exe"
+	pkg := t.TempDir()
+	makeRuntimeZipVersioned(t, pkg, node, "9.9.9", false, true)
+
+	// 留下一个残缺的 runtime：有 package.json，但**没有入口 bin.js** ⇒ 判定为不可用
+	live := filepath.Join(pkg, "runtime")
+	pkgDir := filepath.Join(live, "node_modules", "@deepseek-ai", "dsh")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "package.json"),
+		[]byte(`{"name":"@deepseek-ai/dsh","version":"0.0.1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	junk := filepath.Join(live, "leftover-from-a-failed-extraction.txt")
+	if err := os.WriteFile(junk, []byte("junk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := portableRuntimeIn(live, node); ok {
+		t.Fatalf("precondition: this runtime must NOT count as usable")
+	}
+
+	res, err := syncRuntimeFromArchive(pkg, node, nil)
+	if err != nil {
+		t.Fatalf("a leftover runtime directory must not block the install: %v", err)
+	}
+	if res != runtimeSyncUpgraded {
+		t.Errorf("expected runtimeSyncUpgraded (a stale dir was replaced), got %v", res)
+	}
+	if _, ok := portableRuntimeIn(live, node); !ok {
+		t.Errorf("the runtime must be usable after the sync")
+	}
+	if dirExists(filepath.Join(pkg, "runtime.old")) {
+		t.Errorf("the backup must be cleaned up after a successful sync")
+	}
+	if _, err := os.Stat(junk); err == nil {
+		t.Errorf("the unusable leftover must be gone")
+	}
+}

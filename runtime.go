@@ -596,7 +596,14 @@ func syncRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, tota
 
 	backup := live + ".old"
 	_ = os.RemoveAll(backup)
-	if haveRuntime {
+	// Move aside whatever is in the way. NOTE: a `runtime` directory can EXIST yet not
+	// qualify as usable - an interrupted extraction, a half-copied folder, or a user
+	// deleting part of it. Windows refuses to rename over an existing directory, so
+	// moving only the "usable" case aside left those machines permanently unable to
+	// install a runtime ("Access is denied", measured 2026-09-30 on a replica of a
+	// damaged install - the shell could never self-heal).
+	stale := dirExists(live)
+	if haveRuntime || stale {
 		if err := os.Rename(live, backup); err != nil {
 			_ = os.RemoveAll(tmp)
 			return runtimeSyncNone, err
@@ -609,7 +616,7 @@ func syncRuntimeFromArchive(pkgRoot, nodeName string, onProgress func(done, tota
 		_ = os.RemoveAll(tmp)
 		return runtimeSyncNone, err
 	}
-	if haveRuntime {
+	if stale {
 		_ = os.RemoveAll(backup)
 		return runtimeSyncUpgraded, nil
 	}

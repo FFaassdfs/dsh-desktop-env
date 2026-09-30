@@ -3394,6 +3394,44 @@ var zhPresetBlock string
 | 端到端验证 | 两个变体**各 42/42**（新增那条「预设含 `UTF-8 BOM`/`ConvertFrom-Json`/`tar.exe` 避坑关键词」通过） |
 | 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.18 已按 F7 剪除） |
 
+---
+
+## §54 「更新内核」该走哪张网 + 修掉「残缺 runtime 目录让运行时永远装不回」（2026-09-30）
+
+> 起因：用户问「有时候更新最新内核可能访问 GitHub 受阻，**国内有镜像源吗**？」——顺带体检出两个真问题。
+
+### 54.1 先分清"更新内核"走哪张网（镜像必须分开谈）
+
+| 环节 | 走哪张网 | 国内可用手段 |
+|---|---|---|
+| **核心 `@deepseek-ai/dsh`**（面板「更新核心」/ `deploy.ps1` / `npm i -g`） | **npm registry**（`registry.npmjs.org`）——**不是 GitHub** | 换 **npm 镜像**（NPMMirror 等） |
+| **便携包 / 发行资产**（下载 zip） | **GitHub Releases** | **代理前缀**（`ghfast.top` 等） |
+
+- **壳没有硬写 registry**（`runtime.go` 里只有 npm-cli 路径，没有 `--registry`）⇒ **换源只需改 npm 配置**，不用改壳。
+- **实测（本机同一时刻）**：`registry.npmjs.org` **994 ms** vs `registry.npmmirror.com` **186–270 ms**（约 4–5 倍）；镜像上 `latest`/`next` 都是 **`0.2.0-rc.2`**（已同步）；`0.2.0-rc.1` 与 `0.1.7-rc.2` 的 **`integrity` / `shasum` 与官方完全一致**（内容字节等价，不是"重新打包"）；`npm install --dry-run` 走镜像解析 542 包 **exit 0**。
+- **实测"配置真的生效"**：把临时 home 当 `USERPROFILE` 写入 `~/.npmrc` → npm 报的 `userconfig` 正是它；把 registry 改成 `http://127.0.0.1:9/` 后命令**真** `ECONNREFUSED`（证明不是"读了不用"）；换回淘宝源后 `npm view @deepseek-ai/dsh version` = **`0.2.0-rc.2`** ✓。
+- **GitHub 代理实测**（拿 0.1.19 的 `SHA256SUMS.txt`，56 B）：直连 2.2 s / `ghfast.top` 2.3 s / `gh-proxy.com` 1.9 s / `ghproxy.net` 2.5 s，**内容都正确**（本机直连也通；给"被墙"的机器用前缀）。
+- 用法：`https://ghfast.top/https://github.com/<owner>/<repo>/releases/download/<tag>/<asset>`（项目里早有先例：侧载 PS7 时实测 2.7 MB/s）。
+
+### 54.2 体检发现的两个真问题
+
+1. 🔴 **用户那台 `D:\dshdesktop` 已经卡死在自更新上**：现役核心是 **`0.2.0-rc.1`**（说明**换入成功过**），而**包内 npm 已被那次换入删掉**、exe 还是 **0.1.14**（2026-09-24）⇒ 点「更新核心」只会得到「本包未内置 npm」。
+   **修复路径已实测证明**：拿 0.1.19 的 exe + **复刻该目录**（有 `node.exe` 与入口 `bin.js`、没有 npm）跑 `--extract-runtime`：
+
+   ```
+   runtime kept; the missing bundled npm was restored from the archive in 3s
+   exit=0 · npm 已补回 = True · npm 版本 = 11.19.0 · 现役 dsh 仍是 0.2.0-rc.1
+   ```
+
+   ⇒ **换 0.1.16+ 的 exe（11 MB）即可，3 秒、不用重下整包**。
+2. 🔴 **残缺的 `runtime\` 会让运行时永远装不回（本次新修）**：`syncRuntimeFromArchive` 原本只在运行时**判定为可用**时才把旧目录挪开；若目录**存在但不可用**（半解压 / 拷一半 / 被删残），`rename tmp → live` 因 Windows **不能覆盖已存在目录**而报 **`Access is denied`**，且**每次启动都失败、机器无法自愈**（2026-09-30 在复刻"残缺运行时"时实测到，第一次跑的正是这条）。
+   **修法**：只要目标目录存在就挪到 `runtime.old`，成功后清理，失败则回滚。**回归** = `TestSyncRuntimeFromArchiveReplacesUnusableRuntime`（断言：不报错 + 运行时可用 + 备份已清 + 残留物消失）。
+
+### 54.3 验证
+
+- Go 套件 **55 → 56 用例全绿**；`gofmt` / `go vet` 干净；壳已重建（只改 Go ⇒ `wails build -s`）。
+- 发布：见 54.4（**待定**——等用户决定是否连同"镜像 / 自动回退"一起发一个版本）。
+
 
 
 
