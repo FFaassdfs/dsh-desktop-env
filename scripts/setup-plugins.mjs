@@ -13,13 +13,15 @@
 // For each plugin:
 //   1. copies package.json + lib/ into $DSH_HOME/profiles/node_modules
 //      (delete-first to avoid nesting, HANDOVER pathC pitfall #10)
-//   2. appends an idempotent insert entry to profiles/web/cordis.patch.yml
-//      (UTF-8, no BOM, preserves existing content)
+//   2. appends an idempotent insert entry to profiles/<profile>/cordis.patch.yml
+//      (UTF-8, no BOM, preserves existing content). The profile defaults to "web"
+//      (our own Wails shell); "desktop" targets the reserved profile of the
+//      OFFICIAL DeepSeek Harness desktop app (HANDOVER §56) and "all" writes both.
 //   3. static verification: loader discovery conditions from HANDOVER §2.3
 //      (resolvable package, dsh.client declaration, exports["./client"],
 //      host main exists) + patch YAML still parses.
 //
-// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>] [--describe] [--ascii]
+// Usage: node scripts/setup-plugins.mjs [--check-only] [--plugins <list>] [--profile <name>] [--describe] [--ascii]
 //   --check-only: verify only, write nothing.
 //   --describe:   print the plugin catalogue as JSON (number, short name, Chinese
 //                 title/summary/where/writes) and exit — used by the offline
@@ -36,6 +38,15 @@
 //   --plugins:    which plugins to install. "all" (default), "none", or a
 //                 comma-separated list of numbers / short names / package names /
 //                 patch ids, e.g. --plugins 2,4  ==  --plugins explainer,project-explorer
+//   --profile:    which profile's PATCH LAYER to write: web (default, our Wails
+//                 shell), desktop (the reserved profile the official DeepSeek
+//                 Harness desktop app boots, HANDOVER §56) or all. The plugin
+//                 PACKAGES are shared ($DSH_HOME/profiles/node_modules), so only
+//                 the per-profile insert entries differ. The official CLI cannot
+//                 do this itself: dsh/lib/bin.js rejects `--profile desktop` for
+//                 both boot and `plugin` ("managed exclusively by the Electron
+//                 application"), and profiles/desktop/cordis.yml tells you to edit
+//                 cordis.patch.yml instead.
 //   --status:     print what is installed vs what this source tree carries
 //                 (content hashes) as JSON and exit — used by update-plugins.ps1
 //                 so "已是最新 / 待更新 / 未安装" is decided in exactly one place.
@@ -52,8 +63,29 @@ const repoRoot = join(here, "..");
 // resolve() on purpose: verify() uses createRequire(), which rejects a relative
 // path — a relative DSH_HOME used to abort the install after the first plugin.
 const DSH_HOME = resolve(process.env.DSH_HOME || join(homedir(), ".dsh"));
-const PROFILE_DIR = join(DSH_HOME, "profiles", "web");
-const PATCH_PATH = join(PROFILE_DIR, "cordis.patch.yml");
+
+// Which profile's patch layer to write (see --profile in the header). "web" stays
+// the default so install-offline.ps1 / update-plugins.ps1 keep their behaviour.
+function profileArg() {
+  const i = process.argv.indexOf("--profile");
+  if (i < 0) return "web";
+  const value = (process.argv[i + 1] ?? "").trim().toLowerCase();
+  if (value === "") fail("--profile needs a value (web | desktop | all)");
+  if (value === "all") return "all";
+  if (value !== "web" && value !== "desktop") fail(`unknown profile: ${value} — use web, desktop, or all`);
+  return value;
+}
+const PROFILE_ARG = profileArg();
+// The reserved "desktop" profile of the official app has the SAME bundle list as
+// our web profile (dsh-base + dsh-web-app) and no node_modules of its own, so the
+// shared profiles/node_modules packages resolve for it exactly as they do for web.
+const PROFILES = (PROFILE_ARG === "all" ? ["web", "desktop"] : [PROFILE_ARG]).map((name) => ({
+  name,
+  dir: join(DSH_HOME, "profiles", name),
+  patch: join(DSH_HOME, "profiles", name, "cordis.patch.yml"),
+}));
+const PROFILE_DIR = PROFILES[0].dir;
+const PATCH_PATH = PROFILES[0].patch;
 const PACKAGES_DIR = join(DSH_HOME, "profiles", "node_modules");
 
 // --- machine-readable output (--describe / --status) --------------------------
@@ -281,7 +313,8 @@ function sourceVersion(dir) {
 }
 
 if (process.argv.includes("--status")) {
-  const patchText = existsSync(PATCH_PATH) ? readFileSync(PATCH_PATH, "utf8") : "";
+  const patchTextOf = (target) => (existsSync(target.patch) ? readFileSync(target.patch, "utf8") : "");
+  const patchTexts = PROFILES.map((target) => [target.name, patchTextOf(target)]);
   console.log(toJson(
     PLUGINS.map((p, i) => {
       const sourceHash = payloadHash(p.src);
@@ -290,6 +323,12 @@ if (process.argv.includes("--status")) {
       const installedHash = payloadHash(installedDir);
       let state = "missing";
       if (installed) state = sourceHash && installedHash === sourceHash ? "current" : "outdated";
+      // patchEntries is additive; `patchEntry` keeps its old meaning for a single
+      // profile (the default) and means "present in every selected profile" for
+      // --profile all. update-plugins.ps1 reads none of these two fields.
+      const patchEntries = Object.fromEntries(
+        patchTexts.map(([name, text]) => [name, text.includes("id: " + p.patchId)])
+      );
       return {
         index: i + 1,
         short: pluginShortName(p),
@@ -300,7 +339,8 @@ if (process.argv.includes("--status")) {
         sourceHash,
         installedHash,
         installed,
-        patchEntry: patchText.includes("id: " + p.patchId),
+        patchEntry: Object.values(patchEntries).every(Boolean),
+        patchEntries,
         state,
       };
     })
@@ -337,38 +377,43 @@ function installPackage(plugin) {
 
 // --- 2. patch entry (idempotent: skip if the insert id already exists) -------
 function ensurePatchEntry(plugin) {
-  if (!existsSync(PATCH_PATH)) {
+  for (const target of PROFILES) ensurePatchEntryIn(plugin, target);
+}
+
+function ensurePatchEntryIn(plugin, target) {
+  const label = PROFILES.length > 1 ? `[${target.name}] ` : "";
+  if (!existsSync(target.patch)) {
     // A dry run on a machine that has never installed anything has no patch file
     // to read. That is the state a first install is supposed to be in, so it must
     // not be reported as a verification failure.
     if (checkOnly) {
-      console.log(`2. cordis.patch.yml missing (${PATCH_PATH}) — would be created with the ${plugin.patchId} entry`);
+      console.log(label + `2. cordis.patch.yml missing (${target.patch}) — would be created with the ${plugin.patchId} entry`);
       return;
     }
-    mkdirSync(dirname(PATCH_PATH), { recursive: true });
-    writeFileSync(PATCH_PATH, "# Your patch layer for this dsh profile, applied after every bundle layer:\n# a top-level YAML array of loader patch entries (id-targeted config\n# overrides, disables, and insert lists; `!!js` expressions allowed).\n", "utf8");
+    mkdirSync(dirname(target.patch), { recursive: true });
+    writeFileSync(target.patch, "# Your patch layer for this dsh profile, applied after every bundle layer:\n# a top-level YAML array of loader patch entries (id-targeted config\n# overrides, disables, and insert lists; `!!js` expressions allowed).\n", "utf8");
   }
-  let patch = readFileSync(PATCH_PATH, "utf8");
+  let patch = readFileSync(target.patch, "utf8");
   const marker = "id: " + plugin.patchId;
   if (patch.includes(marker)) {
-    console.log(`2. patch already contains ${plugin.patchId} (skipped)`);
+    console.log(label + `2. patch already contains ${plugin.patchId} (skipped)`);
     return;
   }
   if (checkOnly) {
-    console.log(`2. would append ${plugin.patchId} entry`);
+    console.log(label + `2. would append ${plugin.patchId} entry`);
     return;
   }
   const entry =
     plugin.comment +
     `- insert:\n    - id: ${plugin.patchId}\n      name: '${plugin.name}'\n`;
   patch = patch.replace(/\s+$/, "") + "\n" + entry;
-  writeFileSync(PATCH_PATH, patch, "utf8");
-  console.log(`2. patch entry appended -> ${PATCH_PATH}`);
+  writeFileSync(target.patch, patch, "utf8");
+  console.log(label + `2. patch entry appended -> ${target.patch}`);
 }
 
 // --- 3. static verification (loader discovery conditions 1-4, HANDOVER §2.3) --
-async function verify(plugin) {
-  const requireFromProfile = createRequire(join(PROFILE_DIR, "package.json"));
+async function verify(plugin, target) {
+  const requireFromProfile = createRequire(join(target.dir, "package.json"));
 
   // condition 1: package resolvable from the profile base.
   // A --check-only run against a plugin that is NOT installed yet has nothing to
@@ -423,21 +468,22 @@ async function verify(plugin) {
 }
 
 // --- patch YAML parses + both ids present (js-yaml, best-effort) --------------
-async function verifyPatch() {
-  const requireFromProfile = createRequire(join(PROFILE_DIR, "package.json"));
+async function verifyPatch(target) {
+  const label = PROFILES.length > 1 ? `[${target.name}] ` : "";
+  const requireFromProfile = createRequire(join(target.dir, "package.json"));
   let parsed = null;
   try {
     const jsYamlPath = requireFromProfile.resolve("js-yaml");
     const jsYaml = await import(pathToFileURL(jsYamlPath).href);
     const yamlMod = jsYaml.default ?? jsYaml;
-    parsed = yamlMod.load(readFileSync(PATCH_PATH, "utf8"));
+    parsed = yamlMod.load(readFileSync(target.patch, "utf8"));
   } catch {
     // js-yaml not resolvable from profile — skip YAML check (non-fatal)
   }
   if (parsed === null) {
-    console.log(existsSync(PATCH_PATH)
+    console.log(label + (existsSync(target.patch)
       ? "3e. js-yaml not found from profile — patch YAML check skipped"
-      : "3e. cordis.patch.yml does not exist yet (nothing installed) — patch YAML check skipped");
+      : "3e. cordis.patch.yml does not exist yet (nothing installed) — patch YAML check skipped"));
     return;
   }
   if (!Array.isArray(parsed)) fail("cordis.patch.yml top level is not an array");
@@ -451,18 +497,19 @@ async function verifyPatch() {
     // there rather than a failure — otherwise --check-only could never pass
     // before the first real install.
     if (checkOnly) {
-      console.log(`3e'. patch entry ${plugin.patchId} would be appended (dry run)`);
+      console.log(label + `3e'. patch entry ${plugin.patchId} would be appended (dry run)`);
       continue;
     }
     fail(`patch entry missing after append: ${plugin.patchId}`);
   }
-  console.log(`3e. patch YAML OK (ids: ${ids.join(", ")})`);
+  console.log(label + `3e. patch YAML OK (ids: ${ids.join(", ")})`);
 }
 
 // --- main ---------------------------------------------------------------------
 console.log(`repoRoot : ${repoRoot}`);
 console.log(`DSH_HOME : ${DSH_HOME}`);
 console.log(`checkOnly: ${checkOnly}`);
+console.log(`profiles : ${PROFILES.map((t) => t.name).join(", ")}`);
 console.log(`plugins  : ${SELECTED.length === 0 ? "none" : SELECTED.map((p) => `${pluginShortName(p)} (${p.title})`).join(", ")}` +
   (SKIPPED.length > 0 && SELECTED.length > 0
     ? ` (skipped: ${SKIPPED.map(pluginShortName).join(", ")})`
@@ -479,10 +526,13 @@ for (const plugin of SELECTED) {
   console.log(`--- ${plugin.name} ---`);
   installPackage(plugin);
   ensurePatchEntry(plugin);
-  await verify(plugin);
+  for (const target of PROFILES) {
+    if (PROFILES.length > 1) console.log(`3. verifying against profile ${target.name} (${target.dir})`);
+    await verify(plugin, target);
+  }
   console.log("");
 }
-await verifyPatch();
+for (const target of PROFILES) await verifyPatch(target);
 
 console.log(checkOnly
   ? "CHECK ONLY — nothing written. Looks good."

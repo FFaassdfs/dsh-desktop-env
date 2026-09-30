@@ -17,7 +17,7 @@
 | 核心版本 | **`@deepseek-ai/dsh 0.1.7-rc.1`**（全局 npm；**2026-09-24 实测**）——⚠️ **`dsh --version` ≠ `dist-tags.latest`**（`latest` 仍钉 `0.1.5-rc.3`，0.1.7-rc.1 发在 `next`）。🔴 **`0.1.5-rc.2` 是坏版本：profile 里装了插件就「启动即崩」**，见 §42 / F25 |
 | 进行中 | 路径Q「预置供应商」插件已交付（§33）：**180 断言 + 19 断言（SSR）全过**、预置通过**宿主自己的 pi-ai schema** 校验、已装入真实 `$DSH_HOME`（6/6 已是最新）；**待用户重启 dsh web 后目视验收**（「设置 → 模型」底部应出现「预置供应商」面板）。路径P（§29）/路径E（§21.3）均已交付。**6 个插件**均已纳入 `scripts/setup-plugins.mjs`（编号 1–6，`model-sync` = 4、`project-explorer` = 5、`provider-presets` = 6） |
 | 迁移快照 | `.work\migration-2026-09-14\`（tracked patch + 2 个 fork 补丁） |
-| 下一步（建议） | **P0 全部关闭** ✅ 且**多机更新链已修好**（§25：`update.ps1` 一条命令 + 新克隆构建已实测）。可选下一步：①**等官方发布后再评估官方桌面端**（现在只留了评估交接：`D:\dsh\official-desktop-eval\`，结论=未发布、只能自行构建）②HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`）③壳加固 ①端口保留段避让（已按用户决定暂缓，§23.5） |
+| 下一步（建议） | **P0 全部关闭** ✅ 且**多机更新链已修好**（§25：`update.ps1` 一条命令 + 新克隆构建已实测）。可选下一步：①**官方桌面端已发布（2026-09-30 实测，见 §56 / facts F33）**——原「等发布再评估」已到期：评估交接仍在 `D:\dsh\official-desktop-eval\`，本轮实测清单与定位讨论见 §56②HANDOVER 瘦身（数值已收敛到 `project-facts-v1.0.md`）③壳加固 ①端口保留段避让（已按用户决定暂缓，§23.5） |
 
 ## 0. 会话协作约定（每个会话开工前必读）
 
@@ -3485,6 +3485,153 @@ var zhPresetBlock string
 | 端到端验证 | 两个变体**各 42/42** |
 | Release 说明 | 新增一条「国内网络（0.1.20 起）」：面板「更新源」+ 自动回退 + GitHub 代理前缀 |
 | 本地留存 | `D:\dsh\app\packages\`：两个 zip + `LATEST-slim.txt` / `LATEST-full.txt` / `LATEST.txt`（0.1.19 已按 F7 剪除） |
+
+---
+
+## §56 官方桌面版**已发布**：实测事实清单 + 我们的定位（讨论，2026-09-30）
+
+> **由来**：用户 2026-09-30 12:13 提出「现在官方的桌面版本发布了，你觉得本安装器应该做些什么才会继续有价值？讨论一下」。那一轮（`session-b62acd52` 的 turn 24，`seq 3468→3703`）在 **13:22 `$DSH_HOME` 被重建**时随 transcript 一起丢失（同类事故见 §43/§46）。本节**不是回忆**：它由**残留调研产物**（`.cache\official-desktop\`，12:48–13:21）＋**本次复核实测**（2026-09-30 13:5x，只读）重建。
+> **状态**：**讨论性结论**——用户选择「先把讨论正式写出来」，**尚未据此改任何代码**。
+
+### 56.0 先说结论（一句话）
+
+**官方桌面版把我们过去做的一半事（打包分发、核心更新、CLI 进 PATH、Office/python 全量运行时、账号托盘）收走了**；我们还能立得住的是三件它**结构上不会管**的事：**①同一 `$DSH_HOME` 下的共存秩序与救援**（今天的事故就是活证据）、**②内网/离线/可锁版的交付**、**③把 6 个插件做成「两种壳都能用」的资产**。
+
+### 56.1 取证位置（都还在，别再重复下载/解包）
+
+| 实物 | 路径 / 体量 | 时间（2026-09-30） |
+|---|---|---|
+| 官方安装器（**用户下载件**） | `.cache\official-desktop\dsh-latest-windows-x64.exe` = **289,313,640 B** | 12:48:38 |
+| NSIS 解包 | `.cache\official-desktop\unpacked\`（含 `$PLUGINSDIR\app-64.7z` 288 MB、`Uninstall DeepSeek Harness.exe`） | 13:09:54 |
+| Electron 应用树 | `.cache\official-desktop\app\`（`DeepSeek Harness.exe` 244 MB、`app.asar` 121,348,951 B、`resources\runtime\`） | 12:48 起 |
+| 可读源码（解包出来的） | `.cache\official-desktop\peek\main.js`（486,898 字符）、`host-index.js`（13,773 B）、`host-cli.js`（5,275 B）、`asar.mjs` | 13:14–13:20 |
+| 隔离 home 的尝试（**6 个都是空目录**） | `.cache\official-desktop\{app-home,app-home2,app-home3,scratch-home,scratch2,scratch3}` | 13:13–13:20 |
+| 三次试跑输出 | `app-run.out/err`、`run2.*`、`run4.*` —— **内容只有一个换行 ⇒ 等于没跑起来** | 13:19:03 / 13:20:08 / 13:21:11 |
+
+### 56.2 实测事实清单（换机复核照这张表；每条都有出处）
+
+| 项 | 实测值 | 出处 |
+|---|---|---|
+| 版本/形态 | Electron **44.0.0**；`app.asar` 121 MB；NSIS 安装器 289 MB | `app\version`、`app\resources` |
+| 内置核心 | `desktopVersion: **0.2.0-rc.2**`；`payloadDigest a7dddb0d…` | `resources\runtime\primary-runtime\runtime.json` |
+| 运行时 | node **24.18.1**（`runtime\versions.json`）+ primary-runtime 里 node **24.21.0**；pnpm **11.7.0**；python **3.12.14** + numpy 2.3.5 / pandas 3.0.1 / python-docx 1.2.0 / python-pptx 1.0.2 / openpyxl 3.1.5 / Pillow 12.3.0 / lxml 6.1.3 … | 同上 |
+| Office 能力 | `libreoffice-kit-*` 解析钩子 + `office-skills` + `@deepseek-ai/dsh-skill-office` + `dsh-tool-workspace-dependencies`（**与我们 full 包的 LibreOffice 引擎同类**） | `host-index.js` L23–85 |
+| **有没有 webServer** | **有**：宿主把 `ctx.connection.authenticatedUrl(http://127.0.0.1:<ctx.webServer.port>)` 连同 `collectIndexInjections()` 经 IPC 交给 Electron；启动参数里端口 = **19387** | `host-index.js` L231–245、L337–344 |
+| 用哪个 profile | **保留 profile `desktop`** = `$DSH_HOME\profiles\desktop`（另有 `lock`） | `main.js` `resolveDesktopPaths()` |
+| home 关系 | 注释原文「**Harness home shared with npm-installed dsh**」⇒ **与我们共用同一个 `$DSH_HOME`（含 `storages`/`sessions`）**；解析规则与我们**同源**：显式配置 > `DSH_HOME` > `~/.dsh`（空串视为未设） | `main.js`、`@deepseek-ai/dsh-home-paths` |
+| 自更新 | `electron-updater`，generic feed = **`https://download.deepseek.com/dsh-desk/feeds/win-x64/`**，**channel: nightly**；「用户授权下载 + 单独安装」 | `app-update.yml`、`main.js` |
+| 更新期安全 | **更新准入锁**：lock → 新请求一律 **503** → 等 `pendingRequests` 排空 → 若 `hasDesktopActiveTasks()`（有 agent running / inbox 有待处理 / 有后台 job running）则**拒绝更新**；退出前另有 `quit-inspection`（含已装定时提醒） | `host-index.js` L97–179 |
+| CLI | `runCli({ manageDesktopProfile: true, packageManager: 自带 pnpm })`；并把 `dsh` 命令**写进用户 PATH**（HKCU + 互斥量 + 所有权标记 + 保留用户原有条目 + `inspect/install/remove`） | `host-cli.js`、`resources\runtime\cli\command-manager.js`、`command-path.ps1` |
+| 插件机制 | 同一个 cordis 体系；profile 初始化时写「**out-of-tree 插件**需要的 pnpm 设置」（`linker: hoisted`、`autoInstallPeers: false`）；加载失败的 bundle 由 `reportSkippedBundles` 报出 | `main.js`、`host-index.js` L4/L221–222 |
+| 账号 / 托盘 / 崩溃 | DeepSeek 账号登录（`startSignIn({loginSource:"desktop"})`）、平台会话经**私有 IPC** 下发（不把凭据给渲染层）、托盘图标、崩溃报告（`app.getPath("logs")` + prune）、致命诊断经 IPC 回传（上限 64 KiB） | `main.js`、`host-index.js` L181–212、L346–364 |
+
+**⚠️ 由此作废的旧结论（`project-facts` F13、`HANDOVER` §24.5/§47）**：①「官方桌面端**未发布**」——**作废**（用户已下载到安装器，内置核心 0.2.0-rc.2，桌面侧自更新 feed 也在）；②「**不提供 `webServer`**，所以我们插件 host 路由在 desktop profile 下不可用」——**作废**（它现在有 webServer，还有 index 注入机制）。**但**「desktop profile 能否加载我们这 6 个 client UI 插件 / 我们的 host 路由在它下面能否工作」**仍未实测**，不能想当然。
+
+### 56.3 与我们现有能力的对照
+
+**官方已经收走的（我们再做就是重复劳动）：**
+
+1. **打包分发**：它自带 node + pnpm + python + Office 全家桶（= 我们 `full` 变体的思路），289 MB 单安装器；
+2. **核心更新**：桌面侧 electron-updater + nightly feed，还有**更新期准入锁**（我们面板的「更新核心/更新源」是同一件事的贫民版）；
+3. **CLI 进 PATH**：我们从来没做（我们只有 exe + 脚本）；
+4. **账号 / 托盘 / 后台驻留 / 崩溃上报**：我们不做，也不该做。
+
+**它结构上不会管的（我们的空白，按价值排序）：**
+
+1. 🔴 **同一 `$DSH_HOME` 的共存秩序与救援**——两者**共用** `storages\workspace.json`、`sessions\`、`.credentials.yaml`，只分 `profiles\<name>`。**今天 13:22 的事故就是这件事的反面教材**（§56.4）。我们的「每日备份 + 合并式恢复 + 重启窗口守卫」（§43/§46，`.work\backup-dsh-home.ps1` / `restore-dsh-home.ps1` / `restore-on-service-restart.ps1`）是**已被两次事故验证过**的能力，官方不会提供。
+2. **内网 / 离线 / 可锁版交付**：官方 = 云端 feed + nightly + 账号登录；内网机器、无外网、锁死某个核心版本、一次拷 N 台、`-NoNpm` 纯离线包——这些正是我们现有 `--before` 时间闸门（F17）、npm 镜像 + 自动回退（F32）、瘦身/整合双包（F15）在做的事。
+3. **版本纪律与闸门**：我们有「升核心前必须过**核心+6 插件启动闸门**」（F30）和 `0.1.5-rc.2` 那次坏版本的事故知识（§42/F25）；**nightly 通道不会替用户挡这些**。
+
+**建议的定位（供用户裁决，不自行开工）：**
+
+- **不做**：再和官方比「装得快 / 界面好看 / 自动更新」——那是它的主场。
+- **做**：①**共存的秩序与救援**（home 指纹 + 备份/恢复/守卫，升级成"两个壳都能安全用同一个 home"的规程与工具）；②**内网/离线/锁版**的交付与自检；③**把 6 个插件做成两种壳都能加载的资产**（先做 desktop profile 的**加载实测**，再决定投放方式）。
+
+### 56.4 🔴 安全红线 + 今天 13:22 事故的候选原因（**未定论**）
+
+**事实与时间线**（本机实测）：
+
+- `$DSH_HOME` 今天被重建：`sessions\` 只剩 2 个新会话、`storages\workspace.json` 换成全新文档；**但** `storages\session_projcache`（文件到 13:20:58）与 `.credentials.yaml`（13:25，含 CTAI/VEKENLLM key）**没被动** ⇒ **不是整仓清空**，是「会话 + 工作区索引」被重建。
+- 13:19:03 / 13:20:08 / 13:21:11 —— 上一轮**三次试跑官方桌面 app**（`app-run`/`run2`/`run4`），其隔离 home（`app-home*`/`scratch*`）**全是空目录**、三次输出都是空行；
+- 13:22:15 —— 当前 GUI 的 node（43080）由 **`D:\dshdesktop` 便携包**启动（`%APPDATA%\dsh-desktop\debug.log`：`startDsh: … D:\dshdesktop\runtime\node.exe …`），13:23 才 `applyPendingRuntimeUpdate: applied harness 0.2.0-rc.1`（即**引导时用的仍是包内 `0.1.7-rc.1`**），13:23:14 再跑 `install-offline.ps1`（`profiles\node_modules` 时间戳 13:23:16 与之一致）。
+
+**两个候选原因**（都**没有**被证实，别当结论）：**①** 官方 app 的某一次试跑没有真正隔离 `DSH_HOME`（空目录说明隔离**可能**没生效），它用**自己的 0.2.0-rc.2** 打开共享 store 并做了迁移/重置；**②** 便携包用**内置 0.1.7-rc.1** 引导一个被**更新核心**（0.1.7-rc.2 / 0.2.0-rc.1）写过的共享 store，版本不匹配导致重建索引（未被索引的会话目录可能被当垃圾清掉——注意 `session_projcache` 与 6 个**旧命名的历史会话目录**都活着，与"只清会话"这个形状并不完全吻合）。
+
+**建议的对照实验（等用户点头再做，绝不动真实 home）**：在 `.cache\home-experiment\` 造假 home（从备份拷一份），分别用 ①官方 app + `DSH_HOME=<假home>` ②便携 `0.1.7-rc.1` 引导 0.2.0-rc.1 写过的假 home ③当前核心引导，各跑一次看 `sessions\` 与 `workspace.json` 的变化。**纪律（写进规程）**：**永远不要拿真实 `$DSH_HOME` 试跑官方 app 或异版本核心**；任何 home 级实验都用 `.cache` 下的假 home。
+
+### 56.5 本轮恢复战果（与 §46 同一套工具，勿重写）
+
+| 项 | 结果 |
+|---|---|
+| 备份源 | `D:\dsh\backups\dsh-home-20260930-120002`（**12:00 每日备份**，正好卡在事故前；每日任务见 F26） |
+| 已恢复 | **12 份 transcript**（含主线 `session-b62acd52` **4,847,460 B**「恢复丢失的会话与配置备份」、`session-468b6fa9` 1.9 MB、`session-23192189` 0.9 MB）+ **11 份投影缓存**（只补空缺）+ **合并式**工作区索引（`dsh-desktop-env` 4 个会话 / `default-workspace` 2 个 / 归档 1 个） |
+| 校验 | 12/12 transcript 与备份 **SHA256 逐字节相同**；索引用 `Assert-IdArrayShape` 校验数组形状；live 与 staged 哈希一致 |
+| 回滚材料 | `D:\dsh\backups\pre-restore\dsh-home-20260930-132858`（恢复前现场）+ `workspace.json.before-restore` |
+| 刻意没动 | `cordis.patch.yml`、`.credentials.yaml`、`.anonymous-user-id`（当前都比备份新） |
+| 未恢复 | 该会话 **12:13–13:22** 那一轮正文（只有投影缓存里的 24 轮 outline，已导出 `.cache\recover-20260930\b62acd52-turn-outline.md`；全盘/回收站/AppData/Temp 均无第二份） |
+| 生效条件 | **重启服务**（`dsh web` 只在启动时读 `workspace.json`）。守护 = `.work\restore-on-service-restart.ps1`（盯 43080，在关闭窗口里反复写回合并索引），**由一次性计划任务拉起**：`.work\restore-guard.cmd` → `schtasks /Create /TN dsh-desktop-restore-guard /SC ONCE /ST 23:59 /F` + `/Run`（脚本自删任务，最长守 2 小时），日志 `.cache\dsh-restore-staged\guard-task.log` + `restore-on-restart.log` |
+
+**顺带记一条沙箱坑（可复用，已同步进 `AGENTS.md` 高频坑）**：沙箱把每条 agent 命令放进一个作业，**命令结束时该作业的子进程会被一起回收**——`Start-Process` 拉起的"分离"守卫**并不真的分离**（2026-09-30 实测：13:41:41 起的 PID 6772 只写下 `watch start` 一行就被回收，而此时服务重启还没发生）。**要活过服务重启的守护进程必须用一次性计划任务**：`.work\restore-guard.cmd` + `schtasks /Create /TN dsh-desktop-restore-guard /TR <cmd> /SC ONCE /ST 23:59 /F`、再 `/Run`（**建任务需要 `danger-full-access`**；沙箱内 `schtasks` 连 `/Query` 都报 `The system cannot find the path specified`），脚本跑完**自删任务**。另：**沙箱里 `Get-Process` 只可见约 12 个进程**，判活要用**独占打开它持有的日志文件**（被占用 ⇒ 仍在运行），别拿"看不见"当"已死"。
+
+### 56.6 待决（用户裁决）
+
+1. §56.3 的三条定位要不要落成任务，先做哪一条；
+2. 是否把「**两个壳共用一个 home**」写成一条**可执行规程**（官方 app 只允许在 `DSH_HOME=<隔离目录>` 下运行；壳启动前记录 home 指纹；发布前跑一次"共享 store 兼容"闸门）；
+3. 是否按 §56.4 做隔离对照实验，定位 13:22 的**真因**（当前只有候选原因）。
+
+---
+
+## §57 Web 版封版 + 新应用「DSH 桌面助手」：决策与执行（2026-09-30）
+
+> **用户 2026-09-30 拍板四件事**：①**同仓库**新应用（不另开仓库）；②助手**不跑 harness**；③老壳**立即停止一切修改**；④助手形态 = **独立 exe**。
+> 本节是这次转向的唯一权威记录；§56 是转向的**依据**（官方桌面版实测清单 + 定位讨论）。
+
+### 57.1 冻结规则（硬约束，已写进 `AGENTS.md` 顶部）
+
+- 老壳路径（本仓库根：`app.go` / `main.go` / `dsh_windows.go` / `dsh_other.go` / `windowstate.go` / `frontend/` / `scripts/install-offline.ps1` / `scripts/pack-release.ps1` / `.github/workflows/release-desktop.yml`）**不再有任何修改**；最后发行版 = **`desktop-v0.1.20`**（2026-09-30 11:21，CI #27，双包各 42/42）。
+- ⚠️ **冻结期绝不要推 `desktop-v*` tag**：老 CI 的触发条件就是 `on.push.tags: desktop-v*`（实测确认），推了会重新打包并发 Release。**是否给老 CI 加"禁发"护栏仍未定**（属基础设施改动，未做）。
+- **共享资产仍在本仓库正常维护**（两边都可用）：`plugins/` 6 个插件、`scripts/setup-plugins.mjs`（本次新增 `--profile web|desktop|all`）、`global/zh-preset.md`、`.work/` 全部套件与工具、`.work/backup-dsh-home.ps1` / `restore-dsh-home.ps1` / `restore-guard.cmd`。
+- 助手新代码放 `assistant/`；可复用 Go 逻辑抽到 `internal/`（`officialdetect` / `plugininject` / `presetdoc` / `homeguard`）。
+
+### 57.2 助手定位与边界（v1.0）
+
+一句话：**官方桌面版的插件与配置助手 + `$DSH_HOME` 的安全带**。不跑 harness、不托管服务、**不产生第二个 harness 写者**（这正是共存事故的根源，见 §56.4）。
+
+**四张卡片**：①官方桌面版（检测/版本/位置/运行状态 + 未装时给下载链接；profile 未初始化时提示"先启动一次官方桌面版"）②插件（6 条状态 + 注入/更新/**撤销**；完成后提示"托盘完全退出官方壳再启动"）③预设与避坑（写/移除 `$DSH_HOME\AGENTS.md` 锚点段，**对官方壳同样生效**）④安全（home 指纹 `+N/-N`、立即备份、恢复入口、共存提示）。
+
+**不做**：核心版本管理、npm 镜像/更新源、runtime 解压与自更新、启动/托管服务、改官方自己的配置（`ui-settings: enabled: false` 这类只给**显式开关**、默认不动）。
+
+### 57.3 两条技术纪律
+
+1. **不依赖 Node.js**（目标机不保证有）⇒ 检测 / 注入 / 撤销 / 备份用 **Go 原生**实现。代价：注入逻辑会有"Go 版（产品）"和"冻结的 `.mjs` 版（CLI/老壳）"两份 ⇒ 用 **fixture 对拍测试**防漂移。
+2. **可以依赖 Windows PowerShell 5.1**（系统必有）⇒ 复杂的**恢复**（`.work/restore-dsh-home.ps1`，合并式、已被两次事故验证）继续复用，不重写。
+
+### 57.4 官方入口（用户提供，2026-09-30）
+
+| 用途 | 值 |
+|---|---|
+| 官方安装器下载（助手面板用，**只负责交给系统浏览器打开**） | **`https://download.deepseek.com/desktop/dsh-latest-windows-x64.exe`** —— 用户提供并实测可下载；⚠️ **本机命令行直连解析不到该域名**（`curl` 返回 `000`、无 IP），所以助手**不要自己下载**、也不要在 CI 里校验它 |
+| 官方更新 feed（随安装包实测） | `https://download.deepseek.com/dsh-desk/feeds/win-x64/`，channel **nightly**（`app-update.yml`） |
+| 本机已下载件（缓存） | `.cache\official-desktop\dsh-latest-windows-x64.exe` = **289,313,640 B**（sha256 未算；同目录还有解包树与 `peek\{main,host-index,host-cli}.js`） |
+
+### 57.5 分期（每期独立验收）
+
+| 期 | 内容 | 状态 |
+|---|---|---|
+| S0 | 冻结检查点：提交全部未提交产出 + 删除构建残留 tgz + `AGENTS.md` 冻结声明 + 本节 | **本次完成** |
+| S1 | `assistant/` 骨架 + ①检测卡片 + 下载链接（纯读、零风险） | 待做 |
+| S2 | ②插件注入/更新/撤销（Go 原生 + 与冻结 `.mjs` 的 fixture 对拍） | 待做 |
+| S3 | ③预设与避坑 + 可展开预览 | 待做 |
+| S4 | ④安全（指纹 / 备份 / 恢复入口 / 共存提示） | 待做 |
+| S5 | 打包与 CI（`assistant-v*`；**单 exe**，6 个插件与 `global/zh-preset.md` 用 `go:embed`）+ 迁移文档 + `assistant-v1.0.0` | 待做 |
+| S6（可选） | 官方包静默安装（NSIS `/S /D=` 实测通过后再开；**我们不分发官方二进制**） | 待定 |
+
+### 57.6 已知问题与待办
+
+- **用户反馈（2026-09-30）**：6 个插件在官方桌面版里**都起来了**，但**部分插件在官方应用中可能有小问题**，**后期再调整**（调的是 `plugins/` 下的插件，属共享资产，**不在冻结范围内**）。
+- 官方 `profiles\desktop\cordis.patch.yml` 会被官方壳**合并式重写**（实测 15:04:18：它自己加了两条 `deepseek-v4-flash` / `auto`，我们的 6 条**保留**）⇒ 注入可持续，但**撤销必须只删我们的条目**。
+- 13:22 `$DSH_HOME` 重建的**真因仍未定论**（§56.4 两个候选；本次观测到官方壳是"追加不覆盖"，**削弱候选①**）⇒ 助手 S4 的指纹工具就是为此而做。
+- 冻结后 `D:\dsh\app\current\dsh-desktop.exe` 仍是**运行中的老壳**（本机 43080 在跑）——它现在是一个**多余的 harness 写者**。建议用户择机退出它，只留官方桌面版（属用户操作，未代做）。
 
 
 
