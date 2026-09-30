@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "dsh-assistant",
+  "outputfilename": "dsh-assistant",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "FFaassdfs",
+    "email": "aassdfs@qq.com"
+  },
+  "info": {
+    "companyName": "FFaassdfs",
+    "productName": "DSH 桌面助手",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2026 FFaassdfs",
+    "comments": "Official DeepSeek Harness desktop app: plugin injection, presets, and $DSH_HOME safety. Runs no harness of its own (HANDOVER 57)."
+  }
+}

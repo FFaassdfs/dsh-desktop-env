@@ -3618,8 +3618,8 @@ var zhPresetBlock string
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| S0 | 冻结检查点：提交全部未提交产出 + 删除构建残留 tgz + `AGENTS.md` 冻结声明 + 本节 | **本次完成** |
-| S1 | `assistant/` 骨架 + ①检测卡片 + 下载链接（纯读、零风险） | 待做 |
+| S0 | 冻结检查点：提交全部未提交产出 + 删除构建残留 tgz + `AGENTS.md` 冻结声明 + 本节 | **完成**（提交 `5987b7c`，已推送） |
+| S1 | `assistant/` 骨架 + ①检测卡片 + 下载链接（纯读、零风险） | **完成**（见 §57.7；`dsh-assistant.exe` 11.3 MB 已构建） |
 | S2 | ②插件注入/更新/撤销（Go 原生 + 与冻结 `.mjs` 的 fixture 对拍） | 待做 |
 | S3 | ③预设与避坑 + 可展开预览 | 待做 |
 | S4 | ④安全（指纹 / 备份 / 恢复入口 / 共存提示） | 待做 |
@@ -3632,6 +3632,31 @@ var zhPresetBlock string
 - 官方 `profiles\desktop\cordis.patch.yml` 会被官方壳**合并式重写**（实测 15:04:18：它自己加了两条 `deepseek-v4-flash` / `auto`，我们的 6 条**保留**）⇒ 注入可持续，但**撤销必须只删我们的条目**。
 - 13:22 `$DSH_HOME` 重建的**真因仍未定论**（§56.4 两个候选；本次观测到官方壳是"追加不覆盖"，**削弱候选①**）⇒ 助手 S4 的指纹工具就是为此而做。
 - 冻结后 `D:\dsh\app\current\dsh-desktop.exe` 仍是**运行中的老壳**（本机 43080 在跑）——它现在是一个**多余的 harness 写者**。建议用户择机退出它，只留官方桌面版（属用户操作，未代做）。
+
+### 57.7 S1 落地记录（2026-09-30）
+
+**代码**（全部新增，**未触碰任何冻结文件**）：
+
+| 路径 | 内容 |
+|---|---|
+| `internal/officialdetect/` | 检测包（**只读**）：注册表三处卸载项的读取（HKCU / HKLM / WOW6432Node，`registry_windows.go` + 非 Windows 桩）、安装目录**文件签名**校验（`DeepSeek Harness.exe` + `resources\app.asar` + `resources\runtime\`**目录** + `versions.json`）、`DSH_HOME` 解析（复刻官方优先级：显式 > `$DSH_HOME` > `~/.dsh`，**空白视为未设**）、profile 与 patch 层现状（我们的 6 条 vs 官方自带条目的分类）、19387 运行探测 |
+| `assistant/` | Wails 应用：`main.go`（560×640 面板）、`app.go`（绑定 `OfficialState` / `OpenDownloadPage` / `PickInstallDir` / `AdoptInstallDir` / `OpenPath`，**没有一个方法会启动 harness**）、`frontend/`（原生 JS 单页：卡片 1 已实现，卡片 2–4 为「下一步」占位）、`wails.json`（`dsh-assistant` / `productVersion 1.0.0`） |
+| `assistant/cmd/detectprobe/` | `go run ./assistant/cmd/detectprobe` 打印本机检测结果（JSON，也是面板收到的同一形状）——排障时贴一段即可 |
+
+**真机实测**（`detectprobe`，2026-09-30）：`installed=true`、`DeepSeek Harness 0.2.0-rc.2`、`D:\dshdesktopnew`、`userInstall=true`、`signatureVerified=true`、`runtimeVersion=0.2.0-rc.2`、`electronVersion=44.0.0`、`profileInitialized=true`、**我们的 6 条与官方 7 条被正确区分**、`running=true (19387)`。
+
+**本阶段抓到的 3 个真 bug（都由新写的测试抓到）**：
+1. `VerifyDir` 对 `resources\runtime`（**目录**）用了 `fileExists` ⇒ 永远判定"未安装"；
+2. 卸载项匹配用 `strings.Contains` ⇒ **"DeepSeek Harness Chat" 之类会被误判为官方桌面版**，改为"前缀 + 版本样式后缀"的精确匹配；
+3. 运行探测用的是默认 `http.Client` ⇒ 会走**环境代理**（本机有 PAC/代理自动发现），环回探测可能因此误报"未运行"，改为 `Transport{Proxy: nil}` 直连。
+
+**共享资产的两处增强**（老壳虽冻结，但 `scripts/` 与安装器是共享资产）：
+- `scripts/setup-plugins.mjs`：`--profile web|desktop|all`（S0 已提交）；
+- `install-offline.ps1`：新增 `-Profile`（默认 `web`）并透传；同时**放宽了包布局检查**——源码树里（没有打包的 `dsh-desktop.exe`）也能跑插件那一半，便携包的插件注入因此可以从源码树与发行包两条路验证。
+
+**测试**：`.work/plugin-selection.test.ps1` 新增 **G 段（17 项）**：注入官方 profile、**官方自带条目与配置行不被破坏**、幂等、`--profile all` 双写、非法 profile 名报错、`--status` 的 per-profile 判定、以及 **`install-offline.ps1 -Profile` 端到端**。套件 **59 → 76 项全过**；`update-plugins.test.ps1` **28/28**；`go test ./internal/...` **8/8**；`gofmt`/`go vet` 干净。**注**：G 段修复过程中有 2 项曾是**假警报**（测试自己用 `Set-Content -Encoding UTF8` 写 fixture 带 BOM + 正则要求行首空格 ⇒ 首行条目读不到），现已加"fixture 自检"断言，避免以后再假警报。
+
+**构建**：`assistant\build\bin\dsh-assistant.exe` = **11,319,808 B**（Wails 2.14 + Go 1.26.6；前端 4.6 KB JS + 2.7 KB CSS，无框架）。⚠️ 本机 `npm install` 与 `vite build` 在沙箱内会被拒（`EPERM`/signal-pipe），需 `danger-full-access`。
 
 
 

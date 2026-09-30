@@ -1,4 +1,4 @@
-﻿# Plugin-selection tests for install-offline.ps1 + scripts/setup-plugins.mjs.
+# Plugin-selection tests for install-offline.ps1 + scripts/setup-plugins.mjs.
 #
 # Everything is derived from `setup-plugins.mjs --describe`, so adding a plugin
 # never breaks this suite (only the counted assertions that must scale).
@@ -239,6 +239,103 @@ Check "the CRLF fixture really has CRLF bytes" ($crlfBytes -gt 0) "files contain
 Check "a CRLF payload with identical content reads as current" ($crlfRow.state -eq "current") "state=$($crlfRow.state) sourceHash=$($crlfRow.sourceHash) installedHash=$($crlfRow.installedHash)"
 
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host "`n==> G. --profile: inject ours into the OFFICIAL app's reserved profile" -ForegroundColor Cyan
+# WHY THIS SUITE OWNS THIS: the official Electron desktop app boots the reserved
+# profile "desktop" ($DSH_HOME/profiles/desktop) and shares the same $DSH_HOME and
+# the same profiles/node_modules as our frozen web shell (HANDOVER 56/57), but its
+# own cli refuses to manage that profile ("managed exclusively by the Electron
+# application", dsh/lib/bin.js), so writing its patch layer is ours to do. This is
+# the contract the assistant's Go injector (S2) must reproduce, driven through the
+# two entry points users actually have: scripts/setup-plugins.mjs and, on a
+# portable package, install-offline.ps1 -Profile.
+$profileStatus = {
+  param($homePath, $profileName)
+  $prev = $env:DSH_HOME
+  $env:DSH_HOME = $homePath
+  $raw = @((& node "$repo\scripts\setup-plugins.mjs" --status --profile $profileName --ascii | Out-String) | ConvertFrom-Json)
+  $env:DSH_HOME = $prev
+  return $raw
+}
+
+$hDesk = New-Home
+# The official app initializes the profile with its own patch layer on first start;
+# mimic that so we also prove we never disturb the app's own entries.
+$deskDir = Join-Path $hDesk "profiles\desktop"
+New-Item -ItemType Directory -Force -Path $deskDir | Out-Null
+$appPatch = Join-Path $deskDir "cordis.patch.yml"
+@(
+  "# Your patch layer for this dsh profile, applied after every bundle layer:",
+  "- id: agent-default-model",
+  '  name: "@deepseek-ai/dsh-agent-default-model"',
+  "  config:",
+  "    provider: deepseek-account",
+  ""
+) | Set-Content -Encoding UTF8 $appPatch
+$appByteCount = (Get-Item $appPatch).Length
+# Sanity-check the FIXTURE before asserting anything about the installer: the first
+# version of this section wrote the file with Set-Content -Encoding UTF8 (which
+# emits a BOM under Windows PowerShell) and then matched ids with a regex that
+# requires whitespace before "- id:", so a first-line entry was invisible. The
+# suite reported "the app's own entry survives: FAIL" while the installer had in
+# fact preserved it - a false alarm that cost a debugging round. Assert the fixture
+# instead, so a future edit cannot silently weaken the check.
+$fixtureIds = @((Get-Content $appPatch) | ForEach-Object { if ($_ -match '^\s*-?\s*id:\s*(\S+)') { $Matches[1] } })
+Check "fixture: the app's own entry is really in the file" ($fixtureIds -contains "agent-default-model") "fixture ids: $($fixtureIds -join ', ')"
+
+$env:DSH_HOME = $hDesk
+$deskOut = & node "$repo\scripts\setup-plugins.mjs" --plugins all --profile desktop 2>&1 | Out-String
+$deskExit = $LASTEXITCODE
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+Check "--profile desktop -> exits 0" ($deskExit -eq 0) "exit=$deskExit"
+$deskIds = @((Get-Content $appPatch) | ForEach-Object { if ($_ -match '^\s*-?\s*id:\s*(\S+)') { $Matches[1] } } | Sort-Object)
+Check "--profile desktop -> all $total insert ids present" (($deskIds | Where-Object { $_ -like 'plugin-*' }).Count -eq $total) "got $(($deskIds | Where-Object { $_ -like 'plugin-*' }) -join ',')"
+Check "--profile desktop -> the app's own entry survives" ($deskIds -contains "agent-default-model") "ids: $($deskIds -join ', ')"
+Check "--profile desktop -> the app's own config lines survive" ((Get-Content $appPatch -Raw) -match 'provider: deepseek-account') ""
+Check "--profile desktop -> the patch file only grew" ((Get-Item $appPatch).Length -gt $appByteCount) "was $appByteCount, now $((Get-Item $appPatch).Length)"
+Check "--profile desktop -> web profile untouched by default" (-not (Test-Path (Join-Path $hDesk "profiles\web\cordis.patch.yml"))) "the default profile must stay web"
+
+$env:DSH_HOME = $hDesk
+$null = & node "$repo\scripts\setup-plugins.mjs" --plugins all --profile desktop 2>&1 | Out-String
+$rerunExit = $LASTEXITCODE
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+$deskIds2 = @((Get-Content $appPatch) | ForEach-Object { if ($_ -match '^\s+- id:\s*(\S+)') { $Matches[1] } })
+Check "--profile desktop is idempotent (no duplicate inserts)" (($deskIds2 | Where-Object { $_ -like 'plugin-*' }).Count -eq $total) "ours now: $(($deskIds2 | Where-Object { $_ -like 'plugin-*' }).Count), all: $($deskIds2.Count)"
+Check "--profile desktop re-run exits 0" ($rerunExit -eq 0) "exit=$rerunExit"
+
+# --status must report the per-profile picture the assistant's panel renders.
+$rows = & $profileStatus $hDesk desktop
+Check "--status --profile desktop reports patchEntries.desktop = true for all" ((@($rows | Where-Object { $_.patchEntries.desktop }).Count) -eq $total) "got $(@($rows | Where-Object { $_.patchEntries.desktop }).Count)"
+Check "--status --profile desktop reports patchEntries.web = false" ((@($rows | Where-Object { $_.patchEntries.web }).Count) -eq 0) "web entries must not be claimed"
+
+$hAll = New-Home
+New-Item -ItemType Directory -Force -Path (Join-Path $hAll "profiles\desktop") | Out-Null
+$env:DSH_HOME = $hAll
+$null = & node "$repo\scripts\setup-plugins.mjs" --plugins all --profile all 2>&1 | Out-String
+$allExit = $LASTEXITCODE
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+Check "--profile all -> exits 0" ($allExit -eq 0) "exit=$allExit"
+Check "--profile all -> web profile gets the entries" ((PatchIds $hAll).Count -eq $total) "got $((PatchIds $hAll).Count)"
+$allDesk = @((Get-Content (Join-Path $hAll "profiles\desktop\cordis.patch.yml")) | ForEach-Object { if ($_ -match '^\s+- id:\s*(\S+)') { $Matches[1] } })
+Check "--profile all -> desktop profile gets the entries too" (($allDesk | Where-Object { $_ -like 'plugin-*' }).Count -eq $total) "got $(($allDesk | Where-Object { $_ -like 'plugin-*' }) -join ',')"
+
+$env:DSH_HOME = $hAll
+$badProfile = & node "$repo\scripts\setup-plugins.mjs" --plugins all --profile nope 2>&1 | Out-String
+$badProfileExit = $LASTEXITCODE
+Remove-Item Env:\DSH_HOME -ErrorAction SilentlyContinue
+Check "--profile rejects an unknown name" ($badProfileExit -ne 0 -and $badProfile -match "unknown profile") "exit=$badProfileExit"
+
+# install-offline.ps1 is what a portable-package user runs; it must forward the
+# profile flag (the release ships this script, so a missing forward would make the
+# official-app path unusable exactly where it is needed most).
+$hPkg = New-Home
+New-Item -ItemType Directory -Force -Path (Join-Path $hPkg "profiles\desktop") | Out-Null
+$offline = & pwsh -NoProfile -ExecutionPolicy Bypass -File "$repo\install-offline.ps1" -DSHome $hPkg -Plugins all -Profile desktop 2>&1 | Out-String
+$offlineExit = $LASTEXITCODE
+Check "install-offline.ps1 forwards -Profile to the official profile" ($offlineExit -eq 0) "exit=$offlineExit"
+$offlineIds = @((Get-Content (Join-Path $hPkg "profiles\desktop\cordis.patch.yml") -ErrorAction SilentlyContinue) | ForEach-Object { if ($_ -match '^\s+- id:\s*(\S+)') { $Matches[1] } })
+Check "install-offline.ps1 -> desktop profile got all $total entries" (($offlineIds | Where-Object { $_ -like 'plugin-*' }).Count -eq $total) "got $(($offlineIds | Where-Object { $_ -like 'plugin-*' }).Count)"
+
 $newRoot = @(Get-ChildItem $repo -Force | ForEach-Object { $_.Name } | Where-Object { $rootBefore -notcontains $_ })
 Check "the test left the repository root clean" ($newRoot.Count -eq 0) "new entries: $($newRoot -join ', ')"
 Write-Host ""

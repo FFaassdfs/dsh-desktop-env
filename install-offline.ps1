@@ -1,4 +1,4 @@
-﻿# install-offline.ps1 - set up a portable (offline) dsh-desktop release.
+# install-offline.ps1 - set up a portable (offline) dsh-desktop release.
 #
 # Shipped inside the release zip next to dsh-desktop.exe. The package is
 # PORTABLE: unzipping and running dsh-desktop.exe already works. This script is
@@ -13,6 +13,7 @@
 #   ... -Plugins none                          # install none (shell only)
 #   ... -Plugins ask                           # interactive menu (needs a console)
 #   ... -Plugins explainer,core-version        # pick individually
+#   ... -Profile desktop                       # write the OFFICIAL app's profile
 #   ... -DSHome D:\dsh-home                    # target another harness home
 #   ... -AppDir D:\dsh\app\current             # also copy exe+runtime there
 #   ... -CheckOnly                             # dry run
@@ -23,6 +24,13 @@ param(
   [string]$DSHome = "",
   [string]$AppDir = "",
   [string]$Plugins = "all",
+  # Which profile's patch layer receives the plugins: "web" (default, our own
+  # frozen shell), "desktop" (the reserved profile of the OFFICIAL DeepSeek
+  # Harness desktop app) or "all". The official app refuses to manage that
+  # profile itself ("managed exclusively by the Electron application"), so a
+  # portable-package user needs this switch to get the plugins in there.
+  # See HANDOVER §57.
+  [string]$Profile = "web",
   [switch]$SkipPlugins,
   [switch]$CheckOnly
 )
@@ -221,10 +229,21 @@ function Resolve-PluginSelection {
 
 # --- 1. layout ----------------------------------------------------------------
 Step "1/2 checking the package layout"
-foreach ($p in @($exe, $pluginScript)) {
-  if (-not (Test-Path $p)) { throw "package is incomplete, missing: $p" }
+# The plugin installer needs a node to run, and it is invoked from this script's
+# own directory, so this layout check applies to the PLUGIN half only (-SkipPlugins
+# skips it). It also means the -Profile desktop path can be exercised from a source
+# checkout - where there is no packaged dsh-desktop.exe - which is what the
+# regression suite does (see .work/plugin-selection.test.ps1 section G).
+if (-not $SkipPlugins) {
+  foreach ($p in @($pluginScript)) {
+    if (-not (Test-Path $p)) { throw "package is incomplete, missing: $p" }
+  }
+  if (Test-Path $exe) {
+    Ok "dsh-desktop.exe present"
+  } else {
+    Warn "no packaged dsh-desktop.exe next to this script: only the plugin half will run"
+  }
 }
-Ok "dsh-desktop.exe present"
 
 # The runtime ships as one file (runtime.zip) and is normally unpacked by the
 # shell on first start. This script needs it NOW (to run the plugin installer
@@ -264,6 +283,7 @@ if ($bundledNames.Count -gt 0) {
 # --- 2. plugins ---------------------------------------------------------------
 Step "2/2 installing the custom plugins into DSH_HOME"
 Write-Host "    DSH_HOME : $DSHome"
+Write-Host "    profile  : $Profile"
 $selection = Resolve-PluginSelection -Value $Plugins
 
 if ($SkipPlugins) {
@@ -277,7 +297,7 @@ if ($SkipPlugins) {
     Show-PluginCatalogue
     Write-Host ("    would install : " + $selection)
   }
-  $nodeArgs = @($pluginScript, "--plugins", $selection)
+  $nodeArgs = @($pluginScript, "--plugins", $selection, "--profile", $Profile)
   if ($CheckOnly) { $nodeArgs += "--check-only" }
   Write-Host "    running : $nodeCmd $($nodeArgs -join ' ')"
   $env:DSH_HOME = $DSHome

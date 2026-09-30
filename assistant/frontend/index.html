@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DSH 桌面助手</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">DSH</span>
+        <span class="brandText">
+          <strong>桌面助手</strong>
+          <small id="versionLine">正在读取…</small>
+        </span>
+      </div>
+      <button class="ghost mini" id="refreshBtn" title="重新检测">↻ 刷新</button>
+    </header>
+
+    <main id="cards">
+      <!-- 卡片 1：官方桌面版（S1 已实现） -->
+      <section class="card" id="officialCard">
+        <div class="cardHead">
+          <h2>官方桌面版</h2>
+          <span class="badge" id="officialBadge">检测中…</span>
+        </div>
+        <div class="cardBody" id="officialBody">正在检测…</div>
+        <div class="cardFoot">
+          <button class="primary" id="downloadBtn">打开官方下载页</button>
+          <button class="ghost" id="pickDirBtn" title="手工指定一个解包版目录">手动指定目录…</button>
+        </div>
+        <p class="note" id="officialNote"></p>
+      </section>
+
+      <!-- 卡片 2-4：后续阶段（S2/S3/S4），先占位，避免让人以为功能丢了 -->
+      <section class="card placeholder" id="pluginsCard">
+        <div class="cardHead"><h2>本地插件</h2><span class="badge muted">下一步</span></div>
+        <div class="cardBody">把仓库里的插件注入官方桌面版的保留 profile，支持更新与撤销。</div>
+      </section>
+      <section class="card placeholder" id="presetCard">
+        <div class="cardHead"><h2>预设与避坑</h2><span class="badge muted">下一步</span></div>
+        <div class="cardBody">写入全局约定文档（<code>$DSH_HOME/AGENTS.md</code>），官方桌面版同样生效。</div>
+      </section>
+      <section class="card placeholder" id="safetyCard">
+        <div class="cardHead"><h2>会话安全</h2><span class="badge muted">下一步</span></div>
+        <div class="cardBody">home 指纹对比、立即备份、恢复入口——两个应用共用一份会话存储。</div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="statusLine">就绪</span>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

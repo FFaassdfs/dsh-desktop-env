@@ -1,0 +1,22 @@
+# assistant — local build/runtime output that must never be committed.
+#
+# WHY THIS FILE EXISTS: the repository .gitignore has unanchored rules
+# ("build/bin", "frontend/dist"), which for THIS directory would also ignore
+# assistant/build/ (the Wails icon/manifest sources) — and wails build refuses to
+# run without them. Negating them here keeps the tracked icon set while still
+# keeping binaries, installed packages and the built frontend bundle out of git.
+#
+# Note: this file is loaded IN ADDITION to the repository .gitignore, and a
+# negation here cannot resurrect a path the parent file excluded unless the
+# directory itself was not excluded; assistant/build/ is not excluded at the top
+# level ("build/bin" only matches that exact relative path), so the negations work.
+
+node_modules/
+frontend/node_modules/
+build/bin/
+frontend/dist/
+
+!build/
+!build/windows/
+!build/windows/**
+!build/appicon.png

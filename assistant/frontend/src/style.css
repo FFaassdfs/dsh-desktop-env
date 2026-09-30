@@ -1,0 +1,154 @@
+/* DSH 桌面助手 — 面板样式。
+   窄窗口（默认 560px）为主：卡片式、单列、行内 key/value。
+   颜色沿用老壳面板的深色基调，但更克制：这是配置工具，不是仪表盘。 */
+
+:root {
+  --bg: #1b2636;
+  --card: #232f42;
+  --cardSoft: #2a3750;
+  --line: #35435c;
+  --text: #e8edf5;
+  --muted: #9fb0c9;
+  --accent: #4c8dff;
+  --ok: #3fbf7f;
+  --warn: #ffb454;
+  --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+body { display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #1f2a3c;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo {
+  font: 700 12px/1 var(--mono);
+  letter-spacing: 1px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+}
+.brandText { display: flex; flex-direction: column; min-width: 0; }
+.brandText strong { font-size: 13px; }
+.brandText small {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+
+#cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.card.placeholder { opacity: 0.55; }
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cardHead h2 { margin: 0; font-size: 13px; font-weight: 600; }
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge.ok { color: #d8ffe9; background: rgba(63, 191, 127, 0.18); border-color: rgba(63, 191, 127, 0.55); }
+.badge.warn { color: #ffe9c9; background: rgba(255, 180, 84, 0.16); border-color: rgba(255, 180, 84, 0.5); }
+.badge.muted { opacity: 0.8; }
+
+.cardBody { font-size: 12.5px; }
+
+.row {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.row:last-child { border-bottom: 0; }
+.row .k { color: var(--muted); flex: 0 0 88px; }
+.row .v {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+.row .v.mono { font-family: var(--mono); font-size: 11.5px; }
+
+.cardFoot { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+button {
+  font: inherit;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--cardSoft);
+  color: var(--text);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; }
+button.mini { padding: 4px 9px; font-size: 12px; }
+
+.note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.note:empty { display: none; }
+
+code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+  background: #1f2a3c;
+}
