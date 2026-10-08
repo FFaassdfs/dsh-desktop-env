@@ -3658,6 +3658,8 @@ var zhPresetBlock string
 
 **构建**：`assistant\build\bin\dsh-assistant.exe` = **11,319,808 B**（Wails 2.14 + Go 1.26.6；前端 4.6 KB JS + 2.7 KB CSS，无框架）。⚠️ 本机 `npm install` 与 `vite build` 在沙箱内会被拒（`EPERM`/signal-pipe），需 `danger-full-access`。
 
+**S1 推送附带修复 `.work/push-via-api.ps1`（共享工具）**：老版只支持"每层至多一个目录"的提交，S1 第一次带嵌套目录就坏了。修了 4 处（均已实测）：①`diff-tree` 输出带 CRLF，文件名混入 `\r` ⇒ GitHub 建出的树与 git 不一致（用 `git mktree` 对照定位）；②目录键混用 `\` 与 `/` ⇒ `-eq` 永远不匹配 ⇒ 每个目录的文件清单为空；③**建树顺序必须 deepest-first**（父树引用子树 sha）——写成 shallow-first 时 `assistant` 建出来缺全部子目录（`5bf9719` vs `6ab3097`）；④全新目录不能带 `base_tree`（422 "Invalid tree info"）。插桩开关：`$env:DSH_PUSH_DEBUG=1` 打印建树顺序与每个目录的子树，排障用。
+
 
 
 
