@@ -19,6 +19,7 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -31,6 +32,38 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+
+	// --- diagnostics hooks (2026-10-08, the 8000ffff controller failure) -------
+	//
+	// The first build of the assistant died silently on this machine: WebView2's
+	// CreateCoreWebView2Controller completed with 0x8000ffff, and everything the
+	// app printed went to the invisible stderr of a windowsgui process. Two knobs
+	// exist so the failure can be bisected WITHOUT rebuilding, and so a broken
+	// machine state can be worked around:
+	//
+	//   DSH_ASSISTANT_BROWSER_PATH  -> force the WebView2 runtime folder (the
+	//                                  WEBVIEW2_BROWSER_EXECUTABLE_FOLDER env var
+	//                                  is NOT usable for this: go-webview2's
+	//                                  preventEnvAndRegistryOverrides overwrites
+	//                                  it with the app's own value before the
+	//                                  loader runs);
+	//   DSH_ASSISTANT_DISABLE_GPU=1 -> the Wails option WebviewGpuIsDisabled (the
+	//                                  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS env
+	//                                  var is overwritten the same way).
+	//
+	// They also feed the startup log (see app.go), because a GUI process that
+	// dies before creating a window has nowhere else to report.
+	winOpts := &windows.Options{
+		WebviewIsTransparent: false,
+		WindowIsTranslucent:  false,
+	}
+	if p := os.Getenv("DSH_ASSISTANT_BROWSER_PATH"); p != "" {
+		winOpts.WebviewBrowserPath = p
+	}
+	if os.Getenv("DSH_ASSISTANT_DISABLE_GPU") == "1" {
+		winOpts.WebviewGpuIsDisabled = true
+	}
+
 	err := wails.Run(&options.App{
 		Title:  "DSH 桌面助手",
 		Width:  560,
@@ -44,10 +77,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
 		Bind:             []interface{}{app},
-		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-		},
+		Windows:          winOpts,
 	})
 	if err != nil {
 		log.Fatalf("dsh-assistant: %v", err)
